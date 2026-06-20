@@ -7,6 +7,7 @@ from pathlib import Path
 from core.loop import run_minimal_loop
 from core.state import AgentState
 from core.task_parser import TaskParser
+from memory_providers.json_memory_provider import JsonMemoryProvider
 
 
 def generate_task_id() -> str:
@@ -51,6 +52,8 @@ def build_log_lines(state: AgentState) -> list[str]:
         lines.append(f"[Reflection] failure_type = {feedback.failure_type}")
         lines.append(f"[Reflection] repair_strategy = {feedback.repair_strategy}")
 
+    lines.append(f"[Memory] saved = {str(state.memory_saved).lower()}")
+
     lines.extend(
         [
             f"[Result] success = {result.success if result else False}",
@@ -73,6 +76,7 @@ def run_task(
     task_id: str | None = None,
     task_parser=None,
     tool_registry=None,
+    memory_provider=None,
 ) -> AgentState:
     root = Path(output_root)
     state = create_initial_state(task_id or generate_task_id(), task)
@@ -80,6 +84,12 @@ def run_task(
     parsed_task = parser.parse(state.task_id, state.user_input)
     apply_task_to_state(state, parsed_task)
     state = run_minimal_loop(state, tool_registry=tool_registry)
+    if memory_provider is False:
+        state.memory_saved = False
+    else:
+        provider = memory_provider if memory_provider is not None else JsonMemoryProvider()
+        provider.save_task(state)
+        state.memory_saved = True
     state.save_json(root / "states")
     save_log(state, root / "logs")
     return state

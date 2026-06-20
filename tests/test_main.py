@@ -50,6 +50,17 @@ def make_static_summary_registry(summary=VALID_SUMMARY_REPORT):
     }
 
 
+class FakeMemoryProvider:
+    def __init__(self):
+        self.saved_task_ids = []
+
+    def save_task(self, state):
+        self.saved_task_ids.append(state.task_id)
+
+    def load_context(self):
+        return {}
+
+
 def test_create_initial_state_starts_unknown_before_parser():
     state = create_initial_state("task_test", "帮我分析 CSV")
 
@@ -65,6 +76,7 @@ def test_run_task_writes_state_and_log(tmp_path):
         task_id="task_test",
         task_parser=FakeParser(),
         tool_registry=make_static_summary_registry(),
+        memory_provider=False,
     )
 
     state_path = tmp_path / "states" / "task_test_state.json"
@@ -96,6 +108,7 @@ def test_run_task_outputs_real_summary_with_injected_tools(tmp_path):
         task_id="task_test",
         task_parser=FakeParser(),
         tool_registry=make_static_summary_registry(summary),
+        memory_provider=False,
     )
 
     assert state.status == "completed"
@@ -108,6 +121,7 @@ def test_run_task_writes_parser_result_to_state_and_log(tmp_path):
         output_root=tmp_path,
         task_id="task_test",
         task_parser=FakeParser(task_type="data_analysis", intent="analyze_csv"),
+        memory_provider=False,
     )
 
     state_path = tmp_path / "states" / "task_test_state.json"
@@ -140,12 +154,67 @@ def test_run_task_outputs_data_analysis_report(tmp_path):
         output_root=tmp_path,
         task_id="task_test",
         task_parser=FakeParser(task_type="data_analysis", intent="analyze_table"),
+        memory_provider=False,
     )
 
     assert state.status == "completed"
     assert "## 字段说明" in state.final_output
     assert "行数：3" in state.final_output
     assert (tmp_path / "states" / "task_test_state.json").exists()
+
+
+def test_run_task_saves_memory_with_injected_provider(tmp_path):
+    memory_provider = FakeMemoryProvider()
+
+    state = run_task(
+        "帮我总结一段文本",
+        output_root=tmp_path,
+        task_id="task_test",
+        task_parser=FakeParser(),
+        tool_registry=make_static_summary_registry(),
+        memory_provider=memory_provider,
+    )
+
+    saved = json.loads((tmp_path / "states" / "task_test_state.json").read_text(encoding="utf-8"))
+    log_text = (tmp_path / "logs" / "task_test.log").read_text(encoding="utf-8")
+
+    assert state.memory_saved is True
+    assert memory_provider.saved_task_ids == ["task_test"]
+    assert saved["memory_saved"] is True
+    assert "[Memory] saved = true" in log_text
+
+
+def test_run_task_can_disable_memory(tmp_path):
+    state = run_task(
+        "帮我总结一段文本",
+        output_root=tmp_path,
+        task_id="task_test",
+        task_parser=FakeParser(),
+        tool_registry=make_static_summary_registry(),
+        memory_provider=False,
+    )
+
+    log_text = (tmp_path / "logs" / "task_test.log").read_text(encoding="utf-8")
+
+    assert state.memory_saved is False
+    assert "[Memory] saved = false" in log_text
+
+
+def test_run_task_uses_default_json_memory_provider(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+
+    state = run_task(
+        "帮我总结一段文本",
+        output_root=tmp_path / "outputs",
+        task_id="task_test",
+        task_parser=FakeParser(),
+        tool_registry=make_static_summary_registry(),
+    )
+
+    history = json.loads((tmp_path / "memory" / "task_history.json").read_text(encoding="utf-8"))
+
+    assert state.memory_saved is True
+    assert history["tasks"][0]["task_id"] == "task_test"
 
 
 def test_log_lines_include_reflection_feedback():

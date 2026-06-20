@@ -51,3 +51,10 @@ def test_agent_state_can_save_json(tmp_path):
     assert output_path.name == "task_test_state.json"
     saved = json.loads(output_path.read_text(encoding="utf-8"))
     assert saved["task_id"] == "task_test"
+
+
+def test_agent_state_includes_memory_saved_flag():
+    state = AgentState(task_id="task_test", user_input="测试")
+
+    assert state.memory_saved is False
+    assert state.to_dict()["memory_saved"] is False

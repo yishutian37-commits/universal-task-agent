@@ -101,6 +101,7 @@ class AgentState:
     checks: list[CheckResult] = field(default_factory=list)
     feedbacks: list[Feedback] = field(default_factory=list)
     final_output: str | None = None
+    memory_saved: bool = False
     created_at: str = field(default_factory=current_timestamp)
     updated_at: str = field(default_factory=current_timestamp)
 
