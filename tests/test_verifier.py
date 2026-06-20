@@ -102,3 +102,143 @@ def test_verifier_fails_mismatched_table_numbers():
 
     assert check.passed is False
     assert "行数不一致：报告=9，工具=10" in check.failed_reasons
+
+
+def test_verifier_passes_complete_table_analysis_report():
+    state = AgentState(task_id="task_test", user_input="分析表格", task_type="data_analysis")
+    step = PlanStep(step_id=3, goal="生成表格分析报告")
+    result = ToolResult(
+        True,
+        "report_tool",
+        "generate",
+        {
+            "message": (
+                "## 字段说明\n"
+                "- order_id：类型 int64\n"
+                "- warehouse：类型 object\n"
+                "## 基础统计\n"
+                "- 行数：3\n"
+                "- 列数：2\n"
+                "- 缺失值数量：0\n"
+                "- 异常值数量：0\n"
+                "## 异常数据\n"
+                "未检测到异常"
+            ),
+            "source_table_stats": {
+                "row_count": 3,
+                "column_count": 2,
+                "missing_count": 0,
+                "anomaly_count": 0,
+                "columns": [{"name": "order_id"}, {"name": "warehouse"}],
+            },
+        },
+    )
+
+    check = Verifier().check(state, step, result)
+
+    assert check.passed is True
+
+
+def test_verifier_fails_table_report_missing_field_name():
+    state = AgentState(task_id="task_test", user_input="分析表格", task_type="data_analysis")
+    step = PlanStep(step_id=3, goal="生成表格分析报告")
+    result = ToolResult(
+        True,
+        "report_tool",
+        "generate",
+        {
+            "message": (
+                "## 字段说明\n"
+                "- order_id：类型 int64\n"
+                "## 基础统计\n"
+                "- 行数：3\n"
+                "- 列数：2\n"
+                "- 缺失值数量：0\n"
+                "- 异常值数量：0\n"
+                "## 异常数据\n"
+                "未检测到异常"
+            ),
+            "source_table_stats": {
+                "row_count": 3,
+                "column_count": 2,
+                "missing_count": 0,
+                "anomaly_count": 0,
+                "columns": [{"name": "order_id"}, {"name": "warehouse"}],
+            },
+        },
+    )
+
+    check = Verifier().check(state, step, result)
+
+    assert check.passed is False
+    assert "字段说明缺少字段：warehouse" in check.failed_reasons
+
+
+def test_verifier_fails_table_report_mismatched_numbers():
+    state = AgentState(task_id="task_test", user_input="分析表格", task_type="data_analysis")
+    step = PlanStep(step_id=3, goal="生成表格分析报告")
+    result = ToolResult(
+        True,
+        "report_tool",
+        "generate",
+        {
+            "message": (
+                "## 字段说明\n"
+                "- order_id：类型 int64\n"
+                "## 基础统计\n"
+                "- 行数：99\n"
+                "- 列数：1\n"
+                "- 缺失值数量：0\n"
+                "- 异常值数量：0\n"
+                "## 异常数据\n"
+                "未检测到异常"
+            ),
+            "source_table_stats": {
+                "row_count": 3,
+                "column_count": 1,
+                "missing_count": 0,
+                "anomaly_count": 0,
+                "columns": [{"name": "order_id"}],
+            },
+        },
+    )
+
+    check = Verifier().check(state, step, result)
+
+    assert check.passed is False
+    assert "行数不一致：报告=99，工具=3" in check.failed_reasons
+
+
+def test_verifier_fails_table_report_without_no_anomaly_wording():
+    state = AgentState(task_id="task_test", user_input="分析表格", task_type="data_analysis")
+    step = PlanStep(step_id=3, goal="生成表格分析报告")
+    result = ToolResult(
+        True,
+        "report_tool",
+        "generate",
+        {
+            "message": (
+                "## 字段说明\n"
+                "- order_id：类型 int64\n"
+                "## 基础统计\n"
+                "- 行数：3\n"
+                "- 列数：1\n"
+                "- 缺失值数量：0\n"
+                "- 异常值数量：0\n"
+                "## 异常数据\n"
+                "暂无"
+            ),
+            "source_table_stats": {
+                "row_count": 3,
+                "column_count": 1,
+                "missing_count": 0,
+                "anomaly_count": 0,
+                "columns": [{"name": "order_id"}],
+            },
+        },
+    )
+
+    check = Verifier().check(state, step, result)
+
+    assert check.passed is False
+    assert "未检测到异常时必须写明：未检测到异常" in check.failed_reasons

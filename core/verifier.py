@@ -4,6 +4,7 @@ from core.state import AgentState, CheckResult, PlanStep, ToolResult
 
 
 SUMMARY_REQUIRED_SECTIONS = ["摘要", "核心观点", "风险点"]
+TABLE_REQUIRED_SECTIONS = ["字段说明", "基础统计", "异常数据"]
 
 
 class Verifier:
@@ -22,6 +23,9 @@ class Verifier:
         if self._should_check_summary(state, result):
             return self._check_summary(result)
 
+        if self._should_check_table_report(state, result):
+            return self._check_table_report(result)
+
         return CheckResult(passed=True, failed_reasons=[], suggested_fix=[])
 
     def _failed_tool_check(self, result: ToolResult) -> CheckResult:
@@ -37,6 +41,13 @@ class Verifier:
             state is not None
             and state.task_type == "summarize"
             and result.tool_name in {"text_tool", "report_tool"}
+        )
+
+    def _should_check_table_report(self, state: AgentState | None, result: ToolResult) -> bool:
+        return (
+            state is not None
+            and state.task_type == "data_analysis"
+            and result.tool_name == "report_tool"
         )
 
     def _check_summary(self, result: ToolResult) -> CheckResult:
@@ -59,8 +70,51 @@ class Verifier:
             suggested_fix=suggested_fix,
         )
 
-    def _section_content(self, report_text: str, section: str) -> str | None:
-        headings = "|".join(re.escape(item) for item in SUMMARY_REQUIRED_SECTIONS + ["关键事实", "待办事项"])
+    def _check_table_report(self, result: ToolResult) -> CheckResult:
+        report_text = str(result.result.get("message") or result.result.get("report_markdown") or "")
+        source_stats = result.result.get("source_table_stats") or {}
+        failed_reasons = []
+        suggested_fix = []
+        headings = TABLE_REQUIRED_SECTIONS + ["分类汇总", "业务解释", "后续建议"]
+
+        for section in TABLE_REQUIRED_SECTIONS:
+            content = self._section_content(report_text, section, headings)
+            if content is None:
+                failed_reasons.append(f"缺少必要小节：{section}")
+                suggested_fix.append(f"补齐{section}小节")
+            elif not content.strip():
+                failed_reasons.append(f"小节内容为空：{section}")
+                suggested_fix.append(f"补充{section}小节内容")
+
+        field_section = self._section_content(report_text, "字段说明", headings) or ""
+        for column in source_stats.get("columns", []):
+            column_name = str(column.get("name", ""))
+            if column_name and column_name not in field_section:
+                failed_reasons.append(f"字段说明缺少字段：{column_name}")
+                suggested_fix.append(f"补充字段说明：{column_name}")
+
+        number_check = self.check_table_numbers(report_text, source_stats)
+        failed_reasons.extend(number_check.failed_reasons)
+        suggested_fix.extend(number_check.suggested_fix)
+
+        if source_stats.get("anomaly_count") == 0 and "未检测到异常" not in report_text:
+            failed_reasons.append("未检测到异常时必须写明：未检测到异常")
+            suggested_fix.append("在异常数据小节写明：未检测到异常")
+
+        return CheckResult(
+            passed=not failed_reasons,
+            failed_reasons=failed_reasons,
+            suggested_fix=suggested_fix,
+        )
+
+    def _section_content(
+        self,
+        report_text: str,
+        section: str,
+        all_headings: list[str] | None = None,
+    ) -> str | None:
+        headings_source = all_headings or SUMMARY_REQUIRED_SECTIONS + ["关键事实", "待办事项"]
+        headings = "|".join(re.escape(item) for item in headings_source)
         pattern = re.compile(
             rf"(?:^|\n)[ \t]*(?:#+[ \t]*)?{re.escape(section)}[ \t]*[：:]?[ \t]*\n?"
             rf"(.*?)(?=\n[ \t]*(?:#+[ \t]*)?(?:{headings})[ \t]*[：:]?[ \t]*\n?|\Z)",

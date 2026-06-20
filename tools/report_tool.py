@@ -12,7 +12,11 @@ class ReportTool(BaseTool):
         previous = params.get("previous_result")
         if isinstance(previous, dict) and previous.get("table_analysis") is True:
             report = self._table_report(previous)
-            return {"message": report, "report_markdown": report}
+            return {
+                "message": report,
+                "report_markdown": report,
+                "source_table_stats": previous,
+            }
 
         summary = ""
         if isinstance(previous, dict) and isinstance(previous.get("summary_markdown"), str):
