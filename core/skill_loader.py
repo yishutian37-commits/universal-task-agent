@@ -7,6 +7,12 @@ from core.state import Task
 
 
 REQUIRED_FIELDS = ("id", "name", "task_type", "workflow")
+DEFAULT_FIELDS = {
+    "version": 1,
+    "enabled": True,
+    "priority": 0,
+    "trigger_keywords": [],
+}
 
 
 class SkillLoader:
@@ -48,6 +54,7 @@ class SkillLoader:
         text = skill_path.read_text(encoding="utf-8")
         front_matter = self._extract_front_matter(text)
         skill = self._parse_front_matter(front_matter)
+        self._apply_defaults(skill)
         self._validate_skill(skill)
         skill["source_path"] = str(skill_path)
         return skill
@@ -70,16 +77,19 @@ class SkillLoader:
         current_list_key: str | None = None
 
         for raw_line in lines:
-            line = raw_line.strip()
-            if not line:
+            if not raw_line.strip():
                 continue
 
-            if line.startswith("- "):
+            if raw_line.startswith("  - "):
                 if current_list_key is None:
                     raise ValueError("list item without key")
-                data[current_list_key].append(SkillLoader._parse_scalar(line[2:].strip()))
+                data[current_list_key].append(SkillLoader._parse_scalar(raw_line[4:].strip()))
                 continue
 
+            if raw_line.lstrip().startswith("- ") or raw_line[0].isspace():
+                raise ValueError("unsupported indentation")
+
+            line = raw_line.strip()
             if ":" not in line:
                 raise ValueError(f"invalid front matter line: {line}")
 
@@ -97,6 +107,12 @@ class SkillLoader:
                 current_list_key = key
 
         return data
+
+    @staticmethod
+    def _apply_defaults(skill: dict[str, Any]) -> None:
+        for key, value in DEFAULT_FIELDS.items():
+            if key not in skill:
+                skill[key] = value.copy() if isinstance(value, list) else value
 
     @staticmethod
     def _parse_scalar(value: str) -> str | int | bool:
@@ -127,7 +143,14 @@ class SkillLoader:
         keywords = skill.get("trigger_keywords", [])
         if not isinstance(keywords, list):
             return False
-        return any(str(keyword) in task.user_input for keyword in keywords)
+        if not keywords:
+            return True
+
+        searchable_text = f"{task.user_input}\n{task.intent}".casefold()
+        return any(
+            bool(keyword_text) and keyword_text in searchable_text
+            for keyword_text in (str(keyword).casefold() for keyword in keywords)
+        )
 
     @staticmethod
     def _priority(skill: dict[str, Any]) -> int:

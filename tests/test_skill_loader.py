@@ -1,11 +1,12 @@
 from pathlib import Path
+from textwrap import dedent
 
 from core.skill_loader import SkillLoader
 from core.state import Task
 
 
 def write_skill(path: Path, body: str) -> Path:
-    path.write_text(body.strip() + "\n", encoding="utf-8")
+    path.write_text(dedent(body).strip() + "\n", encoding="utf-8")
     return path
 
 
@@ -83,6 +84,123 @@ def test_skill_loader_matches_by_task_type_and_keyword(tmp_path):
     matched = SkillLoader(skills_root).match(make_task())
 
     assert matched["id"] == "summarize_article"
+
+
+def test_skill_loader_adds_default_fields_when_omitted(tmp_path):
+    skills_root = tmp_path / "skills"
+    skills_root.mkdir()
+    write_skill(
+        skills_root / "minimal.md",
+        """
+        ---
+        id: minimal_summary
+        name: Minimal Summary
+        task_type: summarize
+        workflow:
+          - Read
+        ---
+        """,
+    )
+
+    skills = SkillLoader(skills_root).load_skills()
+
+    assert skills[0]["version"] == 1
+    assert skills[0]["enabled"] is True
+    assert skills[0]["priority"] == 0
+    assert skills[0]["trigger_keywords"] == []
+
+
+def test_skill_loader_matches_by_task_type_when_keywords_omitted(tmp_path):
+    skills_root = tmp_path / "skills"
+    skills_root.mkdir()
+    write_skill(
+        skills_root / "type_only.md",
+        """
+        ---
+        id: type_only_summary
+        name: Type Only Summary
+        task_type: summarize
+        workflow:
+          - Read
+        ---
+        """,
+    )
+
+    matched = SkillLoader(skills_root).match(make_task(user_input="plain text without keyword"))
+
+    assert matched["id"] == "type_only_summary"
+
+
+def test_skill_loader_matches_by_task_type_when_keywords_empty(tmp_path):
+    skills_root = tmp_path / "skills"
+    skills_root.mkdir()
+    write_skill(
+        skills_root / "empty_keywords.md",
+        """
+        ---
+        id: empty_keywords_summary
+        name: Empty Keywords Summary
+        task_type: summarize
+        trigger_keywords:
+        workflow:
+          - Read
+        ---
+        """,
+    )
+
+    matched = SkillLoader(skills_root).match(make_task(user_input="plain text without keyword"))
+
+    assert matched["id"] == "empty_keywords_summary"
+
+
+def test_skill_loader_matches_user_input_keyword_case_insensitively(tmp_path):
+    skills_root = tmp_path / "skills"
+    skills_root.mkdir()
+    write_skill(
+        skills_root / "english_summary.md",
+        """
+        ---
+        id: english_summary
+        name: English Summary
+        task_type: summarize
+        trigger_keywords:
+          - REPORT
+        workflow:
+          - Read
+        ---
+        """,
+    )
+
+    matched = SkillLoader(skills_root).match(
+        make_task(user_input="please write a report", intent="other_intent")
+    )
+
+    assert matched["id"] == "english_summary"
+
+
+def test_skill_loader_matches_intent_keyword_case_insensitively(tmp_path):
+    skills_root = tmp_path / "skills"
+    skills_root.mkdir()
+    write_skill(
+        skills_root / "intent_summary.md",
+        """
+        ---
+        id: intent_summary
+        name: Intent Summary
+        task_type: summarize
+        trigger_keywords:
+          - ARTICLE_SUMMARY
+        workflow:
+          - Read
+        ---
+        """,
+    )
+
+    matched = SkillLoader(skills_root).match(
+        make_task(user_input="plain text", intent="article_summary")
+    )
+
+    assert matched["id"] == "intent_summary"
 
 
 def test_skill_loader_ignores_disabled_skill(tmp_path):
@@ -164,6 +282,46 @@ def test_skill_loader_uses_priority_then_id_for_stable_match(tmp_path):
     assert matched["workflow"] == ["High workflow"]
 
 
+def test_skill_loader_uses_id_for_stable_match_when_priority_ties(tmp_path):
+    skills_root = tmp_path / "skills"
+    skills_root.mkdir()
+    write_skill(
+        skills_root / "b_skill.md",
+        """
+        ---
+        id: b_skill
+        name: B Skill
+        task_type: summarize
+        priority: 10
+        trigger_keywords:
+          - 总结
+        workflow:
+          - B workflow
+        ---
+        """,
+    )
+    write_skill(
+        skills_root / "a_skill.md",
+        """
+        ---
+        id: a_skill
+        name: A Skill
+        task_type: summarize
+        priority: 10
+        trigger_keywords:
+          - 总结
+        workflow:
+          - A workflow
+        ---
+        """,
+    )
+
+    matched = SkillLoader(skills_root).match(make_task())
+
+    assert matched["id"] == "a_skill"
+    assert matched["workflow"] == ["A workflow"]
+
+
 def test_skill_loader_skips_invalid_files_and_records_errors(tmp_path):
     skills_root = tmp_path / "skills"
     drafts_root = skills_root / "drafts"
@@ -190,3 +348,30 @@ def test_skill_loader_skips_invalid_files_and_records_errors(tmp_path):
     assert len(loader.errors) == 1
     assert loader.errors[0]["path"].endswith("broken.md")
     assert "missing front matter" in loader.errors[0]["error"]
+
+
+def test_skill_loader_rejects_unsupported_list_indentation(tmp_path):
+    skills_root = tmp_path / "skills"
+    skills_root.mkdir()
+    write_skill(
+        skills_root / "bad_indent.md",
+        """
+        ---
+        id: bad_indent
+        name: Bad Indent
+        task_type: summarize
+        trigger_keywords:
+            - 总结
+        workflow:
+          - Read
+        ---
+        """,
+    )
+
+    loader = SkillLoader(skills_root)
+    skills = loader.load_skills()
+
+    assert skills == []
+    assert len(loader.errors) == 1
+    assert loader.errors[0]["path"].endswith("bad_indent.md")
+    assert "unsupported indentation" in loader.errors[0]["error"]
