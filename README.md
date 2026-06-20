@@ -1,6 +1,6 @@
 # Universal Task Agent
 
-UTA 是一个学习型 Agent 框架。当前里程碑是 `v0.7-memory`：在总结和表格分析链路之外，新增基础 JSON Memory，用于保存跨任务的历史、经验、失败规则和 Skill 候选。
+UTA 是一个学习型 Agent 框架。当前里程碑是 `v0.8-skill-runtime`：在总结、表格分析和基础 JSON Memory 之外，新增本地 Markdown Skill 的沉淀、加载和 Planner 注入闭环。
 
 ## Quickstart
 
@@ -31,6 +31,21 @@ python3 -m venv .venv
 - `memory/negative_rules.json`: 失败任务的负向规则
 - `memory/skill_candidates.json`: v0.8 Skill Builder 的候选输入
 
+## Skill 示例
+
+UTA 会在任务开始时读取 `skills/*.md`。命中 Skill 后，`Planner` 优先使用 Skill 的 `workflow`：
+
+```bash
+.venv/bin/python main.py --task "分析 examples/orders.csv"
+```
+
+正式 Skill 文件放在：
+
+- `skills/summarize_article.md`
+- `skills/analyze_table.md`
+
+草稿 Skill 放在 `skills/drafts/`，不会被运行时自动加载。人工确认后，把草稿移动到 `skills/` 根目录，并把 `enabled` 改为 `true`。
+
 ## LLM 配置
 
 V0.2 开始支持真实 LLM Task Parser。复制 `.env.example` 为 `.env`，只在本地 `.env` 填入真实 API key：
@@ -56,4 +71,5 @@ LLM_SSL_VERIFY=0
 - `v0.5-verifier-reflection`: `Verifier` 做总结结构硬校验，`Reflection` 分类失败并驱动单步重试。
 - `v0.6-data-analysis`: `table_tool` 读取 CSV / Excel，生成字段、基础统计、缺失值、异常值和分类汇总，并由 `Verifier` 做表格报告校验。
 - `v0.7-memory`: 新增 `JsonMemoryProvider`，任务完成后写入 `memory/*.json`，保存任务历史、经验、失败规则和 Skill 候选。
+- `v0.8-skill-runtime`: 新增 `SkillLoader` 和 `SkillBuilder`，支持本地 Markdown Skill 的加载、候选草稿生成和 Planner workflow 注入。
 - TAM Memory 不属于 UTA v1.0 核心范围。
