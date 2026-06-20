@@ -112,6 +112,30 @@ def test_skill_loader_adds_default_fields_when_omitted(tmp_path):
     assert skills[0]["trigger_keywords"] == []
 
 
+def test_skill_loader_uses_default_skills_root(tmp_path, monkeypatch):
+    skills_root = tmp_path / "skills"
+    skills_root.mkdir()
+    write_skill(
+        skills_root / "default.md",
+        """
+        ---
+        id: default_summary
+        name: Default Summary
+        task_type: summarize
+        workflow:
+          - Read
+        ---
+        """,
+    )
+    monkeypatch.chdir(tmp_path)
+
+    skills = SkillLoader().load_skills()
+
+    assert len(skills) == 1
+    assert skills[0]["id"] == "default_summary"
+    assert skills[0]["source_path"].endswith("skills/default.md")
+
+
 def test_skill_loader_matches_by_task_type_when_keywords_omitted(tmp_path):
     skills_root = tmp_path / "skills"
     skills_root.mkdir()
@@ -439,6 +463,17 @@ def test_skill_loader_rejects_unsupported_list_indentation(tmp_path):
             name: Scalar Workflow
             task_type: summarize
             workflow: summarize
+            ---
+            """,
+        ),
+        (
+            "workflow",
+            """
+            ---
+            id: empty_workflow
+            name: Empty Workflow
+            task_type: summarize
+            workflow:
             ---
             """,
         ),

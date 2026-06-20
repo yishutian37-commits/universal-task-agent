@@ -16,7 +16,7 @@ DEFAULT_FIELDS = {
 
 
 class SkillLoader:
-    def __init__(self, skills_root: Path | str):
+    def __init__(self, skills_root: Path | str = "skills"):
         self.skills_root = Path(skills_root)
         self.errors: list[dict[str, str]] = []
 
