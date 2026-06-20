@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+import ssl
 from typing import Any, Callable
 from urllib import request
 from urllib.error import HTTPError, URLError
@@ -22,18 +23,25 @@ class LLMClient:
         base_url: str,
         timeout: int = 30,
         transport: Transport | None = None,
+        ssl_verify: bool = True,
     ):
         self.api_key = api_key
         self.model = model
         self.endpoint = self._normalize_endpoint(base_url)
         self.timeout = timeout
+        self.ssl_verify = ssl_verify
         self.transport = transport or self._default_transport
 
     @classmethod
     def from_config(cls) -> "LLMClient":
-        from config import LLM_API_KEY, LLM_BASE_URL, LLM_MODEL
+        from config import LLM_API_KEY, LLM_BASE_URL, LLM_MODEL, LLM_SSL_VERIFY
 
-        return cls(api_key=LLM_API_KEY, model=LLM_MODEL, base_url=LLM_BASE_URL)
+        return cls(
+            api_key=LLM_API_KEY,
+            model=LLM_MODEL,
+            base_url=LLM_BASE_URL,
+            ssl_verify=LLM_SSL_VERIFY,
+        )
 
     def chat(self, system_prompt: str, user_prompt: str) -> str:
         if not self.api_key:
@@ -90,8 +98,8 @@ class LLMClient:
             return match.group(1).strip()
         return content.strip()
 
-    @staticmethod
     def _default_transport(
+        self,
         endpoint: str,
         headers: dict[str, str],
         payload: dict[str, Any],
@@ -99,8 +107,9 @@ class LLMClient:
     ) -> dict[str, Any]:
         data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
         req = request.Request(endpoint, data=data, headers=headers, method="POST")
+        context = None if self.ssl_verify else ssl._create_unverified_context()
         try:
-            with request.urlopen(req, timeout=timeout) as response:
+            with request.urlopen(req, timeout=timeout, context=context) as response:
                 body = response.read().decode("utf-8")
         except HTTPError as exc:
             detail = exc.read().decode("utf-8", errors="replace")

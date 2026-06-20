@@ -1,4 +1,5 @@
 import os
+import importlib
 
 from config import load_env_file
 
@@ -34,3 +35,13 @@ def test_load_env_file_does_not_override_existing_environment(tmp_path, monkeypa
     load_env_file(env_file)
 
     assert os.environ["LLM_API_KEY"] == "existing_key"
+
+
+def test_config_reads_ssl_verify_flag(monkeypatch):
+    monkeypatch.setenv("LLM_SSL_VERIFY", "0")
+
+    import config
+
+    reloaded = importlib.reload(config)
+
+    assert reloaded.LLM_SSL_VERIFY is False

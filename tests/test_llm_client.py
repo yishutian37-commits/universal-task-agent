@@ -47,6 +47,36 @@ def test_chat_uses_injected_transport_and_returns_content():
     assert client.chat("sys", "user") == "hello"
 
 
+def test_default_transport_can_disable_ssl_verification(monkeypatch):
+    captured = {}
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def read(self):
+            return b'{"choices":[{"message":{"content":"ok"}}]}'
+
+    def fake_urlopen(req, timeout, context=None):
+        captured["context"] = context
+        return FakeResponse()
+
+    monkeypatch.setattr("llm.llm_client.request.urlopen", fake_urlopen)
+    client = LLMClient(
+        api_key="key",
+        model="mimo-v2.5-pro",
+        base_url="https://example.com/v1",
+        ssl_verify=False,
+    )
+
+    assert client.chat("sys", "user") == "ok"
+    assert captured["context"] is not None
+    assert captured["context"].check_hostname is False
+
+
 def test_chat_requires_api_key():
     client = LLMClient(api_key="", model="mimo-v2.5-pro", base_url="http://example.com/v1")
 

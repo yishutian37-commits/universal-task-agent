@@ -20,6 +20,12 @@ cp .env.example .env
 
 `.env` 已被 `.gitignore` 排除，不要把真实 key 提交到 Git。
 
+如果本机 Python 访问 HTTPS LLM 接口时报证书错误，可以只在本地 `.env` 加：
+
+```bash
+LLM_SSL_VERIFY=0
+```
+
 ## 当前状态
 
 - `v0.1-skeleton`: CLI 输入、AgentState、MockTool、Executor、Verifier、最小 Loop、state/log 输出。
