@@ -83,3 +83,22 @@ def test_verifier_fails_summary_empty_section():
     assert check.passed is False
     assert "小节内容为空：摘要" in check.failed_reasons
     assert "补充摘要小节内容" in check.suggested_fix
+
+
+def test_verifier_passes_matching_table_numbers():
+    check = Verifier().check_table_numbers(
+        "基础统计：行数 10，列数 3，缺失值数量 2，异常值数量 0。",
+        {"row_count": 10, "column_count": 3, "missing_count": 2, "anomaly_count": 0},
+    )
+
+    assert check.passed is True
+
+
+def test_verifier_fails_mismatched_table_numbers():
+    check = Verifier().check_table_numbers(
+        "基础统计：行数 9，列数 3，缺失值数量 2，异常值数量 0。",
+        {"row_count": 10, "column_count": 3, "missing_count": 2, "anomaly_count": 0},
+    )
+
+    assert check.passed is False
+    assert "行数不一致：报告=9，工具=10" in check.failed_reasons

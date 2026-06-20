@@ -70,3 +70,35 @@ class Verifier:
         if not match:
             return None
         return match.group(1).strip()
+
+    def check_table_numbers(self, report_text: str, table_stats: dict) -> CheckResult:
+        mapping = [
+            ("row_count", "行数"),
+            ("column_count", "列数"),
+            ("missing_count", "缺失值数量"),
+            ("anomaly_count", "异常值数量"),
+        ]
+        failed_reasons = []
+        suggested_fix = []
+
+        for key, label in mapping:
+            expected = table_stats.get(key)
+            actual = self._extract_labeled_number(report_text, label)
+            if actual is None:
+                failed_reasons.append(f"报告缺少数字：{label}")
+                suggested_fix.append(f"补充{label}")
+            elif actual != expected:
+                failed_reasons.append(f"{label}不一致：报告={actual}，工具={expected}")
+                suggested_fix.append(f"把{label}改为 {expected}")
+
+        return CheckResult(
+            passed=not failed_reasons,
+            failed_reasons=failed_reasons,
+            suggested_fix=suggested_fix,
+        )
+
+    def _extract_labeled_number(self, text: str, label: str) -> int | None:
+        match = re.search(rf"{re.escape(label)}\s*[：:]?\s*(\d+)", text)
+        if not match:
+            return None
+        return int(match.group(1))
