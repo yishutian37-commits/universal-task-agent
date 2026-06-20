@@ -6,6 +6,7 @@ from pathlib import Path
 
 from core.loop import run_minimal_loop
 from core.state import AgentState
+from core.task_parser import TaskParser
 
 
 def generate_task_id() -> str:
@@ -16,9 +17,15 @@ def create_initial_state(task_id: str, user_input: str) -> AgentState:
     return AgentState(
         task_id=task_id,
         user_input=user_input,
-        task_type="summarize",
-        intent="v0.1 hard-coded summarize skeleton",
+        task_type="unknown",
+        intent="",
     )
+
+
+def apply_task_to_state(state: AgentState, task) -> None:
+    state.task_type = task.task_type
+    state.intent = task.intent
+    state.touch()
 
 
 def build_log_lines(state: AgentState) -> list[str]:
@@ -26,7 +33,8 @@ def build_log_lines(state: AgentState) -> list[str]:
     check = state.checks[-1] if state.checks else None
     return [
         "[Main] task received",
-        "[State] task_type = summarize",
+        f"[TaskParser] task_type = {state.task_type}",
+        f"[TaskParser] intent = {state.intent}",
         "[Loop] step 1 started: 执行 V0.1 mock 工具",
         "[Executor] tool = mock_tool",
         f"[Verifier] passed = {check.passed if check else False}",
@@ -46,9 +54,13 @@ def run_task(
     task: str,
     output_root: Path | str = "outputs",
     task_id: str | None = None,
+    task_parser=None,
 ) -> AgentState:
     root = Path(output_root)
     state = create_initial_state(task_id or generate_task_id(), task)
+    parser = task_parser if task_parser is not None else TaskParser()
+    parsed_task = parser.parse(state.task_id, state.user_input)
+    apply_task_to_state(state, parsed_task)
     state = run_minimal_loop(state)
     state.save_json(root / "states")
     save_log(state, root / "logs")
