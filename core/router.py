@@ -30,11 +30,16 @@ class Router:
         action_name: str,
         reason: str,
     ) -> Action:
+        previous_result = state.results[-1].result if state.results else None
         return Action(
             action_id=f"action_{state.task_id}_{step.step_id}",
             step_id=step.step_id,
             tool_name=tool_name,
             action_name=action_name,
-            params={"user_input": state.user_input, "goal": step.goal},
+            params={
+                "user_input": state.user_input,
+                "goal": step.goal,
+                "previous_result": previous_result,
+            },
             reason=reason,
         )

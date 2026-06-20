@@ -1,5 +1,6 @@
 from core.loop import run_minimal_loop
 from core.state import AgentState
+from tools.base_tool import BaseTool
 
 
 def test_minimal_loop_keeps_unknown_task_fallback_with_mock_result():
@@ -46,3 +47,36 @@ def test_loop_executes_full_planned_summary_flow():
     assert updated.results[0].tool_name == "file_tool"
     assert updated.results[1].tool_name == "text_tool"
     assert updated.results[2].tool_name == "report_tool"
+
+
+def test_loop_accepts_injected_tool_registry_for_summary_flow():
+    class EchoTool(BaseTool):
+        name = "echo_tool"
+        description = "test tool"
+
+        def __init__(self, message):
+            self.message = message
+
+        def run(self, action_name, params):
+            return {
+                "message": self.message,
+                "previous_result": params.get("previous_result"),
+            }
+
+    state = AgentState(
+        task_id="task_test",
+        user_input="帮我总结",
+        task_type="summarize",
+        intent="summarize_article",
+    )
+    registry = {
+        "file_tool": EchoTool("file"),
+        "text_tool": EchoTool("text"),
+        "report_tool": EchoTool("report"),
+    }
+
+    updated = run_minimal_loop(state, tool_registry=registry)
+
+    assert updated.final_output == "report"
+    assert updated.results[1].result["previous_result"]["message"] == "file"
+    assert updated.results[2].result["previous_result"]["message"] == "text"

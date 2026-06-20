@@ -16,10 +16,10 @@ def _task_from_state(state: AgentState) -> Task:
     )
 
 
-def run_minimal_loop(state: AgentState) -> AgentState:
+def run_minimal_loop(state: AgentState, tool_registry=None) -> AgentState:
     planner = Planner()
     router = Router()
-    executor = Executor()
+    executor = Executor(tool_registry)
     verifier = Verifier()
 
     state.plan = planner.create_plan(_task_from_state(state))

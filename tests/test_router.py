@@ -1,5 +1,5 @@
 from core.router import Router
-from core.state import AgentState, PlanStep
+from core.state import AgentState, PlanStep, ToolResult
 
 
 def route(goal: str):
@@ -41,3 +41,19 @@ def test_router_falls_back_to_mock_tool():
 
     assert action.tool_name == "mock_tool"
     assert action.action_name == "run"
+
+
+def test_router_passes_previous_tool_result_to_next_action():
+    state = AgentState(task_id="task_test", user_input="测试")
+    state.results.append(
+        ToolResult(
+            success=True,
+            tool_name="file_tool",
+            action_name="read",
+            result={"content": "上一段文本"},
+        )
+    )
+
+    action = Router().choose_tool(state, PlanStep(step_id=2, goal="提取核心信息"))
+
+    assert action.params["previous_result"] == {"content": "上一段文本"}
