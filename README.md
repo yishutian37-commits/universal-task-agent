@@ -5,8 +5,9 @@ UTA 是一个学习型 Agent 框架。当前里程碑是 `v0.1-skeleton`：不�
 ## Quickstart
 
 ```bash
-pip install -r requirements.txt
-python main.py --task "帮我总结一段文本"
+python3 -m venv .venv
+.venv/bin/python -m pip install -r requirements.txt
+.venv/bin/python main.py --task "帮我总结一段文本"
 ```
 
 ## 当前状态
