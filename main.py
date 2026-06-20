@@ -68,20 +68,21 @@ def run_task(
     output_root: Path | str = "outputs",
     task_id: str | None = None,
     task_parser=None,
+    tool_registry=None,
 ) -> AgentState:
     root = Path(output_root)
     state = create_initial_state(task_id or generate_task_id(), task)
     parser = task_parser if task_parser is not None else TaskParser()
     parsed_task = parser.parse(state.task_id, state.user_input)
     apply_task_to_state(state, parsed_task)
-    state = run_minimal_loop(state)
+    state = run_minimal_loop(state, tool_registry=tool_registry)
     state.save_json(root / "states")
     save_log(state, root / "logs")
     return state
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Universal Task Agent V0.3")
+    parser = argparse.ArgumentParser(description="Universal Task Agent V0.4")
     parser.add_argument("--task", required=True, help="要执行的任务")
     parser.add_argument("--output-root", default="outputs", help="运行产物输出目录")
     return parser.parse_args()
