@@ -1,5 +1,6 @@
 import pytest
 
+from core.state import Feedback
 from tools.text_tool import TextTool
 
 
@@ -34,3 +35,24 @@ def test_text_tool_rejects_empty_text():
             "process",
             {"user_input": "", "previous_result": {"content": ""}},
         )
+
+
+def test_text_tool_includes_feedback_in_retry_prompt():
+    client = FakeLLMClient()
+    feedback = Feedback(
+        failure_type="incomplete_output",
+        root_cause="缺少必要小节：风险点",
+        repair_strategy="补齐风险点小节",
+    )
+
+    TextTool(llm_client=client).run(
+        "process",
+        {
+            "user_input": "帮我总结",
+            "previous_result": {"content": "会议记录：库存接口已完成联调。"},
+            "feedback": feedback,
+        },
+    )
+
+    assert "上一次输出未通过校验" in client.calls[0][1]
+    assert "补齐风险点小节" in client.calls[0][1]

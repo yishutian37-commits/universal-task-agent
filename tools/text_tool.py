@@ -19,7 +19,7 @@ class TextTool(BaseTool):
 
         summary = self.llm_client.chat(
             self._system_prompt(),
-            self._user_prompt(source_text),
+            self._user_prompt(source_text, params.get("feedback")),
         ).strip()
         if not summary:
             raise ValueError("LLM 返回空总结")
@@ -44,7 +44,13 @@ class TextTool(BaseTool):
         )
 
     @staticmethod
-    def _user_prompt(source_text: str) -> str:
+    def _user_prompt(source_text: str, feedback=None) -> str:
+        feedback_text = ""
+        if feedback is not None:
+            feedback_text = (
+                "\n\n上一次输出未通过校验，请按以下修复建议重新生成：\n"
+                f"- {feedback.repair_strategy}\n"
+            )
         return (
             "请总结下面文本，输出固定结构：\n"
             "## 摘要\n"
@@ -52,5 +58,6 @@ class TextTool(BaseTool):
             "## 关键事实\n"
             "## 待办事项\n"
             "## 风险点\n\n"
+            f"{feedback_text}"
             f"原文：\n{source_text}"
         )
