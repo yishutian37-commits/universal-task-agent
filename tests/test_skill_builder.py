@@ -27,6 +27,7 @@ def test_skill_builder_generates_markdown_draft():
     assert "workflow:\n  - 读取表格文件\n" in draft
     assert "# data_analysis Skill 草稿" in draft
     assert "来源：data_analysis 已成功执行 3 次" in draft
+    assert "人工审核通过后，可将本草稿移动到 skills/ 根目录，并将 enabled 改为 true。" in draft
 
 
 def test_skill_builder_writes_candidate_draft(tmp_path):

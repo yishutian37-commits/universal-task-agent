@@ -40,6 +40,7 @@ class SkillBuilder:
                 f"来源：{candidate['reason']}",
                 f"最近任务：{candidate['latest_task_id']}",
                 f"更新时间：{candidate['updated_at']}",
+                "人工审核通过后，可将本草稿移动到 skills/ 根目录，并将 enabled 改为 true。",
                 "",
             ]
         )
