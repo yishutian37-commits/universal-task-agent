@@ -120,6 +120,32 @@ def test_loop_accepts_injected_tool_registry_for_summary_flow():
     assert updated.results[2].result["previous_result"]["message"] == VALID_SUMMARY_REPORT
 
 
+def test_loop_passes_matched_skill_workflow_to_planner():
+    state = AgentState(
+        task_id="task_test",
+        user_input="帮我总结",
+        task_type="summarize",
+        intent="summarize_article",
+        matched_skill={
+            "id": "custom_summary",
+            "workflow": ["读取客户文本", "提取客户核心观点", "生成客户报告"],
+        },
+    )
+    registry = {
+        "file_tool": EchoTool("file"),
+        "text_tool": EchoTool(VALID_SUMMARY_REPORT),
+        "report_tool": EchoTool(VALID_SUMMARY_REPORT),
+    }
+
+    updated = run_minimal_loop(state, tool_registry=registry)
+
+    assert [step.goal for step in updated.plan.steps] == [
+        "读取客户文本",
+        "提取客户核心观点",
+        "生成客户报告",
+    ]
+
+
 def test_loop_retries_failed_report_step_and_then_completes():
     report_tool = SequenceReportTool(
         [

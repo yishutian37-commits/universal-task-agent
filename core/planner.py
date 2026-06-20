@@ -21,7 +21,7 @@ class Planner:
         workflow = matched_skill.get("workflow")
         if not isinstance(workflow, list):
             return []
-        return [str(goal) for goal in workflow if str(goal).strip()]
+        return [goal for goal in workflow if isinstance(goal, str) and goal.strip()]
 
     def _goals_for(self, task_type: str) -> list[str]:
         if task_type == "summarize":
