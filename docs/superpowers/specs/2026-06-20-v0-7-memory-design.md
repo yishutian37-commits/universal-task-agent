@@ -243,8 +243,10 @@ def run_task(..., memory_provider=None) -> AgentState:
 写入时机：
 
 ```text
-TaskParser -> Loop -> save state/log -> memory_provider.save_task(state)
+TaskParser -> Loop -> memory_provider.save_task(state) -> save state/log
 ```
+
+这样 `state.memory_saved` 可以同时出现在 state JSON 和 log 中。
 
 Memory 写入失败时，v0.7 让异常抛出并被测试捕捉，不静默吞掉。这样学习阶段更容易看到文件权限或 JSON 格式问题。
 
