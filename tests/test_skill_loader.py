@@ -542,3 +542,11 @@ def test_skill_loader_rejects_invalid_field_shapes(tmp_path, field_name, body):
     assert skills == []
     assert len(loader.errors) == 1
     assert field_name in loader.errors[0]["error"]
+
+
+def test_repo_includes_official_runtime_skills():
+    skills = SkillLoader("skills").load_skills()
+    by_id = {skill["id"]: skill for skill in skills}
+
+    assert by_id["summarize_article"]["workflow"] == ["读取输入内容", "提取核心信息", "生成结构化报告"]
+    assert by_id["analyze_table"]["workflow"] == ["读取表格文件", "分析字段、行数、列数和缺失值", "生成表格分析报告"]
