@@ -131,8 +131,24 @@ class SkillLoader:
         if missing:
             raise ValueError(f"missing required fields: {', '.join(missing)}")
 
+        for field in ("id", "name", "task_type"):
+            if not isinstance(skill[field], str) or not skill[field].strip():
+                raise ValueError(f"{field} must be a non-empty string")
+
         if not isinstance(skill["workflow"], list) or not skill["workflow"]:
             raise ValueError("workflow must be a non-empty list")
+
+        if not isinstance(skill["trigger_keywords"], list):
+            raise ValueError("trigger_keywords must be a list")
+
+        if not isinstance(skill["enabled"], bool):
+            raise ValueError("enabled must be a bool")
+
+        if type(skill["version"]) is not int:
+            raise ValueError("version must be an int")
+
+        if type(skill["priority"]) is not int:
+            raise ValueError("priority must be an int")
 
     @staticmethod
     def _is_enabled(skill: dict[str, Any]) -> bool:

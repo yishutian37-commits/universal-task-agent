@@ -1,6 +1,8 @@
 from pathlib import Path
 from textwrap import dedent
 
+import pytest
+
 from core.skill_loader import SkillLoader
 from core.state import Task
 
@@ -375,3 +377,133 @@ def test_skill_loader_rejects_unsupported_list_indentation(tmp_path):
     assert len(loader.errors) == 1
     assert loader.errors[0]["path"].endswith("bad_indent.md")
     assert "unsupported indentation" in loader.errors[0]["error"]
+
+
+@pytest.mark.parametrize(
+    ("field_name", "body"),
+    [
+        (
+            "id",
+            """
+            ---
+            id:
+            name: Missing ID
+            task_type: summarize
+            workflow:
+              - Read
+            ---
+            """,
+        ),
+        (
+            "name",
+            """
+            ---
+            id: missing_name
+            name:
+            task_type: summarize
+            workflow:
+              - Read
+            ---
+            """,
+        ),
+        (
+            "task_type",
+            """
+            ---
+            id: missing_task_type
+            name: Missing Task Type
+            task_type:
+            workflow:
+              - Read
+            ---
+            """,
+        ),
+        (
+            "trigger_keywords",
+            """
+            ---
+            id: scalar_keywords
+            name: Scalar Keywords
+            task_type: summarize
+            trigger_keywords: summarize
+            workflow:
+              - Read
+            ---
+            """,
+        ),
+        (
+            "workflow",
+            """
+            ---
+            id: scalar_workflow
+            name: Scalar Workflow
+            task_type: summarize
+            workflow: summarize
+            ---
+            """,
+        ),
+        (
+            "enabled",
+            """
+            ---
+            id: empty_enabled
+            name: Empty Enabled
+            enabled:
+            task_type: summarize
+            workflow:
+              - Read
+            ---
+            """,
+        ),
+        (
+            "enabled",
+            """
+            ---
+            id: scalar_enabled
+            name: Scalar Enabled
+            enabled: yes
+            task_type: summarize
+            workflow:
+              - Read
+            ---
+            """,
+        ),
+        (
+            "version",
+            """
+            ---
+            id: bad_version
+            name: Bad Version
+            version: one
+            task_type: summarize
+            workflow:
+              - Read
+            ---
+            """,
+        ),
+        (
+            "priority",
+            """
+            ---
+            id: bad_priority
+            name: Bad Priority
+            priority: high
+            task_type: summarize
+            workflow:
+              - Read
+            ---
+            """,
+        ),
+    ],
+)
+def test_skill_loader_rejects_invalid_field_shapes(tmp_path, field_name, body):
+    skills_root = tmp_path / "skills"
+    skills_root.mkdir()
+    write_skill(skills_root / f"bad_{field_name}.md", body)
+
+    loader = SkillLoader(skills_root)
+    skills = loader.load_skills()
+
+    assert skills == []
+    assert len(loader.errors) == 1
+    assert field_name in loader.errors[0]["error"]
