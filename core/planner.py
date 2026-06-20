@@ -1,9 +1,11 @@
+from typing import Any
+
 from core.state import Plan, PlanStep, Task
 
 
 class Planner:
-    def create_plan(self, task: Task) -> Plan:
-        goals = self._goals_for(task.task_type)
+    def create_plan(self, task: Task, matched_skill: dict[str, Any] | None = None) -> Plan:
+        goals = self._goals_from_skill(matched_skill) or self._goals_for(task.task_type)
         return Plan(
             plan_id=f"plan_{task.task_id}",
             task_id=task.task_id,
@@ -12,6 +14,14 @@ class Planner:
                 for index, goal in enumerate(goals, start=1)
             ],
         )
+
+    def _goals_from_skill(self, matched_skill: dict[str, Any] | None) -> list[str]:
+        if not matched_skill:
+            return []
+        workflow = matched_skill.get("workflow")
+        if not isinstance(workflow, list):
+            return []
+        return [str(goal) for goal in workflow if str(goal).strip()]
 
     def _goals_for(self, task_type: str) -> list[str]:
         if task_type == "summarize":

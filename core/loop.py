@@ -24,7 +24,7 @@ def run_minimal_loop(state: AgentState, tool_registry=None) -> AgentState:
     verifier = Verifier()
     reflection = Reflection()
 
-    state.plan = planner.create_plan(_task_from_state(state))
+    state.plan = planner.create_plan(_task_from_state(state), matched_skill=state.matched_skill)
     state.plan.status = "running"
     state.status = "running"
 

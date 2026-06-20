@@ -32,3 +32,14 @@ def test_planner_creates_unknown_fallback_plan():
 
     assert len(plan.steps) == 1
     assert plan.steps[0].goal == "执行 V0.3 mock 工具"
+
+
+def test_planner_uses_matched_skill_workflow():
+    matched_skill = {
+        "id": "custom_summary",
+        "workflow": ["读取客户文本", "提炼三条要点", "生成客户版报告"],
+    }
+
+    plan = Planner().create_plan(make_task("summarize"), matched_skill=matched_skill)
+
+    assert [step.goal for step in plan.steps] == ["读取客户文本", "提炼三条要点", "生成客户版报告"]
