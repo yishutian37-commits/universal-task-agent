@@ -17,7 +17,8 @@ def test_tool_registry_contains_mock_tool():
 
 
 def test_registry_contains_summary_demo_tools():
-    for name in ["file_tool", "text_tool", "report_tool"]:
-        assert name in TOOL_REGISTRY
-        assert TOOL_REGISTRY[name].name == name
-    assert "table_tool" in TOOL_REGISTRY
+    assert isinstance(TOOL_REGISTRY["mock_tool"], MockTool)
+    assert TOOL_REGISTRY["file_tool"].name == "file_tool"
+    assert TOOL_REGISTRY["text_tool"].name == "text_tool"
+    assert TOOL_REGISTRY["table_tool"].name == "table_tool"
+    assert TOOL_REGISTRY["report_tool"].name == "report_tool"
