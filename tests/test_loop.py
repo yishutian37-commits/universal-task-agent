@@ -3,6 +3,20 @@ from core.state import AgentState
 from tools.base_tool import BaseTool
 
 
+class EchoTool(BaseTool):
+    name = "echo_tool"
+    description = "test tool"
+
+    def __init__(self, message):
+        self.message = message
+
+    def run(self, action_name, params):
+        return {
+            "message": self.message,
+            "previous_result": params.get("previous_result"),
+        }
+
+
 def test_minimal_loop_keeps_unknown_task_fallback_with_mock_result():
     state = AgentState(
         task_id="task_test",
@@ -33,7 +47,13 @@ def test_loop_executes_full_planned_summary_flow():
         intent="summarize_article",
     )
 
-    updated = run_minimal_loop(state)
+    registry = {
+        "file_tool": EchoTool("file"),
+        "text_tool": EchoTool("text"),
+        "report_tool": EchoTool("report"),
+    }
+
+    updated = run_minimal_loop(state, tool_registry=registry)
 
     assert updated.status == "completed"
     assert len(updated.plan.steps) == 3
@@ -50,19 +70,6 @@ def test_loop_executes_full_planned_summary_flow():
 
 
 def test_loop_accepts_injected_tool_registry_for_summary_flow():
-    class EchoTool(BaseTool):
-        name = "echo_tool"
-        description = "test tool"
-
-        def __init__(self, message):
-            self.message = message
-
-        def run(self, action_name, params):
-            return {
-                "message": self.message,
-                "previous_result": params.get("previous_result"),
-            }
-
     state = AgentState(
         task_id="task_test",
         user_input="帮我总结",
