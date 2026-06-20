@@ -41,6 +41,9 @@ class JsonMemoryProvider(BaseMemoryProvider):
         self._save_task_history(state)
         if state.status == "completed":
             self._save_lesson(state)
+            self._update_skill_candidate(state)
+        else:
+            self._save_negative_rule(state)
 
     def _save_task_history(self, state: AgentState) -> None:
         path = self.memory_root / "task_history.json"
@@ -77,6 +80,48 @@ class JsonMemoryProvider(BaseMemoryProvider):
         payload["lessons"] = self._upsert_by_key(payload["lessons"], "lesson_id", record)
         self._write_json(path, payload)
 
+    def _save_negative_rule(self, state: AgentState) -> None:
+        path = self.memory_root / "negative_rules.json"
+        payload = self._read_json(path)
+        record = {
+            "rule_id": f"negative_{state.task_id}",
+            "task_id": state.task_id,
+            "task_type": state.task_type,
+            "content": f"失败任务需要避免重复：{self._failure_text(state)}。",
+            "source": "failed_task",
+            "created_at": state.updated_at,
+        }
+        payload["negative_rules"] = self._upsert_by_key(
+            payload["negative_rules"],
+            "rule_id",
+            record,
+        )
+        self._write_json(path, payload)
+
+    def _update_skill_candidate(self, state: AgentState) -> None:
+        path = self.memory_root / "skill_candidates.json"
+        payload = self._read_json(path)
+        candidates = payload["candidates"]
+        existing = next(
+            (candidate for candidate in candidates if candidate.get("task_type") == state.task_type),
+            None,
+        )
+        success_count = int(existing.get("success_count", 0)) + 1 if existing else 1
+        status = "candidate" if success_count >= 3 else "tracking"
+        record = {
+            "task_type": state.task_type,
+            "success_count": success_count,
+            "latest_task_id": state.task_id,
+            "status": status,
+            "reason": (
+                f"{state.task_type} 已成功执行 {success_count} 次，"
+                "可在 v0.8 评估是否沉淀为 Skill。"
+            ),
+            "updated_at": state.updated_at,
+        }
+        payload["candidates"] = self._upsert_by_key(candidates, "task_type", record)
+        self._write_json(path, payload)
+
     def _upsert_by_key(
         self,
         records: list[dict[str, Any]],
@@ -94,6 +139,13 @@ class JsonMemoryProvider(BaseMemoryProvider):
         if value is None:
             return ""
         return str(value)[:limit]
+
+    def _failure_text(self, state: AgentState) -> str:
+        if state.checks and state.checks[-1].failed_reasons:
+            return "；".join(state.checks[-1].failed_reasons)
+        if state.final_output:
+            return str(state.final_output)
+        return "任务失败但未记录明确原因"
 
     def _read_json(self, path: Path) -> dict[str, Any]:
         return json.loads(path.read_text(encoding="utf-8"))

@@ -29,6 +29,25 @@ def completed_state(task_id="task_1", task_type="summarize"):
     return state
 
 
+def failed_state(task_id="task_failed", task_type="data_analysis"):
+    state = AgentState(
+        task_id=task_id,
+        user_input="分析表格",
+        task_type=task_type,
+        intent="analyze_table",
+        status="failed",
+        final_output="缺少必要小节：基础统计",
+    )
+    state.checks.append(
+        CheckResult(
+            passed=False,
+            failed_reasons=["缺少必要小节：基础统计"],
+            suggested_fix=["补齐基础统计小节"],
+        )
+    )
+    return state
+
+
 def test_json_memory_provider_creates_default_store_files(tmp_path):
     memory_root = tmp_path / "memory"
 
@@ -103,3 +122,38 @@ def test_save_task_updates_existing_history_record(tmp_path):
     assert len(history["tasks"]) == 1
     assert history["tasks"][0]["task_id"] == "task_same"
     assert history["tasks"][0]["status"] == "failed"
+
+
+def test_save_failed_task_writes_negative_rule(tmp_path):
+    provider = JsonMemoryProvider(tmp_path / "memory")
+    state = failed_state()
+
+    provider.save_task(state)
+
+    payload = read_json(tmp_path / "memory" / "negative_rules.json")
+
+    assert len(payload["negative_rules"]) == 1
+    rule = payload["negative_rules"][0]
+    assert rule["rule_id"] == "negative_task_failed"
+    assert rule["task_id"] == "task_failed"
+    assert rule["task_type"] == "data_analysis"
+    assert "缺少必要小节：基础统计" in rule["content"]
+    assert rule["source"] == "failed_task"
+
+
+def test_successful_tasks_update_skill_candidate(tmp_path):
+    provider = JsonMemoryProvider(tmp_path / "memory")
+
+    provider.save_task(completed_state(task_id="task_1", task_type="summarize"))
+    provider.save_task(completed_state(task_id="task_2", task_type="summarize"))
+    provider.save_task(completed_state(task_id="task_3", task_type="summarize"))
+
+    payload = read_json(tmp_path / "memory" / "skill_candidates.json")
+
+    assert len(payload["candidates"]) == 1
+    candidate = payload["candidates"][0]
+    assert candidate["task_type"] == "summarize"
+    assert candidate["success_count"] == 3
+    assert candidate["latest_task_id"] == "task_3"
+    assert candidate["status"] == "candidate"
+    assert "summarize 已成功执行 3 次" in candidate["reason"]
