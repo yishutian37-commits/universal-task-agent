@@ -5,6 +5,7 @@ from datetime import datetime
 from pathlib import Path
 
 from core.loop import run_minimal_loop
+from core.skill_loader import SkillLoader
 from core.state import AgentState
 from core.task_parser import TaskParser
 from memory_providers.json_memory_provider import JsonMemoryProvider
@@ -36,6 +37,8 @@ def build_log_lines(state: AgentState) -> list[str]:
         f"[TaskParser] task_type = {state.task_type}",
         f"[TaskParser] intent = {state.intent}",
     ]
+    matched_skill_id = state.matched_skill.get("id") if state.matched_skill else "none"
+    lines.append(f"[SkillLoader] matched_skill = {matched_skill_id}")
 
     if state.plan is not None:
         lines.append(f"[Planner] created {len(state.plan.steps)} steps")
@@ -77,12 +80,18 @@ def run_task(
     task_parser=None,
     tool_registry=None,
     memory_provider=None,
+    skill_loader=None,
 ) -> AgentState:
     root = Path(output_root)
     state = create_initial_state(task_id or generate_task_id(), task)
     parser = task_parser if task_parser is not None else TaskParser()
     parsed_task = parser.parse(state.task_id, state.user_input)
     apply_task_to_state(state, parsed_task)
+    if skill_loader is False:
+        state.matched_skill = None
+    else:
+        loader = skill_loader if skill_loader is not None else SkillLoader()
+        state.matched_skill = loader.match(parsed_task)
     state = run_minimal_loop(state, tool_registry=tool_registry)
     if memory_provider is False:
         state.memory_saved = False

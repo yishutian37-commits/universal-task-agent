@@ -61,6 +61,16 @@ class FakeMemoryProvider:
         return {}
 
 
+class FakeSkillLoader:
+    def __init__(self, matched_skill):
+        self.matched_skill = matched_skill
+        self.seen_task_types = []
+
+    def match(self, task):
+        self.seen_task_types.append(task.task_type)
+        return self.matched_skill
+
+
 def test_create_initial_state_starts_unknown_before_parser():
     state = create_initial_state("task_test", "帮我分析 CSV")
 
@@ -77,6 +87,7 @@ def test_run_task_writes_state_and_log(tmp_path):
         task_parser=FakeParser(),
         tool_registry=make_static_summary_registry(),
         memory_provider=False,
+        skill_loader=False,
     )
 
     state_path = tmp_path / "states" / "task_test_state.json"
@@ -109,6 +120,7 @@ def test_run_task_outputs_real_summary_with_injected_tools(tmp_path):
         task_parser=FakeParser(),
         tool_registry=make_static_summary_registry(summary),
         memory_provider=False,
+        skill_loader=False,
     )
 
     assert state.status == "completed"
@@ -122,6 +134,7 @@ def test_run_task_writes_parser_result_to_state_and_log(tmp_path):
         task_id="task_test",
         task_parser=FakeParser(task_type="data_analysis", intent="analyze_csv"),
         memory_provider=False,
+        skill_loader=False,
     )
 
     state_path = tmp_path / "states" / "task_test_state.json"
@@ -155,6 +168,7 @@ def test_run_task_outputs_data_analysis_report(tmp_path):
         task_id="task_test",
         task_parser=FakeParser(task_type="data_analysis", intent="analyze_table"),
         memory_provider=False,
+        skill_loader=False,
     )
 
     assert state.status == "completed"
@@ -173,6 +187,7 @@ def test_run_task_saves_memory_with_injected_provider(tmp_path):
         task_parser=FakeParser(),
         tool_registry=make_static_summary_registry(),
         memory_provider=memory_provider,
+        skill_loader=False,
     )
 
     saved = json.loads((tmp_path / "states" / "task_test_state.json").read_text(encoding="utf-8"))
@@ -192,6 +207,7 @@ def test_run_task_can_disable_memory(tmp_path):
         task_parser=FakeParser(),
         tool_registry=make_static_summary_registry(),
         memory_provider=False,
+        skill_loader=False,
     )
 
     log_text = (tmp_path / "logs" / "task_test.log").read_text(encoding="utf-8")
@@ -209,6 +225,7 @@ def test_run_task_uses_default_json_memory_provider(tmp_path, monkeypatch):
         task_id="task_test",
         task_parser=FakeParser(),
         tool_registry=make_static_summary_registry(),
+        skill_loader=False,
     )
 
     history = json.loads((tmp_path / "memory" / "task_history.json").read_text(encoding="utf-8"))
@@ -231,3 +248,87 @@ def test_log_lines_include_reflection_feedback():
 
     assert "[Reflection] failure_type = incomplete_output" in log_text
     assert "[Reflection] repair_strategy = 补齐风险点小节" in log_text
+
+
+def test_run_task_saves_matched_skill_with_injected_loader(tmp_path):
+    skill = {
+        "id": "summarize_article",
+        "name": "文本总结 Skill",
+        "task_type": "summarize",
+        "workflow": ["读取输入内容", "提取核心信息", "生成结构化报告"],
+        "source_path": "skills/summarize_article.md",
+    }
+    skill_loader = FakeSkillLoader(skill)
+
+    state = run_task(
+        "帮我总结一段文本",
+        output_root=tmp_path,
+        task_id="task_test",
+        task_parser=FakeParser(),
+        tool_registry=make_static_summary_registry(),
+        memory_provider=False,
+        skill_loader=skill_loader,
+    )
+
+    saved = json.loads((tmp_path / "states" / "task_test_state.json").read_text(encoding="utf-8"))
+    log_text = (tmp_path / "logs" / "task_test.log").read_text(encoding="utf-8")
+
+    assert skill_loader.seen_task_types == ["summarize"]
+    assert state.matched_skill["id"] == "summarize_article"
+    assert saved["matched_skill"]["id"] == "summarize_article"
+    assert "[SkillLoader] matched_skill = summarize_article" in log_text
+
+
+def test_run_task_can_disable_skill_loader(tmp_path):
+    state = run_task(
+        "帮我总结一段文本",
+        output_root=tmp_path,
+        task_id="task_test",
+        task_parser=FakeParser(),
+        tool_registry=make_static_summary_registry(),
+        memory_provider=False,
+        skill_loader=False,
+    )
+
+    log_text = (tmp_path / "logs" / "task_test.log").read_text(encoding="utf-8")
+
+    assert state.matched_skill is None
+    assert "[SkillLoader] matched_skill = none" in log_text
+
+
+def test_run_task_uses_default_skill_loader_from_cwd(tmp_path, monkeypatch):
+    skills_root = tmp_path / "skills"
+    skills_root.mkdir()
+    (skills_root / "summarize_article.md").write_text(
+        """---
+id: summarize_article
+name: 文本总结 Skill
+version: 1
+enabled: true
+task_type: summarize
+priority: 100
+trigger_keywords:
+  - 总结
+workflow:
+  - 读取输入内容
+  - 提取核心信息
+  - 生成结构化报告
+---
+
+# 文本总结 Skill
+""",
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+
+    state = run_task(
+        "帮我总结一段文本",
+        output_root=tmp_path / "outputs",
+        task_id="task_test",
+        task_parser=FakeParser(),
+        tool_registry=make_static_summary_registry(),
+        memory_provider=False,
+    )
+
+    assert state.matched_skill["id"] == "summarize_article"
+    assert [step.goal for step in state.plan.steps] == ["读取输入内容", "提取核心信息", "生成结构化报告"]
