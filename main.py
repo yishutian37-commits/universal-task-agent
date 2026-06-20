@@ -47,6 +47,10 @@ def build_log_lines(state: AgentState) -> list[str]:
             if index < len(state.checks):
                 lines.append(f"[Verifier] passed = {state.checks[index].passed}")
 
+    for feedback in state.feedbacks:
+        lines.append(f"[Reflection] failure_type = {feedback.failure_type}")
+        lines.append(f"[Reflection] repair_strategy = {feedback.repair_strategy}")
+
     lines.extend(
         [
             f"[Result] success = {result.success if result else False}",
@@ -82,7 +86,7 @@ def run_task(
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Universal Task Agent V0.4")
+    parser = argparse.ArgumentParser(description="Universal Task Agent V0.5")
     parser.add_argument("--task", required=True, help="要执行的任务")
     parser.add_argument("--output-root", default="outputs", help="运行产物输出目录")
     return parser.parse_args()

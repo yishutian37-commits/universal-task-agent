@@ -1,6 +1,6 @@
 # Universal Task Agent
 
-UTA 是一个学习型 Agent 框架。当前里程碑是 `v0.4-summary-demo`：在多步 Agent Loop 中读取文本、调用 LLM 生成中文结构化总结，并输出 Markdown 报告。
+UTA 是一个学习型 Agent 框架。当前里程碑是 `v0.5-verifier-reflection`：在真实文本总结链路上增加结构性校验、Reflection 反馈和单步重试。
 
 ## Quickstart
 
@@ -32,4 +32,5 @@ LLM_SSL_VERIFY=0
 - `v0.2-llm-parser`: 新增 LLMClient、TaskParser，支持识别 `summarize` / `data_analysis` / `unknown`。
 - `v0.3-planner-router`: 新增 Planner 和 Router，执行多步计划，但仍使用占位工具。
 - `v0.4-summary-demo`: `file_tool` 读取文本，`text_tool` 调 LLM 生成中文结构化总结，`report_tool` 输出 Markdown 报告。
+- `v0.5-verifier-reflection`: `Verifier` 做总结结构硬校验，`Reflection` 分类失败并驱动单步重试。
 - TAM Memory 不属于 UTA v1.0 核心范围。
