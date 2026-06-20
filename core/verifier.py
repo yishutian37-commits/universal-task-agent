@@ -36,7 +36,7 @@ class Verifier:
         return (
             state is not None
             and state.task_type == "summarize"
-            and result.tool_name == "report_tool"
+            and result.tool_name in {"text_tool", "report_tool"}
         )
 
     def _check_summary(self, result: ToolResult) -> CheckResult:

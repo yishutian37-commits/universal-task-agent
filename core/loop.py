@@ -31,12 +31,14 @@ def run_minimal_loop(state: AgentState, tool_registry=None) -> AgentState:
     for step in state.plan.steps:
         feedback = None
         attempt = 0
+        previous_step_result = state.results[-1].result if state.results else None
 
         while attempt <= step.max_retries:
             state.current_step_id = step.step_id
             step.status = "running"
 
             action = router.choose_tool(state, step)
+            action.params["previous_result"] = previous_step_result
             if feedback is not None:
                 action.params["feedback"] = feedback
             state.current_action = action

@@ -34,6 +34,20 @@ class SequenceReportTool(BaseTool):
         return {"message": message, "report_markdown": message}
 
 
+class SequenceTextTool(BaseTool):
+    name = "sequence_text_tool"
+    description = "test text sequence"
+
+    def __init__(self, messages):
+        self.messages = list(messages)
+        self.params_seen = []
+
+    def run(self, action_name, params):
+        self.params_seen.append(params)
+        message = self.messages.pop(0)
+        return {"message": message, "summary_markdown": message}
+
+
 def test_minimal_loop_keeps_unknown_task_fallback_with_mock_result():
     state = AgentState(
         task_id="task_test",
@@ -66,7 +80,7 @@ def test_loop_executes_full_planned_summary_flow():
 
     registry = {
         "file_tool": EchoTool("file"),
-        "text_tool": EchoTool("text"),
+        "text_tool": EchoTool(VALID_SUMMARY_REPORT),
         "report_tool": EchoTool(VALID_SUMMARY_REPORT),
     }
 
@@ -95,7 +109,7 @@ def test_loop_accepts_injected_tool_registry_for_summary_flow():
     )
     registry = {
         "file_tool": EchoTool("file"),
-        "text_tool": EchoTool("text"),
+        "text_tool": EchoTool(VALID_SUMMARY_REPORT),
         "report_tool": EchoTool(VALID_SUMMARY_REPORT),
     }
 
@@ -103,7 +117,7 @@ def test_loop_accepts_injected_tool_registry_for_summary_flow():
 
     assert updated.final_output == VALID_SUMMARY_REPORT
     assert updated.results[1].result["previous_result"]["message"] == "file"
-    assert updated.results[2].result["previous_result"]["message"] == "text"
+    assert updated.results[2].result["previous_result"]["message"] == VALID_SUMMARY_REPORT
 
 
 def test_loop_retries_failed_report_step_and_then_completes():
@@ -115,7 +129,7 @@ def test_loop_retries_failed_report_step_and_then_completes():
     )
     registry = {
         "file_tool": EchoTool("file"),
-        "text_tool": EchoTool("text"),
+        "text_tool": EchoTool(VALID_SUMMARY_REPORT),
         "report_tool": report_tool,
     }
     state = AgentState(
@@ -131,6 +145,34 @@ def test_loop_retries_failed_report_step_and_then_completes():
     assert len(updated.feedbacks) == 1
     assert updated.feedbacks[0].failure_type == "incomplete_output"
     assert report_tool.params_seen[1]["feedback"].failure_type == "incomplete_output"
+    assert report_tool.params_seen[1]["previous_result"]["message"] == VALID_SUMMARY_REPORT
+
+
+def test_loop_retries_failed_text_step_with_feedback():
+    text_tool = SequenceTextTool(
+        [
+            "## 摘要\n完成联调。\n## 核心观点\n流程清晰。",
+            VALID_SUMMARY_REPORT,
+        ]
+    )
+    registry = {
+        "file_tool": EchoTool("file"),
+        "text_tool": text_tool,
+        "report_tool": EchoTool(VALID_SUMMARY_REPORT),
+    }
+    state = AgentState(
+        task_id="task_test",
+        user_input="帮我总结",
+        task_type="summarize",
+        intent="summarize_article",
+    )
+
+    updated = run_minimal_loop(state, tool_registry=registry)
+
+    assert updated.status == "completed"
+    assert len(updated.feedbacks) == 1
+    assert text_tool.params_seen[1]["feedback"].failure_type == "incomplete_output"
+    assert text_tool.params_seen[1]["previous_result"]["message"] == "file"
 
 
 def test_loop_fails_after_report_step_retries_are_exhausted():
@@ -143,7 +185,7 @@ def test_loop_fails_after_report_step_retries_are_exhausted():
     )
     registry = {
         "file_tool": EchoTool("file"),
-        "text_tool": EchoTool("text"),
+        "text_tool": EchoTool(VALID_SUMMARY_REPORT),
         "report_tool": report_tool,
     }
     state = AgentState(
