@@ -1,0 +1,19 @@
+# environment
+.env
+
+# python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# outputs
+outputs/
+
+# local db
+*.db
+*.sqlite
+*.sqlite3
+
+# system
+.DS_Store
