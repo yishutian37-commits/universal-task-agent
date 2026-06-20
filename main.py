@@ -86,7 +86,7 @@ def run_task(
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Universal Task Agent V0.5")
+    parser = argparse.ArgumentParser(description="Universal Task Agent V0.6")
     parser.add_argument("--task", required=True, help="要执行的任务")
     parser.add_argument("--output-root", default="outputs", help="运行产物输出目录")
     return parser.parse_args()

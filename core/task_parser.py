@@ -73,6 +73,29 @@ class TaskParser:
 
     @staticmethod
     def _fallback_task(task_id: str, user_input: str) -> Task:
+        guessed_type = TaskParser._guess_task_type(user_input)
+        if guessed_type == "data_analysis":
+            return Task(
+                task_id=task_id,
+                user_input=user_input,
+                task_type="data_analysis",
+                intent="analyze_table",
+                input_type="file",
+                expected_output="analysis_report",
+                constraints=[],
+                missing_info=[],
+            )
+        if guessed_type == "summarize":
+            return Task(
+                task_id=task_id,
+                user_input=user_input,
+                task_type="summarize",
+                intent="summarize_article",
+                input_type="text",
+                expected_output="summary_report",
+                constraints=[],
+                missing_info=[],
+            )
         return Task(
             task_id=task_id,
             user_input=user_input,
@@ -83,3 +106,12 @@ class TaskParser:
             constraints=[],
             missing_info=["task_type"],
         )
+
+    @staticmethod
+    def _guess_task_type(user_input: str) -> str:
+        text = user_input.lower()
+        if any(marker in text for marker in [".csv", ".xlsx", "csv", "excel", "xlsx", "表格"]):
+            return "data_analysis"
+        if "总结" in user_input or "摘要" in user_input:
+            return "summarize"
+        return "unknown"

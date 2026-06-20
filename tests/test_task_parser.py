@@ -74,6 +74,18 @@ def test_parser_falls_back_when_llm_fails():
     assert task.missing_info == ["task_type"]
 
 
+def test_parser_fallback_detects_csv_data_analysis_when_llm_fails():
+    parser = TaskParser(FakeClient(error=LLMClientError("boom")))
+
+    task = parser.parse("task_1", "分析 examples/orders.csv")
+
+    assert task.task_type == "data_analysis"
+    assert task.intent == "analyze_table"
+    assert task.input_type == "file"
+    assert task.expected_output == "analysis_report"
+    assert task.missing_info == []
+
+
 def test_parser_fills_missing_fields():
     parser = TaskParser(FakeClient({"task_type": "summarize"}))
 

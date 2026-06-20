@@ -125,6 +125,29 @@ def test_run_task_writes_parser_result_to_state_and_log(tmp_path):
     assert "[TaskParser] intent = analyze_csv" in log_text
 
 
+def test_run_task_outputs_data_analysis_report(tmp_path):
+    csv_path = tmp_path / "orders.csv"
+    csv_path.write_text(
+        "order_id,warehouse,quantity\n"
+        "1,上海仓,10\n"
+        "2,北京仓,\n"
+        "3,上海仓,12\n",
+        encoding="utf-8",
+    )
+
+    state = run_task(
+        f"分析 {csv_path}",
+        output_root=tmp_path,
+        task_id="task_test",
+        task_parser=FakeParser(task_type="data_analysis", intent="analyze_table"),
+    )
+
+    assert state.status == "completed"
+    assert "## 字段说明" in state.final_output
+    assert "行数：3" in state.final_output
+    assert (tmp_path / "states" / "task_test_state.json").exists()
+
+
 def test_log_lines_include_reflection_feedback():
     state = create_initial_state("task_test", "帮我总结")
     state.feedbacks.append(

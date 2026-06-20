@@ -201,3 +201,30 @@ def test_loop_fails_after_report_step_retries_are_exhausted():
     assert updated.plan.status == "failed"
     assert len(updated.feedbacks) == 3
     assert "缺少必要小节：核心观点" in updated.final_output
+
+
+def test_loop_executes_data_analysis_flow(tmp_path):
+    csv_path = tmp_path / "orders.csv"
+    csv_path.write_text(
+        "order_id,warehouse,quantity\n"
+        "1,上海仓,10\n"
+        "2,北京仓,\n"
+        "3,上海仓,12\n",
+        encoding="utf-8",
+    )
+    state = AgentState(
+        task_id="task_test",
+        user_input=f"分析 {csv_path}",
+        task_type="data_analysis",
+        intent="analyze_table",
+    )
+
+    updated = run_minimal_loop(state)
+
+    assert updated.status == "completed"
+    assert updated.results[0].tool_name == "file_tool"
+    assert updated.results[1].tool_name == "table_tool"
+    assert updated.results[2].tool_name == "report_tool"
+    assert "## 字段说明" in updated.final_output
+    assert "行数：3" in updated.final_output
+    assert "缺失值数量：1" in updated.final_output

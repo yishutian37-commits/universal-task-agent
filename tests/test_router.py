@@ -36,6 +36,13 @@ def test_router_routes_report_goal_to_report_tool():
     assert action.action_name == "generate"
 
 
+def test_router_routes_table_report_goal_to_report_tool():
+    action = route("生成表格分析报告")
+
+    assert action.tool_name == "report_tool"
+    assert action.action_name == "generate"
+
+
 def test_router_falls_back_to_mock_tool():
     action = route("执行 V0.3 mock 工具")
 
