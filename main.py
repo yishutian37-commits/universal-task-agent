@@ -30,17 +30,30 @@ def apply_task_to_state(state: AgentState, task) -> None:
 
 def build_log_lines(state: AgentState) -> list[str]:
     result = state.results[-1] if state.results else None
-    check = state.checks[-1] if state.checks else None
-    return [
+    lines = [
         "[Main] task received",
         f"[TaskParser] task_type = {state.task_type}",
         f"[TaskParser] intent = {state.intent}",
-        "[Loop] step 1 started: 执行 V0.1 mock 工具",
-        "[Executor] tool = mock_tool",
-        f"[Verifier] passed = {check.passed if check else False}",
-        f"[Result] success = {result.success if result else False}",
-        f"[State] status = {state.status}",
     ]
+
+    if state.plan is not None:
+        lines.append(f"[Planner] created {len(state.plan.steps)} steps")
+        for index, step in enumerate(state.plan.steps):
+            lines.append(f"[Loop] step {step.step_id} started: {step.goal}")
+            if index < len(state.results):
+                step_result = state.results[index]
+                lines.append(f"[Router] selected tool = {step_result.tool_name}")
+                lines.append(f"[Executor] tool = {step_result.tool_name}")
+            if index < len(state.checks):
+                lines.append(f"[Verifier] passed = {state.checks[index].passed}")
+
+    lines.extend(
+        [
+            f"[Result] success = {result.success if result else False}",
+            f"[State] status = {state.status}",
+        ]
+    )
+    return lines
 
 
 def save_log(state: AgentState, log_dir: Path) -> Path:
@@ -68,7 +81,7 @@ def run_task(
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Universal Task Agent V0.1")
+    parser = argparse.ArgumentParser(description="Universal Task Agent V0.3")
     parser.add_argument("--task", required=True, help="要执行的任务")
     parser.add_argument("--output-root", default="outputs", help="运行产物输出目录")
     return parser.parse_args()

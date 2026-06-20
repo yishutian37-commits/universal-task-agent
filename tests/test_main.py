@@ -49,7 +49,11 @@ def test_run_task_writes_state_and_log(tmp_path):
     assert saved["final_output"] == "mock result"
     assert saved["task_type"] == "summarize"
     assert saved["intent"] == "summarize_article"
-    assert "[Loop] step 1 started" in log_path.read_text(encoding="utf-8")
+    assert len(saved["plan"]["steps"]) == 3
+
+    log_text = log_path.read_text(encoding="utf-8")
+    assert "[Planner] created 3 steps" in log_text
+    assert "[Router] selected tool = file_tool" in log_text
 
 
 def test_run_task_writes_parser_result_to_state_and_log(tmp_path):

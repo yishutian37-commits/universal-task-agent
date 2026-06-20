@@ -1,6 +1,6 @@
 # Universal Task Agent
 
-UTA 是一个学习型 Agent 框架。当前里程碑是 `v0.2-llm-parser`：在 v0.1 最小骨架上，新增 LLMClient 和 TaskParser。
+UTA 是一个学习型 Agent 框架。当前里程碑是 `v0.3-planner-router`：在任务理解之后，新增 Planner 和 Router，先用占位工具跑通多步执行流程。
 
 ## Quickstart
 
@@ -24,4 +24,5 @@ cp .env.example .env
 
 - `v0.1-skeleton`: CLI 输入、AgentState、MockTool、Executor、Verifier、最小 Loop、state/log 输出。
 - `v0.2-llm-parser`: 新增 LLMClient、TaskParser，支持识别 `summarize` / `data_analysis` / `unknown`。
+- `v0.3-planner-router`: 新增 Planner 和 Router，执行多步计划，但仍使用占位工具。
 - TAM Memory 不属于 UTA v1.0 核心范围。
