@@ -1,5 +1,6 @@
 from core.executor import Executor
 from core.planner import Planner
+from core.reflection import Reflection
 from core.router import Router
 from core.state import AgentState, Task
 from core.verifier import Verifier
@@ -21,30 +22,44 @@ def run_minimal_loop(state: AgentState, tool_registry=None) -> AgentState:
     router = Router()
     executor = Executor(tool_registry)
     verifier = Verifier()
+    reflection = Reflection()
 
     state.plan = planner.create_plan(_task_from_state(state))
     state.plan.status = "running"
     state.status = "running"
 
     for step in state.plan.steps:
-        state.current_step_id = step.step_id
-        step.status = "running"
+        feedback = None
+        attempt = 0
 
-        action = router.choose_tool(state, step)
-        state.current_action = action
+        while attempt <= step.max_retries:
+            state.current_step_id = step.step_id
+            step.status = "running"
 
-        result = executor.run(action)
-        state.results.append(result)
+            action = router.choose_tool(state, step)
+            if feedback is not None:
+                action.params["feedback"] = feedback
+            state.current_action = action
 
-        check = verifier.check(result)
-        state.checks.append(check)
+            result = executor.run(action)
+            state.results.append(result)
 
-        step.status = "completed"
-        if not check.passed:
+            check = verifier.check(state, step, result)
+            state.checks.append(check)
+
+            if check.passed:
+                step.status = "completed"
+                break
+
+            feedback = reflection.analyze(state, step, result, check)
+            state.feedbacks.append(feedback)
+            attempt += 1
+
+        if step.status != "completed":
             step.status = "failed"
             state.plan.status = "failed"
             state.status = "failed"
-            state.final_output = result.error
+            state.final_output = "；".join(state.checks[-1].failed_reasons)
             state.touch()
             return state
 
