@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "candidates": [
+    {
+      "task_type": "data_analysis",
+      "success_count": 1,
+      "latest_task_id": "task_20260621_000524",
+      "status": "tracking",
+      "reason": "data_analysis 已成功执行 1 次，可在 v0.8 评估是否沉淀为 Skill。",
+      "updated_at": "2026-06-21 00:05:24"
+    }
+  ]
+}

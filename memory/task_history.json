@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "tasks": [
+    {
+      "task_id": "task_20260621_000524",
+      "task_type": "data_analysis",
+      "intent": "analyze_table",
+      "status": "completed",
+      "final_output_preview": "## 字段说明\n- order_id：类型 int64，非空 10，缺失 0\n- warehouse：类型 object，非空 10，缺失 0\n- category：类型 object，非空 10，缺失 0\n- quantity：类型 float64，非空 9，缺失 1\n- amount：类型 float64，非空 9，缺失 1\n- status：类型 object，非空 10，缺失 0\n\n## 基础统计\n- 行数：10\n- 列数：6\n- 缺失值数量：2\n- 异常值数量：2\n\n## 异常数据\n- 第 8 行，字段 quantity，值 999.0：IQR 异常值\n- 第 8 行，字段 amou",
+      "result_count": 3,
+      "check_count": 3,
+      "feedback_count": 0,
+      "created_at": "2026-06-21 00:05:24",
+      "updated_at": "2026-06-21 00:05:24"
+    }
+  ]
+}

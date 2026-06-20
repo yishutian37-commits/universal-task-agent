@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "lessons": [
+    {
+      "lesson_id": "lesson_task_20260621_000524",
+      "task_id": "task_20260621_000524",
+      "task_type": "data_analysis",
+      "content": "data_analysis 任务已成功跑通，可复用流程：读取输入 -> 处理内容 -> 生成报告。",
+      "source": "completed_task",
+      "created_at": "2026-06-21 00:05:24"
+    }
+  ]
+}
