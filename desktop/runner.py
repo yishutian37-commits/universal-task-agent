@@ -12,7 +12,7 @@ from desktop.settings_store import SettingsStore
 
 
 def _generate_task_id() -> str:
-    return "task_" + datetime.now().strftime("%Y%m%d_%H%M%S")
+    return "task_" + datetime.now().strftime("%Y%m%d_%H%M%S_%f")
 
 
 def build_tool_registry() -> dict[str, Any]:

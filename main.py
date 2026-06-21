@@ -12,7 +12,7 @@ from memory_providers.json_memory_provider import JsonMemoryProvider
 
 
 def generate_task_id() -> str:
-    return "task_" + datetime.now().strftime("%Y%m%d_%H%M%S")
+    return "task_" + datetime.now().strftime("%Y%m%d_%H%M%S_%f")
 
 
 def create_initial_state(task_id: str, user_input: str) -> AgentState:

@@ -1,3 +1,6 @@
+from datetime import datetime
+
+import desktop.runner as runner_module
 from desktop.api import DesktopAPI
 from desktop.settings_store import SettingsStore
 
@@ -56,6 +59,29 @@ class FakeHistoryStore:
                 "final_output": "done",
             }
         return {"ok": False, "error": "任务不存在"}
+
+
+def test_desktop_runner_generate_task_id_uses_microseconds_to_avoid_same_second_collisions(monkeypatch):
+    class FakeDateTime:
+        values = iter(
+            [
+                datetime(2026, 6, 22, 1, 2, 3, 123456),
+                datetime(2026, 6, 22, 1, 2, 3, 123457),
+            ]
+        )
+
+        @classmethod
+        def now(cls):
+            return next(cls.values)
+
+    monkeypatch.setattr(runner_module, "datetime", FakeDateTime)
+
+    first = runner_module._generate_task_id()
+    second = runner_module._generate_task_id()
+
+    assert first != second
+    assert first == "task_20260622_010203_123456"
+    assert second == "task_20260622_010203_123457"
 
 
 def test_desktop_api_saves_settings_and_hides_key(tmp_path, monkeypatch):

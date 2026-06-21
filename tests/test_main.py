@@ -1,5 +1,7 @@
 import json
+from datetime import datetime
 
+import main
 from core.state import Feedback, Task
 from main import build_log_lines, create_initial_state, run_task
 from tools.base_tool import BaseTool
@@ -69,6 +71,29 @@ class FakeSkillLoader:
     def match(self, task):
         self.seen_task_types.append(task.task_type)
         return self.matched_skill
+
+
+def test_generate_task_id_uses_microseconds_to_avoid_same_second_collisions(monkeypatch):
+    class FakeDateTime:
+        values = iter(
+            [
+                datetime(2026, 6, 22, 1, 2, 3, 123456),
+                datetime(2026, 6, 22, 1, 2, 3, 123457),
+            ]
+        )
+
+        @classmethod
+        def now(cls):
+            return next(cls.values)
+
+    monkeypatch.setattr(main, "datetime", FakeDateTime)
+
+    first = main.generate_task_id()
+    second = main.generate_task_id()
+
+    assert first != second
+    assert first == "task_20260622_010203_123456"
+    assert second == "task_20260622_010203_123457"
 
 
 def test_create_initial_state_starts_unknown_before_parser():
