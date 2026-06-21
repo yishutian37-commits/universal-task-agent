@@ -100,6 +100,47 @@ def test_loop_executes_full_planned_summary_flow():
     assert updated.results[2].tool_name == "report_tool"
 
 
+def test_loop_emits_progress_events():
+    state = AgentState(
+        task_id="task_test",
+        user_input="帮我总结",
+        task_type="summarize",
+        intent="summarize_article",
+    )
+    registry = {
+        "file_tool": EchoTool("file"),
+        "text_tool": EchoTool(VALID_SUMMARY_REPORT),
+        "report_tool": EchoTool(VALID_SUMMARY_REPORT),
+    }
+    events = []
+
+    updated = run_minimal_loop(state, tool_registry=registry, on_progress=events.append)
+
+    assert updated.status == "completed"
+    assert [event["task_id"] for event in events] == ["task_test"] * len(events)
+    assert [event["type"] for event in events] == [
+        "plan_created",
+        "step_started",
+        "tool_selected",
+        "tool_executed",
+        "verified",
+        "step_done",
+        "step_started",
+        "tool_selected",
+        "tool_executed",
+        "verified",
+        "step_done",
+        "step_started",
+        "tool_selected",
+        "tool_executed",
+        "verified",
+        "step_done",
+    ]
+    assert events[0]["data"]["steps"][0] == {"step_id": 1, "goal": "读取输入内容"}
+    assert events[2]["data"]["tool_name"] == "file_tool"
+    assert events[4]["data"]["passed"] is True
+
+
 def test_loop_accepts_injected_tool_registry_for_summary_flow():
     state = AgentState(
         task_id="task_test",

@@ -110,6 +110,36 @@ def test_run_task_writes_state_and_log(tmp_path):
     assert "[Router] selected tool = file_tool" in log_text
 
 
+def test_run_task_emits_progress_events(tmp_path):
+    events = []
+
+    state = run_task(
+        "帮我总结一段文本",
+        output_root=tmp_path,
+        task_id="task_test",
+        task_parser=FakeParser(),
+        tool_registry=make_static_summary_registry(),
+        memory_provider=False,
+        skill_loader=False,
+        on_progress=events.append,
+    )
+
+    assert state.status == "completed"
+    assert [event["task_id"] for event in events] == ["task_test"] * len(events)
+    event_types = [event["type"] for event in events]
+    assert event_types[:4] == [
+        "task_received",
+        "parsed",
+        "skill_matched",
+        "plan_created",
+    ]
+    assert "memory_saved" in event_types
+    assert event_types[-1] == "task_completed"
+    completed = events[-1]
+    assert completed["data"]["status"] == "completed"
+    assert completed["data"]["final_output"] == VALID_SUMMARY_REPORT
+
+
 def test_run_task_outputs_real_summary_with_injected_tools(tmp_path):
     summary = VALID_SUMMARY_REPORT
 

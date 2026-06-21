@@ -1,4 +1,6 @@
 import pytest
+import sys
+from types import SimpleNamespace
 
 from llm.llm_client import LLMClient, LLMClientError
 
@@ -75,6 +77,42 @@ def test_default_transport_can_disable_ssl_verification(monkeypatch):
     assert client.chat("sys", "user") == "ok"
     assert captured["context"] is not None
     assert captured["context"].check_hostname is False
+
+
+def test_default_transport_uses_certifi_when_ssl_verification_enabled(monkeypatch):
+    captured = {}
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def read(self):
+            return b'{"choices":[{"message":{"content":"ok"}}]}'
+
+    def fake_urlopen(req, timeout, context=None):
+        captured["context"] = context
+        return FakeResponse()
+
+    def fake_context(cafile=None):
+        captured["cafile"] = cafile
+        return "certifi-context"
+
+    monkeypatch.setitem(sys.modules, "certifi", SimpleNamespace(where=lambda: "/tmp/cacert.pem"))
+    monkeypatch.setattr("llm.llm_client.ssl.create_default_context", fake_context)
+    monkeypatch.setattr("llm.llm_client.request.urlopen", fake_urlopen)
+    client = LLMClient(
+        api_key="key",
+        model="mimo-v2.5-pro",
+        base_url="https://example.com/v1",
+        ssl_verify=True,
+    )
+
+    assert client.chat("sys", "user") == "ok"
+    assert captured["cafile"] == "/tmp/cacert.pem"
+    assert captured["context"] == "certifi-context"
 
 
 def test_chat_requires_api_key():

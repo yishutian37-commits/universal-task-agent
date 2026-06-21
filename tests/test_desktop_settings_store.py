@@ -1,0 +1,74 @@
+import json
+import os
+
+from desktop.settings_store import SettingsStore
+
+
+def test_settings_store_saves_public_settings_without_exposing_key(tmp_path, monkeypatch):
+    monkeypatch.setenv("UTA_HOME", str(tmp_path / "uta"))
+    store = SettingsStore()
+
+    store.save(
+        {
+            "llm_base_url": "https://token-plan-cn.xiaomimimo.com/v1/chat/completions",
+            "llm_model": "mimo-v2.5-pro",
+            "llm_api_key": "secret-key",
+            "llm_ssl_verify": False,
+        }
+    )
+
+    saved = json.loads((tmp_path / "uta" / "config.json").read_text(encoding="utf-8"))
+    public = store.public_settings()
+
+    assert saved["llm_api_key"] == "secret-key"
+    assert public["llm_base_url"] == "https://token-plan-cn.xiaomimimo.com/v1/chat/completions"
+    assert public["llm_model"] == "mimo-v2.5-pro"
+    assert public["llm_ssl_verify"] is False
+    assert public["has_api_key"] is True
+    assert "llm_api_key" not in public
+
+
+def test_settings_store_preserves_and_clears_existing_key(tmp_path, monkeypatch):
+    monkeypatch.setenv("UTA_HOME", str(tmp_path / "uta"))
+    store = SettingsStore()
+    store.save({"llm_api_key": "secret-key"})
+
+    store.save(
+        {
+            "llm_base_url": "https://example.test/v1",
+            "llm_model": "new-model",
+            "llm_api_key": "",
+            "llm_ssl_verify": True,
+        }
+    )
+
+    assert store.load()["llm_api_key"] == "secret-key"
+
+    store.save({"clear_api_key": True})
+
+    assert store.load()["llm_api_key"] == ""
+    assert store.public_settings()["has_api_key"] is False
+
+
+def test_settings_store_applies_values_to_environment(tmp_path, monkeypatch):
+    monkeypatch.setenv("UTA_HOME", str(tmp_path / "uta"))
+    monkeypatch.delenv("LLM_API_KEY", raising=False)
+    monkeypatch.delenv("LLM_BASE_URL", raising=False)
+    monkeypatch.delenv("LLM_MODEL", raising=False)
+    monkeypatch.delenv("LLM_SSL_VERIFY", raising=False)
+    store = SettingsStore()
+    store.save(
+        {
+            "llm_base_url": "https://token-plan-cn.xiaomimimo.com/v1/chat/completions",
+            "llm_model": "mimo-v2.5-pro",
+            "llm_api_key": "secret-key",
+            "llm_ssl_verify": False,
+        }
+    )
+
+    store.apply_to_environment()
+
+    assert os.environ["LLM_API_KEY"] == "secret-key"
+    assert os.environ["LLM_BASE_URL"] == "https://token-plan-cn.xiaomimimo.com/v1/chat/completions"
+    assert os.environ["LLM_MODEL"] == "mimo-v2.5-pro"
+    assert os.environ["LLM_SSL_VERIFY"] == "0"

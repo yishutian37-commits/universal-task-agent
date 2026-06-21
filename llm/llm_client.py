@@ -107,7 +107,7 @@ class LLMClient:
     ) -> dict[str, Any]:
         data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
         req = request.Request(endpoint, data=data, headers=headers, method="POST")
-        context = None if self.ssl_verify else ssl._create_unverified_context()
+        context = self._ssl_context()
         try:
             with request.urlopen(req, timeout=timeout, context=context) as response:
                 body = response.read().decode("utf-8")
@@ -124,3 +124,14 @@ class LLMClient:
         if not isinstance(parsed, dict):
             raise LLMClientError("Invalid LLM HTTP JSON: expected object")
         return parsed
+
+    def _ssl_context(self):
+        if not self.ssl_verify:
+            return ssl._create_unverified_context()
+
+        try:
+            import certifi
+        except ImportError:
+            return None
+
+        return ssl.create_default_context(cafile=certifi.where())
