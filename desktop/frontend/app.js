@@ -1,6 +1,16 @@
 const els = {
   bridgeState: document.getElementById("bridgeState"),
   keyState: document.getElementById("keyState"),
+  openTaskView: document.getElementById("openTaskView"),
+  openHistory: document.getElementById("openHistory"),
+  taskView: document.getElementById("taskView"),
+  historyView: document.getElementById("historyView"),
+  refreshHistory: document.getElementById("refreshHistory"),
+  historyList: document.getElementById("historyList"),
+  historyTaskMeta: document.getElementById("historyTaskMeta"),
+  historyReport: document.getElementById("historyReport"),
+  historyLogPanel: document.getElementById("historyLogPanel"),
+  historyStateJson: document.getElementById("historyStateJson"),
   statusPill: document.getElementById("statusPill"),
   statusText: document.getElementById("statusText"),
   taskIdLabel: document.getElementById("taskIdLabel"),
@@ -34,7 +44,8 @@ const state = {
   activeExample: "summarize",
   running: false,
   taskId: null,
-  reportText: ""
+  reportText: "",
+  historyRuns: []
 };
 
 function api() {
@@ -125,6 +136,89 @@ async function loadExample() {
   }
   els.taskInput.value = result.input;
   showToast("示例已载入", result.title);
+}
+
+function setActiveNav(button) {
+  document.querySelectorAll(".nav").forEach((item) => {
+    item.classList.toggle("active", item === button);
+  });
+}
+
+function showTaskView() {
+  els.taskView.classList.remove("hidden");
+  els.historyView.classList.add("hidden");
+  setActiveNav(els.openTaskView);
+}
+
+async function showHistoryView() {
+  els.taskView.classList.add("hidden");
+  els.historyView.classList.remove("hidden");
+  setActiveNav(els.openHistory);
+  await loadHistoryRuns();
+}
+
+async function loadHistoryRuns() {
+  try {
+    const result = await callApi("list_runs");
+    if (!result.ok) {
+      showToast("读取运行记录失败", result.error || "未知错误");
+      return;
+    }
+    state.historyRuns = result.runs || [];
+    renderHistoryList(state.historyRuns);
+    if (state.historyRuns.length > 0) {
+      await selectHistoryRun(state.historyRuns[0].task_id);
+    } else {
+      renderEmptyHistoryDetail();
+    }
+  } catch (error) {
+    showToast("读取运行记录失败", error.message);
+  }
+}
+
+function renderHistoryList(runs) {
+  if (!runs.length) {
+    els.historyList.innerHTML = '<div class="emptyState">暂无运行记录</div>';
+    return;
+  }
+  els.historyList.innerHTML = runs.map((run) => `
+    <button class="historyItem" type="button" data-task-id="${escapeHtml(run.task_id)}">
+      <span><strong>${escapeHtml(run.task_id)}</strong><small>${escapeHtml(run.task_type || "unknown")} · ${escapeHtml(run.status || "unknown")}</small></span>
+      <small>${escapeHtml(run.preview || run.intent || "无输出")}</small>
+    </button>
+  `).join("");
+  els.historyList.querySelectorAll(".historyItem").forEach((button) => {
+    button.addEventListener("click", () => selectHistoryRun(button.dataset.taskId));
+  });
+}
+
+async function selectHistoryRun(taskId) {
+  try {
+    const result = await callApi("get_run", taskId);
+    if (!result.ok) {
+      showToast("读取详情失败", result.error || "未知错误");
+      return;
+    }
+    els.historyList.querySelectorAll(".historyItem").forEach((item) => {
+      item.classList.toggle("active", item.dataset.taskId === taskId);
+    });
+    const runState = result.state || {};
+    els.historyTaskMeta.textContent = `${runState.status || "unknown"} · ${runState.task_type || "unknown"}`;
+    els.historyReport.className = "report";
+    els.historyReport.innerHTML = renderMarkdown(result.final_output || "");
+    els.historyLogPanel.textContent = result.log || "";
+    els.historyStateJson.textContent = JSON.stringify(runState, null, 2);
+  } catch (error) {
+    showToast("读取详情失败", error.message);
+  }
+}
+
+function renderEmptyHistoryDetail() {
+  els.historyTaskMeta.textContent = "未选择";
+  els.historyReport.className = "report empty";
+  els.historyReport.textContent = "暂无运行记录";
+  els.historyLogPanel.textContent = "";
+  els.historyStateJson.textContent = JSON.stringify({ status: "idle", task_id: null }, null, 2);
 }
 
 function resetRunSurface() {
@@ -314,6 +408,9 @@ function escapeHtml(value) {
 }
 
 function bindEvents() {
+  els.openTaskView.addEventListener("click", showTaskView);
+  els.openHistory.addEventListener("click", showHistoryView);
+  els.refreshHistory.addEventListener("click", loadHistoryRuns);
   els.openSettings.addEventListener("click", openSettings);
   els.openSettingsSide.addEventListener("click", openSettings);
   els.closeSettings.addEventListener("click", closeSettings);

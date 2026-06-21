@@ -548,6 +548,81 @@ pre {
   color: var(--muted);
 }
 
+.hidden {
+  display: none;
+}
+
+.historyWorkspace {
+  grid-template-columns: minmax(300px, 0.72fr) minmax(460px, 1.28fr);
+}
+
+.historyListColumn,
+.historyDetailColumn {
+  min-height: 0;
+  display: grid;
+  gap: 16px;
+}
+
+.historyPanel {
+  min-height: 560px;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  overflow: hidden;
+}
+
+.historyList {
+  min-height: 0;
+  overflow: auto;
+  padding: 12px;
+  display: grid;
+  align-content: start;
+  gap: 10px;
+}
+
+.historyItem {
+  width: 100%;
+  min-height: 74px;
+  padding: 11px;
+  display: grid;
+  gap: 6px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  text-align: left;
+}
+
+.historyItem:hover,
+.historyItem.active {
+  border-color: var(--accent);
+}
+
+.historyItem strong,
+.historyItem small {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.historyItem small,
+#historyTaskMeta {
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+.emptyState {
+  padding: 24px 12px;
+  color: var(--muted);
+  text-align: center;
+}
+
+.historyLogsPanel {
+  min-height: 220px;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  overflow: hidden;
+}
+
 @media (max-width: 1060px) {
   body {
     overflow: auto;

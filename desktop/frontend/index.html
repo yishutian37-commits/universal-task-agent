@@ -19,7 +19,8 @@
           <h1>UTA</h1>
           <span>本地 Agent 控制台</span>
         </div>
-        <button class="nav active" type="button">任务</button>
+        <button class="nav active" type="button" id="openTaskView">任务</button>
+        <button class="nav" type="button" id="openHistory">运行记录</button>
         <button class="nav" type="button" id="openSettingsSide">设置</button>
         <div class="sidebarFooter">
           <span>输出：~/.uta/outputs</span>
@@ -39,7 +40,7 @@
           </div>
         </header>
 
-        <section class="workspace">
+        <section class="workspace" id="taskView">
           <div class="leftColumn">
             <section class="panel composer">
               <div class="panelHead">
@@ -86,6 +87,43 @@
             <details class="stateBox">
               <summary>state.json</summary>
               <pre id="stateJson">{
+  "status": "idle",
+  "task_id": null
+}</pre>
+            </details>
+          </div>
+        </section>
+
+        <section class="workspace historyWorkspace hidden" id="historyView">
+          <div class="historyListColumn">
+            <section class="panel historyPanel">
+              <div class="panelHead">
+                <h3>运行记录</h3>
+                <button class="button secondary compact" type="button" id="refreshHistory">刷新</button>
+              </div>
+              <div class="historyList" id="historyList"></div>
+            </section>
+          </div>
+
+          <div class="historyDetailColumn">
+            <section class="panel reportPanel">
+              <div class="panelHead">
+                <h3>历史结果</h3>
+                <span id="historyTaskMeta">未选择</span>
+              </div>
+              <article class="report empty" id="historyReport">选择一条运行记录</article>
+            </section>
+
+            <section class="panel logsPanel historyLogsPanel">
+              <div class="panelHead">
+                <h3>历史日志</h3>
+              </div>
+              <div class="logs" id="historyLogPanel"></div>
+            </section>
+
+            <details class="stateBox">
+              <summary>历史 state.json</summary>
+              <pre id="historyStateJson">{
   "status": "idle",
   "task_id": null
 }</pre>
