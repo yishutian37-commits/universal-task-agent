@@ -73,7 +73,7 @@ class HistoryStore:
         intent = str(state.get("intent") or "")
         preview = self._preview(final_output or intent)
         return {
-            "task_id": str(state.get("task_id") or task_id),
+            "task_id": task_id,
             "status": str(state.get("status") or "unknown"),
             "task_type": str(state.get("task_type") or "unknown"),
             "intent": intent,

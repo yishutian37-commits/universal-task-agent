@@ -39,7 +39,7 @@ def test_history_store_lists_runs_newest_first_with_compact_summaries(tmp_path):
         tmp_path,
         "task_new",
         {
-            "task_id": "task_new",
+            "task_id": "state_task_id_should_not_win",
             "status": "failed",
             "task_type": "data_analysis",
             "intent": "新任务",
@@ -58,10 +58,12 @@ def test_history_store_lists_runs_newest_first_with_compact_summaries(tmp_path):
     assert result["runs"][0]["task_type"] == "data_analysis"
     assert result["runs"][0]["intent"] == "新任务"
     assert result["runs"][0]["updated_at"] == "2026-06-21T02:00:00"
+    assert result["runs"][0]["modified_at"]
     assert result["runs"][0]["preview"].startswith("新输出")
     assert len(result["runs"][0]["preview"]) <= 123
     assert "state" not in result["runs"][0]
-    assert "results" not in result["runs"][0]
+    old_run = next(run for run in result["runs"] if run["task_id"] == "task_old")
+    assert "results" not in old_run
 
 
 def test_history_store_get_run_returns_state_final_output_and_log(tmp_path):
