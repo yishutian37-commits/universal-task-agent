@@ -33,8 +33,8 @@ class HistoryStore:
         if not isinstance(state, dict):
             return {"ok": False, "error": "state JSON 无效"}
 
-        log_path = self.logs_dir / f"{task_id}.log"
-        log = log_path.read_text(encoding="utf-8") if log_path.exists() else ""
+        log_path = self._log_path_for_task(task_id)
+        log = self._read_log(log_path) if log_path is not None else ""
         return {
             "ok": True,
             "task_id": task_id,
@@ -46,17 +46,32 @@ class HistoryStore:
     def _state_paths(self) -> list[Path]:
         if not self.states_dir.exists():
             return []
-        return sorted(self.states_dir.glob("*_state.json"))
+        return sorted(
+            path
+            for path in self.states_dir.glob("*_state.json")
+            if self._is_contained(path, self.states_dir)
+        )
 
     def _state_path_for_task(self, task_id: str) -> Path | None:
         if not task_id or "/" in task_id or "\\" in task_id:
             return None
         candidate = self.states_dir / f"{task_id}_state.json"
-        try:
-            candidate.resolve().relative_to(self.states_dir.resolve())
-        except ValueError:
+        return candidate if self._is_contained(candidate, self.states_dir) else None
+
+    def _log_path_for_task(self, task_id: str) -> Path | None:
+        if not task_id or "/" in task_id or "\\" in task_id:
             return None
-        return candidate
+        candidate = self.logs_dir / f"{task_id}.log"
+        if not candidate.exists():
+            return candidate
+        return candidate if self._is_contained(candidate, self.logs_dir) else None
+
+    def _is_contained(self, path: Path, root: Path) -> bool:
+        try:
+            path.resolve().relative_to(root.resolve())
+        except (OSError, RuntimeError, ValueError):
+            return False
+        return True
 
     def _task_id_from_path(self, path: Path) -> str:
         return path.name.removesuffix("_state.json")
@@ -64,9 +79,17 @@ class HistoryStore:
     def _read_state(self, path: Path) -> dict[str, Any] | None:
         try:
             parsed = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError):
             return None
         return parsed if isinstance(parsed, dict) else None
+
+    def _read_log(self, path: Path) -> str:
+        if not path.exists():
+            return ""
+        try:
+            return path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            return ""
 
     def _summary(self, task_id: str, path: Path, state: dict[str, Any]) -> dict[str, Any]:
         final_output = str(state.get("final_output") or "")

@@ -98,6 +98,20 @@ def test_history_store_get_run_succeeds_when_log_is_missing(tmp_path):
     assert result["log"] == ""
 
 
+def test_history_store_get_run_ignores_log_symlink_escaping_logs(tmp_path):
+    write_state(tmp_path, "task_1", {"task_id": "task_1", "final_output": "done"})
+    outside_log = tmp_path / "outside.log"
+    outside_log.write_text("secret log", encoding="utf-8")
+    logs = tmp_path / "logs"
+    logs.mkdir()
+    (logs / "task_1.log").symlink_to(outside_log)
+
+    result = HistoryStore(tmp_path).get_run("task_1")
+
+    assert result["ok"] is True
+    assert result["log"] == ""
+
+
 def test_history_store_skips_invalid_json_in_list_but_reports_selected_error(tmp_path):
     write_state(tmp_path, "task_good", {"task_id": "task_good", "final_output": "done"})
     bad_path = tmp_path / "states" / "task_bad_state.json"
@@ -109,6 +123,33 @@ def test_history_store_skips_invalid_json_in_list_but_reports_selected_error(tmp
     assert [run["task_id"] for run in listed["runs"]] == ["task_good"]
     assert selected["ok"] is False
     assert "state JSON 无效" in selected["error"]
+
+
+def test_history_store_skips_undecodable_state_in_list_but_reports_selected_error(tmp_path):
+    write_state(tmp_path, "task_good", {"task_id": "task_good", "final_output": "done"})
+    bad_path = tmp_path / "states" / "task_bad_state.json"
+    bad_path.write_bytes(b"\xff\xfe\x80")
+
+    listed = HistoryStore(tmp_path).list_runs()
+    selected = HistoryStore(tmp_path).get_run("task_bad")
+
+    assert [run["task_id"] for run in listed["runs"]] == ["task_good"]
+    assert selected["ok"] is False
+    assert "state JSON 无效" in selected["error"]
+
+
+def test_history_store_list_runs_skips_state_symlink_escaping_states(tmp_path):
+    write_state(tmp_path, "task_good", {"task_id": "task_good", "final_output": "done"})
+    outside_state = tmp_path / "outside_state.json"
+    outside_state.write_text(
+        json.dumps({"task_id": "task_escape", "final_output": "secret"}),
+        encoding="utf-8",
+    )
+    (tmp_path / "states" / "task_escape_state.json").symlink_to(outside_state)
+
+    result = HistoryStore(tmp_path).list_runs()
+
+    assert [run["task_id"] for run in result["runs"]] == ["task_good"]
 
 
 def test_history_store_rejects_unknown_or_unsafe_task_ids(tmp_path):
