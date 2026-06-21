@@ -43,3 +43,10 @@ def test_frontend_calls_history_bridge_methods():
     assert "function showHistoryView" in js
     assert "function renderHistoryList" in js
     assert "function selectHistoryRun" in js
+
+
+def test_frontend_preserves_history_log_whitespace():
+    css = (FRONTEND_ROOT / "style.css").read_text(encoding="utf-8")
+
+    assert ".historyLogsPanel .logs" in css
+    assert "white-space: pre-wrap;" in css

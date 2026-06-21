@@ -623,6 +623,10 @@ pre {
   overflow: hidden;
 }
 
+.historyLogsPanel .logs {
+  white-space: pre-wrap;
+}
+
 @media (max-width: 1060px) {
   body {
     overflow: auto;
