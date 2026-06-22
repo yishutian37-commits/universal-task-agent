@@ -1,20 +1,31 @@
-# UTA V1.0 学习版与记忆可见性设计
+# UTA V1.0 学习版、桌面状态与记忆可见性设计
 
 > 状态：待进入实施计划
 > 日期：2026-06-23
 
 ## 目标
 
-这次要把 PRD v6.1 里的 UTA V1.0 学习版主线收口，但不把范围扩大成桌面端产品化，也不接 TAM。
+这次要把 PRD v6.1 里的 UTA V1.0 学习版主线收口，同时把这些能力打包进当前桌面端，让桌面端能直观看到任务状态、短期记忆和长期记忆。
 
-本次 V1.0 实现范围只做四件事：
+本轮交付分成两层：
+
+1. **核心主线层**：完成 PRD V1.0 学习版，打 `v1.0-learning-agent` tag。
+2. **桌面体验层**：在当前桌面端显示各种状态和记忆，并重新打包 `.app`。
+
+核心主线层只做四件事：
 
 1. 补 A11：支持一次 replan，并且从失败步骤之后继续，不重跑前面已经成功的步骤。
 2. 更新 README、CHANGELOG 和明显的版本说明。
 3. 跑一遍文本总结 demo 和表格分析 demo，留下验收结果。
 4. 验收通过后打 `v1.0-learning-agent` tag。
 
-记忆系统这次主要做“说清楚”和“设计清楚”：解释短期记忆、长期记忆分别在哪里看，桌面端后续应该怎么做一个直观的记忆入口。V1.0 本次不做 TAM、不做向量库、不做语义检索、不做完整桌面记忆编辑器。
+桌面体验层做三件事：
+
+1. 把 replan、Verifier、Reflection、Memory 保存等状态更清楚地显示在任务页和运行记录页。
+2. 新增只读“记忆”入口，让用户能看到短期记忆和长期 JSON Memory。
+3. 重新构建 `dist/UTA Desktop.app` 和 `dist/UTA Desktop-macos.zip`。
+
+这次仍然不做 TAM、不做向量库、不做语义检索、不做记忆编辑器。第一版记忆面板只读，先让记忆“看得见、讲得清、追得到来源”。
 
 ## 当前背景
 
@@ -31,14 +42,14 @@ v0.7-memory
 v0.8-skill-runtime
 ```
 
-当前桌面分支里还有 macOS 桌面应用、运行记录页、LLM curl fallback 等增强。这些对产品体验有价值，但 PRD 里的 V1.0 不是桌面版，而是核心学习框架：
+当前桌面分支里已有 macOS 桌面应用、运行记录页、LLM curl fallback 等增强。这些会作为桌面体验层继续保留并扩展。但 PRD 里的 V1.0 不是桌面版，而是核心学习框架：
 
 ```text
 Task Parser -> Planner -> Agent Loop -> Router -> Executor
 -> Verifier -> Reflection -> Replan -> Output -> Memory -> Skill
 ```
 
-因此，`v1.0-learning-agent` 这个 tag 应该落在干净的核心主线上，也就是从 `main` / `v0.8-skill-runtime` 出发，而不是直接打在桌面端分支头上。这样可以避免把“核心学习版”和“桌面产品化增强”混在一起。
+因此，`v1.0-learning-agent` 这个 tag 应该落在干净的核心主线上，也就是从 `main` / `v0.8-skill-runtime` 出发，而不是直接打在桌面端分支头上。桌面端会在 tag 之后吸收同样的核心能力，再重新打包。这样可以同时满足两个目标：版本语义不乱，桌面端也能用到最新能力。
 
 当前 V1.0 最明显的缺口是 A11：
 
@@ -48,7 +59,9 @@ Task Parser -> Planner -> Agent Loop -> Router -> Executor
 
 现在的 `core.loop.run_minimal_loop()` 已经支持单步失败后的 Reflection + retry。但如果 retry 用完，任务会直接失败。现在的 `Reflection.analyze()` 也总是返回 `need_replan=False`。
 
-## V1.0 范围边界
+## 范围边界
+
+### 核心 V1.0 tag 范围
 
 V1.0 包含：
 
@@ -69,11 +82,35 @@ V1.0 不包含：
 - TAM Output Guard / Faithfulness Gate。
 - 语义级记忆检索。
 - 自动搜索或调研任务。
-- 新的桌面端记忆 UI 实现。
 - 编辑或删除记忆。
 - 多 Agent 协作。
 
-桌面端“记忆”入口可以在这份设计里规划方向，但默认是 V1.0 之后再做，不塞进本次 V1.0 必做范围。
+核心 V1.0 tag 不包含桌面 UI，因为 tag 的含义是“学习版核心框架完整”。
+
+### 本轮桌面包范围
+
+本轮桌面端包含：
+
+- 任务页继续显示实时 plan、step、tool、Verifier、Reflection、Memory 保存状态。
+- replan 发生时，实时日志和状态区能看到 replan。
+- 运行记录页能看到历史 state 中的 `replan_events`。
+- 新增只读“记忆”入口。
+- “记忆”入口能展示：
+  - 当前任务/历史任务的短期记忆。
+  - `task_history.json`
+  - `lessons.json`
+  - `negative_rules.json`
+  - `skill_candidates.json`
+- 重新打包桌面 app。
+
+本轮桌面端不包含：
+
+- 编辑记忆。
+- 删除记忆。
+- 把记忆提升为正式 Skill 的交互。
+- TAM 记忆。
+- 语义搜索。
+- 多设备同步。
 
 ## Replan 设计
 
@@ -211,9 +248,9 @@ V1.0 要求：
 - demo 验收时要确认任务完成后 memory 有写入。
 - V1.0 不要求自动语义召回长期记忆。
 
-## 桌面端记忆可见性方向
+## 桌面端状态与记忆可见性设计
 
-V1.0 之后，桌面端建议新增一级入口：**记忆**。
+本轮桌面端要新增一级入口：**记忆**。
 
 第一版只读，不编辑。目标是先让记忆“看得见、讲得清、追得到来源”。
 
@@ -234,6 +271,18 @@ V1.0 之后，桌面端建议新增一级入口：**记忆**。
 - final output
 
 这部分复用“运行记录”的 state/log 数据。
+
+实时任务运行时，任务页也要更直观地显示状态：
+
+- `plan_created`：显示计划步骤。
+- `step_started`：高亮当前步骤。
+- `tool_selected` / `tool_executed`：显示工具选择和执行结果。
+- `verified`：显示校验通过或失败原因。
+- `reflection`：显示失败分类和修复策略。
+- `replanned`：显示旧计划、新计划、从哪里继续。
+- `memory_saved`：显示长期记忆是否保存。
+
+这些状态已经通过 `on_progress` 事件逐步传给前端；本轮要补齐 replan 事件，并让 UI 能展示它。
 
 ### 2. 任务历史
 
@@ -280,6 +329,80 @@ V1.0 之后，桌面端建议新增一级入口：**记忆**。
 - 把候选提升为正式 Skill
 - 记忆来源追踪和清理
 
+## 桌面 API 设计
+
+新增一个只读 memory store，例如 `desktop/memory_store.py`。
+
+职责：
+
+- 读取 `~/.uta/memory/*.json`。
+- 返回适合前端展示的结构。
+- 遇到文件不存在时返回默认空结构。
+- 遇到 JSON 损坏时返回清晰错误，不让整个桌面崩溃。
+- 只允许读取 `~/.uta/memory/` 内的文件，不接受任意路径输入。
+
+`DesktopAPI` 新增方法：
+
+```python
+def get_memory_overview(self) -> dict[str, Any]:
+    ...
+```
+
+返回结构建议：
+
+```json
+{
+  "ok": true,
+  "task_history": [],
+  "lessons": [],
+  "negative_rules": [],
+  "skill_candidates": [],
+  "user_profile": {},
+  "counts": {
+    "tasks": 0,
+    "lessons": 0,
+    "negative_rules": 0,
+    "skill_candidates": 0
+  }
+}
+```
+
+前端只读展示这些数据，不直接写 memory 文件。
+
+## 桌面前端设计
+
+侧边栏改成：
+
+```text
+任务
+运行记录
+记忆
+设置
+```
+
+“记忆”页面分成两栏：
+
+- 左侧：记忆分类 tab 或列表。
+- 右侧：对应详情。
+
+第一版可以用四个分区，不做复杂 tab 组件：
+
+1. **短期记忆**
+   - 显示当前任务 state 摘要。
+   - 如果没有正在运行任务，就提示可从运行记录查看历史 state。
+
+2. **任务历史**
+   - 来自 `task_history.json`。
+   - 展示最近任务。
+
+3. **经验与规则**
+   - lessons 和 negative_rules 分左右或上下展示。
+
+4. **Skill 候选**
+   - 展示候选任务类型、成功次数、状态和原因。
+
+视觉上保持当前桌面端风格，不做营销式页面，不加复杂图表。重点是扫描清楚、能看懂、能追来源。
+
 ## 版本文档更新
 
 A11 实现后，需要更新这些文件：
@@ -308,7 +431,16 @@ A11 实现后，需要更新这些文件：
 
 把 argparse 里过时的版本描述从旧版本改成 V1.0。
 
-桌面端 README 不作为本次 V1.0 必改项，除非实施计划里只加一句“桌面端属于 V1.0 后体验层”。
+### desktop/README.md
+
+需要补一句桌面端现在能看到：
+
+- 实时任务状态
+- 运行记录
+- 短期 state/log
+- 长期 JSON Memory
+
+并说明桌面端记忆页第一版只读。
 
 ## Demo 验收
 
@@ -358,7 +490,14 @@ v1.0-learning-agent
 - 表格分析 demo 跑过并检查。
 - 没有误暂存无关文件。
 
-因为当前桌面分支包含 V1.0 之后的桌面增强，所以 V1.0 实现应该从 `main` / `v0.8-skill-runtime` 新建干净分支或 worktree。tag 应该指向核心学习版提交，而不是桌面分支头。
+因为当前桌面分支包含 V1.0 之后的桌面增强，所以 `v1.0-learning-agent` 应该从 `main` / `v0.8-skill-runtime` 新建干净分支或 worktree 实现并打 tag。然后把核心改动同步到当前桌面分支，完成桌面状态/记忆可视化，并重新打包桌面端。
+
+本轮最终应该有两个可交付结果：
+
+1. 核心主线 tag：`v1.0-learning-agent`
+2. 桌面端产物：
+   - `dist/UTA Desktop.app`
+   - `dist/UTA Desktop-macos.zip`
 
 ## 测试策略
 
@@ -386,6 +525,15 @@ v1.0-learning-agent
 - JSON Memory 写入
 - 桌面分支上的 desktop tests，如果在桌面分支运行
 
+新增桌面测试：
+
+- `DesktopAPI.get_memory_overview()` 能读取 memory overview。
+- memory 文件不存在时返回空数据。
+- memory JSON 损坏时返回清晰错误。
+- 前端 HTML 包含“记忆”入口。
+- 前端 JS 调用 `get_memory_overview`。
+- 前端 CSS 保证记忆页面内容可滚动、文本不溢出。
+
 ### 文档检查
 
 实施 review 时检查：
@@ -401,13 +549,13 @@ v1.0-learning-agent
 
 1. CLI 是否新增 `--memory-root`，让 demo 可以完全隔离 memory 写入。
 2. replan 是否只替换当前 `Plan`，还是同时保存旧 plan 快照到 `replan_events`。
-3. 桌面端“记忆”视图是在 V1.0 tag 之后马上开新 spec，还是等下一轮。
+3. 桌面端“记忆”页面用 tab 还是分区。推荐第一版用分区，少做交互。
 
 推荐选择：
 
 - 给 `AgentState` 增加 `replan_events`，方便学习和排查。
 - 如果 demo 隔离确实需要，就加 `--memory-root`；否则不加。
-- 先打 V1.0，再单独做桌面端记忆可见性 spec。
+- 先打 V1.0 核心 tag，再把同样核心能力同步进桌面分支并实现桌面记忆可见性。
 
 ## 验收标准
 
@@ -421,4 +569,13 @@ v1.0-learning-agent
   - 短期记忆 = State / log / 运行记录
   - 长期记忆 = JSON Memory 文件
   - Skill 候选 = 从记忆走向可复用能力
-  - 桌面端记忆面板 = V1.0 后的只读可见性工作
+  - 桌面端记忆面板 = 本轮桌面包里的只读可见性工作
+- 桌面端可以看到：
+  - 当前任务状态
+  - 历史运行 state/log
+  - replan events
+  - task history
+  - lessons
+  - negative rules
+  - skill candidates
+- 新桌面 app 已重新打包并通过 zip / codesign / pytest 验证。
