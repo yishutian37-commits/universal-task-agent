@@ -61,6 +61,28 @@ class FakeHistoryStore:
         return {"ok": False, "error": "任务不存在"}
 
 
+class FakeMemoryStore:
+    def __init__(self):
+        self.called = False
+
+    def overview(self):
+        self.called = True
+        return {
+            "ok": True,
+            "task_history": [],
+            "lessons": [],
+            "negative_rules": [],
+            "skill_candidates": [],
+            "user_profile": {},
+            "counts": {
+                "tasks": 0,
+                "lessons": 0,
+                "negative_rules": 0,
+                "skill_candidates": 0,
+            },
+        }
+
+
 def test_desktop_runner_generate_task_id_uses_microseconds_to_avoid_same_second_collisions(monkeypatch):
     class FakeDateTime:
         values = iter(
@@ -193,3 +215,18 @@ def test_desktop_api_reports_missing_history_run(tmp_path, monkeypatch):
     result = api.get_run("task_missing")
 
     assert result == {"ok": False, "error": "任务不存在"}
+
+
+def test_desktop_api_gets_memory_overview(tmp_path, monkeypatch):
+    monkeypatch.setenv("UTA_HOME", str(tmp_path / "uta"))
+    memory_store = FakeMemoryStore()
+    api = DesktopAPI(
+        settings_store=SettingsStore(),
+        runner=FakeRunner(),
+        memory_store=memory_store,
+    )
+
+    result = api.get_memory_overview()
+
+    assert result["ok"] is True
+    assert memory_store.called is True

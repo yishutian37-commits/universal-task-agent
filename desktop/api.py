@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from desktop.history_store import HistoryStore
+from desktop.memory_store import MemoryStore
 from desktop.paths import resource_path, uta_home
 from desktop.runner import TaskRunner
 from desktop.settings_store import SettingsStore
@@ -14,10 +15,12 @@ class DesktopAPI:
         settings_store: SettingsStore | None = None,
         runner: TaskRunner | None = None,
         history_store: HistoryStore | None = None,
+        memory_store: MemoryStore | None = None,
     ):
         self.settings_store = settings_store if settings_store is not None else SettingsStore()
         self.runner = runner if runner is not None else TaskRunner(settings_store=self.settings_store)
         self.history_store = history_store if history_store is not None else HistoryStore(uta_home() / "outputs")
+        self.memory_store = memory_store if memory_store is not None else MemoryStore(uta_home() / "memory")
 
     def bind_window(self, window) -> None:
         if hasattr(self.runner, "bind_window"):
@@ -77,6 +80,12 @@ class DesktopAPI:
     def get_run(self, task_id: str) -> dict[str, Any]:
         try:
             return self.history_store.get_run(str(task_id or ""))
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)}
+
+    def get_memory_overview(self) -> dict[str, Any]:
+        try:
+            return self.memory_store.overview()
         except Exception as exc:
             return {"ok": False, "error": str(exc)}
 
