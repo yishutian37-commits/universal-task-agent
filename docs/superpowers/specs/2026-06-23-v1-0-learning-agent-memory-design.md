@@ -1,237 +1,320 @@
-# UTA V1.0 Learning Agent and Memory Visibility Design
+# UTA V1.0 学习版与记忆可见性设计
 
-> Status: proposed for planning
-> Date: 2026-06-23
+> 状态：待进入实施计划
+> 日期：2026-06-23
 
-## Goal
+## 目标
 
-Close the PRD v6.1 UTA V1.0 learning-agent milestone without expanding the product scope beyond the core CLI learning framework, while documenting a clear memory model that explains where short-term and long-term memory can be inspected now and how the desktop memory view should evolve after V1.0.
+这次要把 PRD v6.1 里的 UTA V1.0 学习版主线收口，但不把范围扩大成桌面端产品化，也不接 TAM。
 
-V1.0 implementation scope is intentionally limited to four deliverables:
+本次 V1.0 实现范围只做四件事：
 
-1. Implement A11: one replan attempt, continuing after the failed step.
-2. Update README, CHANGELOG, and visible version wording.
-3. Run and document one summary demo and one table-analysis demo.
-4. Tag the verified core milestone as `v1.0-learning-agent`.
+1. 补 A11：支持一次 replan，并且从失败步骤之后继续，不重跑前面已经成功的步骤。
+2. 更新 README、CHANGELOG 和明显的版本说明。
+3. 跑一遍文本总结 demo 和表格分析 demo，留下验收结果。
+4. 验收通过后打 `v1.0-learning-agent` tag。
 
-Memory-system work in this design is mostly clarity and positioning for V1.0. It should not add new TAM integration, database storage, semantic retrieval, or a full desktop memory editor during the V1.0 closeout.
+记忆系统这次主要做“说清楚”和“设计清楚”：解释短期记忆、长期记忆分别在哪里看，桌面端后续应该怎么做一个直观的记忆入口。V1.0 本次不做 TAM、不做向量库、不做语义检索、不做完整桌面记忆编辑器。
 
-## Current Context
+## 当前背景
 
-The repository has completed tags from `v0.1-skeleton` through `v0.8-skill-runtime`. The current desktop branch also contains macOS desktop app work, run history, and an LLM curl fallback. Those are useful productization changes, but the PRD defines V1.0 as the core learning framework:
+仓库主线已经完成这些 tag：
+
+```text
+v0.1-skeleton
+v0.2-llm-parser
+v0.3-planner-router
+v0.4-summary-demo
+v0.5-verifier-reflection
+v0.6-data-analysis
+v0.7-memory
+v0.8-skill-runtime
+```
+
+当前桌面分支里还有 macOS 桌面应用、运行记录页、LLM curl fallback 等增强。这些对产品体验有价值，但 PRD 里的 V1.0 不是桌面版，而是核心学习框架：
 
 ```text
 Task Parser -> Planner -> Agent Loop -> Router -> Executor
 -> Verifier -> Reflection -> Replan -> Output -> Memory -> Skill
 ```
 
-V1.0 should be produced from the clean core line, starting from `main` / `v0.8-skill-runtime`, not by placing the V1.0 tag on the desktop app branch. This keeps the PRD milestone separate from later desktop experience work.
+因此，`v1.0-learning-agent` 这个 tag 应该落在干净的核心主线上，也就是从 `main` / `v0.8-skill-runtime` 出发，而不是直接打在桌面端分支头上。这样可以避免把“核心学习版”和“桌面产品化增强”混在一起。
 
-The main missing V1.0 behavior is A11:
+当前 V1.0 最明显的缺口是 A11：
 
 ```text
 可以重新规划一次（replan 从失败 step 后继续）
 ```
 
-Current `core.loop.run_minimal_loop()` retries the same step after Reflection, but once retries are exhausted it fails the task. Current `Reflection.analyze()` always returns `need_replan=False`.
+现在的 `core.loop.run_minimal_loop()` 已经支持单步失败后的 Reflection + retry。但如果 retry 用完，任务会直接失败。现在的 `Reflection.analyze()` 也总是返回 `need_replan=False`。
 
-## V1.0 Boundary
+## V1.0 范围边界
 
-V1.0 includes:
+V1.0 包含：
 
-- CLI task entry with `main.py --task`.
-- `summarize` and `data_analysis` task recognition.
-- Planner-generated structured plans whose `PlanStep` only contains goals, not tool names.
-- Two-layer loop semantics: outer plan progression and inner per-step retry.
-- Router, Executor, Verifier, Reflection, JSON Memory, Skill Builder, and Skill Loader.
-- One replan attempt after a step cannot be repaired by retries.
-- Markdown final reports for summary and table analysis tasks.
-- JSON state/log artifacts and JSON long-term memory files.
-- README/CHANGELOG/version wording that accurately says V1.0.
-- `v1.0-learning-agent` git tag after verification.
+- 可以从 CLI 输入任务：`main.py --task`。
+- 可以识别 `summarize` 和 `data_analysis` 两类任务。
+- Planner 可以生成结构化计划，而且 `PlanStep` 只包含目标，不指定工具。
+- Agent Loop 有两层含义：外层按计划推进，内层对当前步骤重试。
+- Router、Executor、Verifier、Reflection、JSON Memory、Skill Builder、Skill Loader 都能跑通。
+- 某一步 retry 用完之后，可以触发一次 replan。
+- 文本总结和表格分析都能输出 Markdown 报告。
+- 能保存 state、log 和长期 JSON Memory。
+- README、CHANGELOG、版本说明都准确写到 V1.0。
+- 验证通过后打 `v1.0-learning-agent` tag。
 
-V1.0 excludes:
+V1.0 不包含：
 
-- TAM Memory integration.
-- TAM Output Guard or Faithfulness Gate.
-- Semantic memory retrieval.
-- Automatic web search or research tasks.
-- New desktop memory UI implementation.
-- Editing/deleting memories.
-- Multi-agent orchestration.
+- TAM Memory 接入。
+- TAM Output Guard / Faithfulness Gate。
+- 语义级记忆检索。
+- 自动搜索或调研任务。
+- 新的桌面端记忆 UI 实现。
+- 编辑或删除记忆。
+- 多 Agent 协作。
 
-Desktop memory visibility can be designed here because it affects the project direction, but it should remain a post-V1.0 implementation item unless the user explicitly expands scope.
+桌面端“记忆”入口可以在这份设计里规划方向，但默认是 V1.0 之后再做，不塞进本次 V1.0 必做范围。
 
-## Replan Design
+## Replan 设计
 
-### Behavior
+### 行为规则
 
-When a plan step fails verification after its retry budget is exhausted:
+当某个 plan step 经过 retry 后仍然校验失败：
 
-1. Mark the failed step as `failed`.
-2. Ask Reflection whether replan is needed.
-3. If no replan is available or `state.max_replans` has already been consumed, fail the task as today.
-4. If replan is available and one attempt remains:
-   - Generate a new plan for the same task.
-   - Preserve completed work before the failed step.
-   - Continue from the failed step's position in the new plan.
-   - Do not rerun earlier completed steps.
-   - Record the replan event in state and progress events.
+1. 把当前失败 step 标记为 `failed`。
+2. 让 Reflection 给出失败原因和修复建议。
+3. 如果不能 replan，或者 `state.max_replans` 已经用完，就像现在一样让任务失败。
+4. 如果还能 replan：
+   - 为同一个任务重新生成 plan。
+   - 保留失败步骤之前已经完成的结果。
+   - 从新 plan 中对应的失败位置继续执行。
+   - 不重跑前面已经成功的步骤。
+   - 把 replan 事件写进 state 和 progress events。
 
-PRD allows a simplified V1.0 approach, but this design follows the stronger wording: "from failed step after continue" in the sense that prior completed steps are not rerun. The failed goal itself is replaced by the corresponding goal at the same position in the new plan. If the new plan is shorter than the failed position, the task fails with a clear final output.
+PRD 允许 V1.0 简化 replan，但这次建议实现更清楚一点：前面已经完成的步骤不重跑，失败位置由新 plan 中相同位置的 step 接上。如果新 plan 太短，找不到对应位置，就给出清晰失败信息。
 
-### Minimal State Additions
+### State 增加字段
 
-`AgentState` already has `max_replans`. Add a small amount of explicit bookkeeping:
+`AgentState` 已经有 `max_replans`，建议再加两个字段：
 
-- `replan_count: int = 0`
-- `replan_events: list[dict[str, Any]] = field(default_factory=list)`
-
-Each event should include:
-
-- failed step id
-- failed goal
-- root cause
-- old plan goals
-- new plan goals
-- resume step id
-- timestamp
-
-This keeps replan inspectable in `state.json`, which matters for the memory story below.
-
-### Planner Input
-
-Keep `Planner.create_plan()` simple. It can accept optional `feedback` in implementation if needed, but V1.0 does not require a fully intelligent replan strategy. The first implementation can use deterministic fallback rules:
-
-- For `summarize`, regenerate the standard summary plan.
-- For `data_analysis`, regenerate the standard table-analysis plan.
-- For matched skills, regenerate from the matched skill workflow.
-
-The important V1.0 learning behavior is loop control, preservation of prior steps, and state visibility. Sophisticated alternative planning can wait.
-
-### Reflection Rule
-
-Reflection should request replan only when a step has exhausted retries and the failure is not a simple in-step repair anymore. It should still provide the same root cause and repair strategy fields for learning/debugging.
-
-Implementation can keep the existing `Reflection.analyze()` API and let the loop decide when exhaustion makes `need_replan` meaningful, or add a keyword parameter such as `retries_exhausted=True`. The plan should choose the smallest change that keeps tests clear.
-
-## Memory Model
-
-### Short-Term Memory
-
-Short-term memory is the current task state. It answers:
-
-```text
-What is the Agent doing right now?
-What has it tried?
-What did each tool return?
-What passed or failed verification?
-What feedback did Reflection create?
-Did replan happen?
+```python
+replan_count: int = 0
+replan_events: list[dict[str, Any]] = field(default_factory=list)
 ```
 
-Source of truth:
+每条 replan event 记录：
 
-- in-memory `AgentState` while the task runs
-- persisted `outputs/states/<task_id>_state.json`
-- persisted `outputs/logs/<task_id>.log`
+- 失败 step id
+- 失败 goal
+- 失败原因
+- 旧 plan 的 goals
+- 新 plan 的 goals
+- 从哪个 step 继续
+- 时间戳
 
-Current visibility:
+这样 replan 不只是“内部发生过”，而是可以在 `state.json` 里看见。
 
-- CLI users can inspect `outputs/states` and `outputs/logs`.
-- Desktop users can inspect previous runs through the "运行记录" view, which reads state and log files.
+### Planner 设计
 
-V1.0 requirement:
+V1.0 不需要很聪明的 replan。第一版保持确定性规则即可：
 
-- Replan data must be visible in `state.json` and logs.
-- README should explicitly explain short-term memory as State, not long-term Memory.
+- `summarize`：重新生成标准总结计划。
+- `data_analysis`：重新生成标准表格分析计划。
+- 如果命中 Skill：继续从 Skill workflow 生成计划。
 
-### Long-Term Memory
+这一版的学习重点不是“让 LLM 想出多高级的新计划”，而是让用户看懂：失败、反思、重新规划、从中间继续，这条控制流是怎么工作的。
 
-Long-term memory is cross-task JSON memory. It answers:
+### Reflection 设计
+
+Reflection 仍然负责解释失败原因和修复建议。
+
+实现时可以选择两种小改法：
+
+1. 保持 `Reflection.analyze()` API 不变，让 Loop 在 retry 用完时决定是否 replan。
+2. 给 `Reflection.analyze()` 加一个参数，例如 `retries_exhausted=True`，让 Reflection 返回 `need_replan=True`。
+
+实施计划里应该选择改动更小、测试更清楚的方案。
+
+## 记忆系统设计
+
+### 短期记忆
+
+短期记忆就是当前任务的状态，也就是 `AgentState`。
+
+它回答这些问题：
 
 ```text
-What has UTA learned across tasks?
-Which task histories exist?
-Which successful patterns became lessons?
-Which failures became negative rules?
-Which repeated workflows are Skill candidates?
+Agent 现在在做什么？
+它已经执行了哪些步骤？
+每个工具返回了什么？
+哪些校验通过了？
+哪些校验失败了？
+Reflection 给了什么反馈？
+有没有发生 replan？
+最终输出是什么？
 ```
 
-Source of truth:
+短期记忆的来源：
 
-- `memory/user_profile.json`
-- `memory/task_history.json`
-- `memory/lessons.json`
-- `memory/negative_rules.json`
-- `memory/skill_candidates.json`
+- 任务运行中的内存对象：`AgentState`
+- 保存后的 state 文件：`outputs/states/<task_id>_state.json`
+- 保存后的 log 文件：`outputs/logs/<task_id>.log`
 
-In the desktop app these live under `~/.uta/memory/`; in CLI core runs they default to `memory/` unless an injected provider uses a different root.
+现在从哪里看：
 
-Current visibility:
+- CLI 用户：直接看 `outputs/states/` 和 `outputs/logs/`。
+- 桌面端用户：从“运行记录”里查看历史任务的 state、log 和结果。
 
-- CLI users can open the JSON files directly.
-- Desktop users do not yet have a dedicated memory view.
+V1.0 要求：
 
-V1.0 requirement:
+- replan 信息必须能在 `state.json` 里看到。
+- log 里也要能看出发生过 replan。
+- README 要明确说明：State 是短期记忆，不是长期记忆。
 
-- README should explain which files are long-term memory and what each file means.
-- Demo validation should confirm that memory files are updated after task runs.
-- No automatic semantic recall is required for V1.0.
+### 长期记忆
 
-## Desktop Memory Visibility Direction
+长期记忆是跨任务保存下来的 JSON Memory。
 
-After V1.0, add a desktop "记忆" navigation item. It should make memory understandable before making it editable.
+它回答这些问题：
 
-Recommended first desktop memory view:
+```text
+UTA 过去做过什么任务？
+哪些成功经验被沉淀了？
+哪些失败规则要避免？
+哪些任务流程重复成功，值得变成 Skill？
+```
 
-1. **当前任务记忆**
-   - Shows live or selected-run `AgentState`.
-   - Sections: plan, current step, tool results, checks, feedback, replan events, final output.
-   - Uses the same state/log source as "运行记录".
+长期记忆的来源：
 
-2. **任务历史**
-   - Reads `task_history.json`.
-   - Shows task id, task type, status, updated time, final output preview.
-   - Links back to the run detail when a matching state file exists.
+```text
+memory/user_profile.json
+memory/task_history.json
+memory/lessons.json
+memory/negative_rules.json
+memory/skill_candidates.json
+```
 
-3. **经验与规则**
-   - Reads `lessons.json` and `negative_rules.json`.
-   - Shows content, source task, created time, and task type.
-   - Clearly labels lessons as positive reusable patterns and negative rules as things to avoid.
+在桌面端打包环境里，这些文件默认在：
 
-4. **Skill 候选**
-   - Reads `skill_candidates.json`.
-   - Shows task type, success count, latest task id, status, and reason.
-   - This is the bridge from memory to reusable capability.
+```text
+~/.uta/memory/
+```
 
-This desktop view should be read-only at first. Editing, deletion, promotion to official Skill, and source-backed memory cleanup should be separate later specs.
+当前从哪里看：
 
-## Version Documentation
+- CLI 用户：直接打开 `memory/*.json`。
+- 桌面端用户：现在还没有专门的“记忆”入口。
 
-Update docs after A11 is implemented:
+V1.0 要求：
 
-- `README.md`
-  - Current milestone becomes `v1.0-learning-agent`.
-  - Add a concise "V1.0 状态" section.
-  - Explain short-term State vs long-term JSON Memory.
-  - Include commands for summary demo and table-analysis demo.
-  - Mention TAM is not part of V1.0.
+- README 要解释每个长期记忆文件是什么。
+- demo 验收时要确认任务完成后 memory 有写入。
+- V1.0 不要求自动语义召回长期记忆。
 
-- `CHANGELOG.md`
-  - Add `v1.0-learning-agent`.
-  - Mention replan, V1.0 demo validation, and memory documentation.
+## 桌面端记忆可见性方向
 
-- `main.py`
-  - Update CLI description from stale older version wording to V1.0 wording.
+V1.0 之后，桌面端建议新增一级入口：**记忆**。
 
-Do not update desktop-specific README as part of the V1.0 core closeout unless the implementation plan explicitly includes a note pointing desktop users to the current app package.
+第一版只读，不编辑。目标是先让记忆“看得见、讲得清、追得到来源”。
 
-## Demo Validation
+推荐分成四个 tab：
 
-Run both demos in an isolated output root so validation does not pollute the user's normal memory files:
+### 1. 当前任务记忆
 
-1. Summary demo:
+展示当前任务或某次历史任务的 `AgentState`。
+
+内容包括：
+
+- plan
+- 当前 step
+- tool results
+- checks
+- feedbacks
+- replan events
+- final output
+
+这部分复用“运行记录”的 state/log 数据。
+
+### 2. 任务历史
+
+读取 `task_history.json`。
+
+展示：
+
+- task id
+- task type
+- status
+- 更新时间
+- final output preview
+
+如果存在对应 state 文件，可以跳转到运行记录详情。
+
+### 3. 经验与规则
+
+左侧展示 `lessons.json`，右侧展示 `negative_rules.json`。
+
+`lessons` 是正向经验：以后可以复用什么。
+
+`negative_rules` 是负向规则：以后应该避免什么。
+
+每条都要显示来源任务和创建时间。
+
+### 4. Skill 候选
+
+读取 `skill_candidates.json`。
+
+展示：
+
+- task type
+- success count
+- latest task id
+- status
+- reason
+
+这个区域用来解释：普通记忆如何逐步变成可复用能力。
+
+后续再单独设计：
+
+- 删除错误记忆
+- 编辑记忆
+- 把候选提升为正式 Skill
+- 记忆来源追踪和清理
+
+## 版本文档更新
+
+A11 实现后，需要更新这些文件：
+
+### README.md
+
+需要写清楚：
+
+- 当前版本是 `v1.0-learning-agent`。
+- V1.0 已完成哪些能力。
+- 如何跑文本总结 demo。
+- 如何跑表格分析 demo。
+- 短期记忆和长期记忆分别是什么。
+- TAM 不属于 V1.0 必选范围。
+
+### CHANGELOG.md
+
+新增 `v1.0-learning-agent` 条目，包含：
+
+- A11 replan
+- V1.0 demo 验收
+- 记忆说明完善
+- V1.0 tag
+
+### main.py
+
+把 argparse 里过时的版本描述从旧版本改成 V1.0。
+
+桌面端 README 不作为本次 V1.0 必改项，除非实施计划里只加一句“桌面端属于 V1.0 后体验层”。
+
+## Demo 验收
+
+建议用临时 output root 跑 demo，避免污染正常 outputs：
+
+### 文本总结 demo
 
 ```bash
 .venv/bin/python main.py \
@@ -239,7 +322,7 @@ Run both demos in an isolated output root so validation does not pollute the use
   --task "帮我总结一段文本：UTA V1.0 要跑通 Agent Loop、Verifier、Memory 和 Skill。"
 ```
 
-2. Table-analysis demo:
+### 表格分析 demo
 
 ```bash
 .venv/bin/python main.py \
@@ -247,87 +330,95 @@ Run both demos in an isolated output root so validation does not pollute the use
   --task "分析 examples/orders.csv"
 ```
 
-The implementation plan should decide whether to inject an isolated memory root for CLI demos or add a CLI option for memory root. If the existing CLI cannot isolate memory writes, the demo should still use a temporary output root and then explicitly inspect the normal memory files without discarding user data.
+验收标准：
 
-Acceptance for demos:
+- 命令退出码是 0。
+- final output 是 Markdown 风格文本。
+- `outputs/states/<task_id>_state.json` 存在。
+- `outputs/logs/<task_id>.log` 存在。
+- memory save 被记录。
+- 表格 demo 包含字段说明、基础统计、缺失值、异常数据等内容。
 
-- command exits 0
-- final output is Markdown-ish text
-- `outputs/states/<task_id>_state.json` exists
-- `outputs/logs/<task_id>.log` exists
-- memory save is recorded
-- table demo includes field/basic-stat/missing/anomaly sections
+如果真实 LLM key 不可用，测试仍然可以通过，但不能贸然打 V1.0 tag。除非实现一个明确标注的 controlled demo path，并且它符合项目现有的测试注入方式。
 
-If live LLM credentials are unavailable, tests still need to pass, but the V1.0 tag should not be cut until a real or controlled demo path is documented. A controlled non-network demo can be implemented only if it matches existing project test-injection patterns and is clearly labeled as a smoke/demo mode.
+## Tag 策略
 
-## Tagging Strategy
+只有满足以下条件后，才打：
 
-Use `v1.0-learning-agent` only after:
+```text
+v1.0-learning-agent
+```
 
-- targeted A11 tests pass
-- full test suite passes
-- README and CHANGELOG accurately describe V1.0
-- summary and table demos have been run and inspected
-- working tree contains no accidental staged files
+条件：
 
-Because the current desktop branch includes post-core desktop work, the V1.0 implementation should be developed from `main` / `v0.8-skill-runtime` in an isolated worktree or clean branch. The tag should point at the V1.0 core commit, not the desktop app branch head.
+- A11 目标测试通过。
+- 全量测试通过。
+- README 和 CHANGELOG 已更新。
+- 文本总结 demo 跑过并检查。
+- 表格分析 demo 跑过并检查。
+- 没有误暂存无关文件。
 
-## Testing Strategy
+因为当前桌面分支包含 V1.0 之后的桌面增强，所以 V1.0 实现应该从 `main` / `v0.8-skill-runtime` 新建干净分支或 worktree。tag 应该指向核心学习版提交，而不是桌面分支头。
 
-### Unit Tests
+## 测试策略
 
-Add loop tests for:
+### 单元测试
 
-- a step exhausting retries triggers exactly one replan when `max_replans=1`
-- completed prior steps are not rerun after replan
-- replan data is persisted on `AgentState`
-- when replan is already consumed, the task fails as before
-- progress events include a replan event
+为 Loop 增加测试：
 
-Add reflection tests only if the implementation changes Reflection's API.
+- step retry 用完后触发一次 replan。
+- `max_replans=1` 时最多只 replan 一次。
+- replan 后不重跑已经完成的前置 step。
+- replan 信息写入 `AgentState.replan_events`。
+- replan 用完后任务按原逻辑失败。
+- progress events 包含 replan 事件。
 
-### Regression Tests
+如果 Reflection API 改动，再补 Reflection 测试。
 
-Existing tests must continue to pass:
+### 回归测试
 
-- summary flow
-- table-analysis flow
-- reflection retry
-- skill workflow injection
-- JSON memory provider
-- desktop tests if run on the desktop branch
+现有能力必须继续通过：
 
-### Documentation Checks
+- 文本总结流程
+- 表格分析流程
+- Reflection retry
+- Skill workflow 注入
+- JSON Memory 写入
+- 桌面分支上的 desktop tests，如果在桌面分支运行
 
-Tests do not need to parse README, but implementation review should verify:
+### 文档检查
 
-- no stale "V0.6" CLI description
-- README current status says V1.0
-- CHANGELOG includes V1.0
-- TAM remains explicitly out of V1.0 scope
+实施 review 时检查：
 
-## Open Decisions for the Implementation Plan
+- README 不再说当前版本停在 v0.8。
+- `main.py` 不再显示旧版本描述。
+- CHANGELOG 有 V1.0。
+- TAM 仍然明确标注为 V1.0 之外。
 
-1. Whether to add `--memory-root` to CLI for isolated demos. This is useful but not strictly required for A1-A19.
-2. Whether replan is represented as a new `Plan` object only, or whether old plan snapshots are stored in `replan_events`.
-3. Whether desktop memory view gets its own future spec immediately after V1.0, or waits until V1.0 tag is cut.
+## 实施计划里的开放决策
 
-Recommended choices:
+实施计划需要进一步决定：
 
-- Add explicit `replan_events` to `AgentState` for inspectability.
-- Do not add `--memory-root` unless demo isolation needs it during implementation.
-- Cut V1.0 first; then create a separate desktop memory visibility spec.
+1. CLI 是否新增 `--memory-root`，让 demo 可以完全隔离 memory 写入。
+2. replan 是否只替换当前 `Plan`，还是同时保存旧 plan 快照到 `replan_events`。
+3. 桌面端“记忆”视图是在 V1.0 tag 之后马上开新 spec，还是等下一轮。
 
-## Acceptance Criteria
+推荐选择：
 
-This design is complete when a follow-up implementation plan can produce:
+- 给 `AgentState` 增加 `replan_events`，方便学习和排查。
+- 如果 demo 隔离确实需要，就加 `--memory-root`；否则不加。
+- 先打 V1.0，再单独做桌面端记忆可见性 spec。
 
-- `v1.0-learning-agent` tag on the core learning-agent line.
-- A11 replan behavior covered by tests.
-- README/CHANGELOG/version wording aligned with PRD V1.0.
-- Summary and table-analysis demo evidence.
-- A documented memory model that explains:
-  - short-term memory = State/log/run history
-  - long-term memory = JSON Memory files
-  - Skill candidates = transition from memory to reusable capability
-  - desktop memory panel = post-V1.0 read-only visibility work
+## 验收标准
+
+这份设计进入实施后，最终应该产出：
+
+- `v1.0-learning-agent` tag 落在核心学习版主线上。
+- A11 replan 有测试覆盖。
+- README、CHANGELOG、版本说明与 V1.0 一致。
+- 文本总结和表格分析 demo 有验收记录。
+- 记忆模型在 README 或相关文档里说清楚：
+  - 短期记忆 = State / log / 运行记录
+  - 长期记忆 = JSON Memory 文件
+  - Skill 候选 = 从记忆走向可复用能力
+  - 桌面端记忆面板 = V1.0 后的只读可见性工作
