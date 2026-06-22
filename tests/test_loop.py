@@ -17,6 +17,19 @@ class EchoTool(BaseTool):
         }
 
 
+class CountingTool(BaseTool):
+    name = "counting_tool"
+    description = "counts calls"
+
+    def __init__(self, message):
+        self.message = message
+        self.calls = 0
+
+    def run(self, action_name, params):
+        self.calls += 1
+        return {"message": self.message, "call": self.calls}
+
+
 VALID_SUMMARY_REPORT = "## 摘要\n完成联调。\n## 核心观点\n流程清晰。\n## 风险点\n原文未提供明确风险。"
 
 
@@ -260,6 +273,7 @@ def test_loop_fails_after_report_step_retries_are_exhausted():
         user_input="帮我总结",
         task_type="summarize",
         intent="summarize_article",
+        max_replans=0,
     )
 
     updated = run_minimal_loop(state, tool_registry=registry)
@@ -268,6 +282,100 @@ def test_loop_fails_after_report_step_retries_are_exhausted():
     assert updated.plan.status == "failed"
     assert len(updated.feedbacks) == 3
     assert "缺少必要小节：核心观点" in updated.final_output
+
+
+def test_loop_replans_once_without_rerunning_completed_steps():
+    file_tool = CountingTool("file")
+    text_tool = SequenceTextTool(
+        [
+            "## 摘要\n缺少小节。",
+            "## 摘要\n还是缺少。",
+            "## 摘要\n继续缺少。",
+            VALID_SUMMARY_REPORT,
+        ]
+    )
+    registry = {
+        "file_tool": file_tool,
+        "text_tool": text_tool,
+        "report_tool": EchoTool(VALID_SUMMARY_REPORT),
+    }
+    state = AgentState(
+        task_id="task_test",
+        user_input="帮我总结",
+        task_type="summarize",
+        intent="summarize_article",
+        max_replans=1,
+    )
+
+    updated = run_minimal_loop(state, tool_registry=registry)
+
+    assert updated.status == "completed"
+    assert updated.replan_count == 1
+    assert len(updated.replan_events) == 1
+    assert updated.replan_events[0]["failed_step_id"] == 2
+    assert updated.replan_events[0]["resume_step_id"] == 2
+    assert file_tool.calls == 1
+    assert len(text_tool.params_seen) == 4
+    assert updated.final_output == VALID_SUMMARY_REPORT
+
+
+def test_loop_fails_when_replan_budget_is_exhausted():
+    text_tool = SequenceTextTool(
+        [
+            "## 摘要\n缺少小节。",
+            "## 摘要\n还是缺少。",
+            "## 摘要\n继续缺少。",
+        ]
+    )
+    registry = {
+        "file_tool": EchoTool("file"),
+        "text_tool": text_tool,
+        "report_tool": EchoTool(VALID_SUMMARY_REPORT),
+    }
+    state = AgentState(
+        task_id="task_test",
+        user_input="帮我总结",
+        task_type="summarize",
+        intent="summarize_article",
+        max_replans=0,
+    )
+
+    updated = run_minimal_loop(state, tool_registry=registry)
+
+    assert updated.status == "failed"
+    assert updated.replan_count == 0
+    assert updated.replan_events == []
+
+
+def test_loop_emits_replanned_progress_event():
+    text_tool = SequenceTextTool(
+        [
+            "## 摘要\n缺少小节。",
+            "## 摘要\n还是缺少。",
+            "## 摘要\n继续缺少。",
+            VALID_SUMMARY_REPORT,
+        ]
+    )
+    registry = {
+        "file_tool": EchoTool("file"),
+        "text_tool": text_tool,
+        "report_tool": EchoTool(VALID_SUMMARY_REPORT),
+    }
+    state = AgentState(
+        task_id="task_test",
+        user_input="帮我总结",
+        task_type="summarize",
+        intent="summarize_article",
+        max_replans=1,
+    )
+    events = []
+
+    run_minimal_loop(state, tool_registry=registry, on_progress=events.append)
+
+    replanned = [event for event in events if event["type"] == "replanned"]
+    assert len(replanned) == 1
+    assert replanned[0]["data"]["failed_step_id"] == 2
+    assert replanned[0]["data"]["resume_step_id"] == 2
 
 
 def test_loop_executes_data_analysis_flow(tmp_path):

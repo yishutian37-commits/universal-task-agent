@@ -2,7 +2,7 @@ from core.executor import Executor
 from core.planner import Planner
 from core.reflection import Reflection
 from core.router import Router
-from core.state import AgentState, Task
+from core.state import AgentState, Feedback, Plan, PlanStep, Task
 from core.verifier import Verifier
 
 
@@ -29,6 +29,36 @@ def _task_from_state(state: AgentState) -> Task:
     )
 
 
+def _plan_goals(plan: Plan | None) -> list[str]:
+    if plan is None:
+        return []
+    return [step.goal for step in plan.steps]
+
+
+def _record_replan(
+    state: AgentState,
+    failed_step: PlanStep,
+    feedback: Feedback,
+    old_plan: Plan | None,
+    new_plan: Plan,
+    resume_step_id: int,
+) -> dict:
+    state.touch()
+    event = {
+        "failed_step_id": failed_step.step_id,
+        "failed_goal": failed_step.goal,
+        "root_cause": feedback.root_cause,
+        "repair_strategy": feedback.repair_strategy,
+        "old_plan_goals": _plan_goals(old_plan),
+        "new_plan_goals": _plan_goals(new_plan),
+        "resume_step_id": resume_step_id,
+        "created_at": state.updated_at,
+    }
+    state.replan_count += 1
+    state.replan_events.append(event)
+    return event
+
+
 def run_minimal_loop(state: AgentState, tool_registry=None, on_progress=None) -> AgentState:
     planner = Planner()
     router = Router()
@@ -51,10 +81,13 @@ def run_minimal_loop(state: AgentState, tool_registry=None, on_progress=None) ->
         },
     )
 
-    for step in state.plan.steps:
+    completed_step_results = {}
+    step_index = 0
+    while step_index < len(state.plan.steps):
+        step = state.plan.steps[step_index]
         feedback = None
         attempt = 0
-        previous_step_result = state.results[-1].result if state.results else None
+        previous_step_result = completed_step_results.get(step.step_id - 1)
 
         while attempt <= step.max_retries:
             state.current_step_id = step.step_id
@@ -117,6 +150,7 @@ def run_minimal_loop(state: AgentState, tool_registry=None, on_progress=None) ->
 
             if check.passed:
                 step.status = "completed"
+                completed_step_results[step.step_id] = result.result
                 _emit_progress(
                     on_progress,
                     "step_done",
@@ -140,6 +174,37 @@ def run_minimal_loop(state: AgentState, tool_registry=None, on_progress=None) ->
             attempt += 1
 
         if step.status != "completed":
+            if feedback is not None and state.replan_count < state.max_replans:
+                feedback.need_replan = True
+                old_plan = state.plan
+                new_plan = planner.create_plan(_task_from_state(state), matched_skill=state.matched_skill)
+                new_plan.status = "running"
+                resume_index = step_index
+                if resume_index >= len(new_plan.steps):
+                    step.status = "failed"
+                    state.plan.status = "failed"
+                    state.status = "failed"
+                    state.final_output = "replan 后没有可继续执行的步骤"
+                    state.touch()
+                    return state
+
+                for completed_index in range(resume_index):
+                    new_plan.steps[completed_index].status = "completed"
+
+                state.plan = new_plan
+                state.current_step_id = new_plan.steps[resume_index].step_id
+                event = _record_replan(
+                    state,
+                    step,
+                    feedback,
+                    old_plan,
+                    new_plan,
+                    new_plan.steps[resume_index].step_id,
+                )
+                _emit_progress(on_progress, "replanned", state, event)
+                step_index = resume_index
+                continue
+
             step.status = "failed"
             state.plan.status = "failed"
             state.status = "failed"
@@ -152,6 +217,8 @@ def run_minimal_loop(state: AgentState, tool_registry=None, on_progress=None) ->
                 {"step_id": step.step_id, "status": step.status},
             )
             return state
+
+        step_index += 1
 
     if state.results:
         state.final_output = state.results[-1].result.get("message", "")

@@ -94,6 +94,8 @@ class AgentState:
     status: str = "initialized"
     current_step_id: int = 0
     max_replans: int = 1
+    replan_count: int = 0
+    replan_events: list[dict[str, Any]] = field(default_factory=list)
     plan: Plan | None = None
     matched_skill: dict[str, Any] | None = None
     current_action: Action | None = None

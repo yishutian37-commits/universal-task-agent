@@ -55,6 +55,13 @@ def build_log_lines(state: AgentState) -> list[str]:
         lines.append(f"[Reflection] failure_type = {feedback.failure_type}")
         lines.append(f"[Reflection] repair_strategy = {feedback.repair_strategy}")
 
+    lines.append(f"[Replan] count = {state.replan_count}")
+    for event in state.replan_events:
+        lines.append(
+            "[Replan] failed_step = "
+            f"{event.get('failed_step_id')}, resume_step = {event.get('resume_step_id')}"
+        )
+
     lines.append(f"[Memory] saved = {str(state.memory_saved).lower()}")
 
     lines.extend(

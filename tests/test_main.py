@@ -305,6 +305,25 @@ def test_log_lines_include_reflection_feedback():
     assert "[Reflection] repair_strategy = 补齐风险点小节" in log_text
 
 
+def test_build_log_lines_includes_replan_events():
+    state = create_initial_state("task_test", "测试")
+    state.task_type = "summarize"
+    state.replan_count = 1
+    state.replan_events.append(
+        {
+            "failed_step_id": 2,
+            "failed_goal": "提取核心信息",
+            "resume_step_id": 2,
+            "root_cause": "缺少必要小节：风险点",
+        }
+    )
+
+    lines = build_log_lines(state)
+
+    assert "[Replan] count = 1" in lines
+    assert "[Replan] failed_step = 2, resume_step = 2" in lines
+
+
 def test_run_task_saves_matched_skill_with_injected_loader(tmp_path):
     skill = {
         "id": "summarize_article",
