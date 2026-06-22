@@ -45,6 +45,34 @@ def test_frontend_calls_history_bridge_methods():
     assert "function selectHistoryRun" in js
 
 
+def test_frontend_includes_memory_view():
+    html = (FRONTEND_ROOT / "index.html").read_text(encoding="utf-8")
+
+    assert 'id="openMemory"' in html
+    assert "记忆" in html
+    assert 'id="memoryView"' in html
+    assert 'id="memoryShortTerm"' in html
+    assert 'id="memoryTaskHistory"' in html
+    assert 'id="memoryLessons"' in html
+    assert 'id="memoryNegativeRules"' in html
+    assert 'id="memorySkillCandidates"' in html
+
+
+def test_frontend_calls_memory_bridge_method():
+    js = (FRONTEND_ROOT / "app.js").read_text(encoding="utf-8")
+
+    assert 'callApi("get_memory_overview")' in js
+    assert "function showMemoryView" in js
+    assert "function renderMemoryOverview" in js
+
+
+def test_frontend_handles_replanned_progress_event():
+    js = (FRONTEND_ROOT / "app.js").read_text(encoding="utf-8")
+
+    assert 'event.type === "replanned"' in js
+    assert "replan" in js.lower()
+
+
 def test_frontend_preserves_history_log_whitespace():
     css = (FRONTEND_ROOT / "style.css").read_text(encoding="utf-8")
 

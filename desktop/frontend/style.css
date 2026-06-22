@@ -627,6 +627,57 @@ pre {
   white-space: pre-wrap;
 }
 
+.memoryWorkspace {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  min-height: 0;
+}
+
+.memoryColumn {
+  min-height: 0;
+  display: grid;
+  gap: 16px;
+  align-content: start;
+}
+
+.memoryPanel {
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  overflow: hidden;
+}
+
+.memoryBlock {
+  min-height: 0;
+  max-height: 300px;
+  overflow: auto;
+  padding: 12px;
+  display: grid;
+  align-content: start;
+  gap: 10px;
+}
+
+.memoryCard {
+  min-width: 0;
+  padding: 11px;
+  display: grid;
+  gap: 5px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.memoryCard strong,
+.memoryCard small {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.memoryCard small {
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
 @media (max-width: 1060px) {
   body {
     overflow: auto;
@@ -638,7 +689,8 @@ pre {
   }
 
   .app,
-  .workspace {
+  .workspace,
+  .memoryWorkspace {
     grid-template-columns: 1fr;
   }
 

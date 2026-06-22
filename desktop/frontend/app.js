@@ -3,14 +3,22 @@ const els = {
   keyState: document.getElementById("keyState"),
   openTaskView: document.getElementById("openTaskView"),
   openHistory: document.getElementById("openHistory"),
+  openMemory: document.getElementById("openMemory"),
   taskView: document.getElementById("taskView"),
   historyView: document.getElementById("historyView"),
+  memoryView: document.getElementById("memoryView"),
   refreshHistory: document.getElementById("refreshHistory"),
+  refreshMemory: document.getElementById("refreshMemory"),
   historyList: document.getElementById("historyList"),
   historyTaskMeta: document.getElementById("historyTaskMeta"),
   historyReport: document.getElementById("historyReport"),
   historyLogPanel: document.getElementById("historyLogPanel"),
   historyStateJson: document.getElementById("historyStateJson"),
+  memoryShortTerm: document.getElementById("memoryShortTerm"),
+  memoryTaskHistory: document.getElementById("memoryTaskHistory"),
+  memoryLessons: document.getElementById("memoryLessons"),
+  memoryNegativeRules: document.getElementById("memoryNegativeRules"),
+  memorySkillCandidates: document.getElementById("memorySkillCandidates"),
   statusPill: document.getElementById("statusPill"),
   statusText: document.getElementById("statusText"),
   taskIdLabel: document.getElementById("taskIdLabel"),
@@ -147,14 +155,24 @@ function setActiveNav(button) {
 function showTaskView() {
   els.taskView.classList.remove("hidden");
   els.historyView.classList.add("hidden");
+  els.memoryView.classList.add("hidden");
   setActiveNav(els.openTaskView);
 }
 
 async function showHistoryView() {
   els.taskView.classList.add("hidden");
   els.historyView.classList.remove("hidden");
+  els.memoryView.classList.add("hidden");
   setActiveNav(els.openHistory);
   await loadHistoryRuns();
+}
+
+async function showMemoryView() {
+  els.taskView.classList.add("hidden");
+  els.historyView.classList.add("hidden");
+  els.memoryView.classList.remove("hidden");
+  setActiveNav(els.openMemory);
+  await loadMemoryOverview();
 }
 
 async function loadHistoryRuns() {
@@ -219,6 +237,55 @@ function renderEmptyHistoryDetail() {
   els.historyReport.textContent = "暂无运行记录";
   els.historyLogPanel.textContent = "";
   els.historyStateJson.textContent = JSON.stringify({ status: "idle", task_id: null }, null, 2);
+}
+
+async function loadMemoryOverview() {
+  try {
+    const result = await callApi("get_memory_overview");
+    if (!result.ok) {
+      showToast("读取记忆失败", result.error || "未知错误");
+      return;
+    }
+    renderMemoryOverview(result);
+  } catch (error) {
+    showToast("读取记忆失败", error.message);
+  }
+}
+
+function renderMemoryOverview(memory) {
+  els.memoryShortTerm.innerHTML = renderShortTermMemory();
+  els.memoryTaskHistory.innerHTML = renderMemoryCards(memory.task_history, "task_id", "暂无任务历史");
+  els.memoryLessons.innerHTML = renderMemoryCards(memory.lessons, "lesson_id", "暂无经验");
+  els.memoryNegativeRules.innerHTML = renderMemoryCards(memory.negative_rules, "rule_id", "暂无负向规则");
+  els.memorySkillCandidates.innerHTML = renderMemoryCards(memory.skill_candidates, "task_type", "暂无 Skill 候选");
+}
+
+function renderShortTermMemory() {
+  if (!state.taskId) {
+    return '<div class="emptyState">当前没有运行中的任务，可从运行记录查看历史 state。</div>';
+  }
+  return `
+    <article class="memoryCard">
+      <strong>${escapeHtml(state.taskId)}</strong>
+      <small>当前任务 state 会保存在右侧 state.json，并进入运行记录。</small>
+    </article>
+  `;
+}
+
+function renderMemoryCards(items, titleKey, emptyText) {
+  if (!items || !items.length) {
+    return `<div class="emptyState">${escapeHtml(emptyText)}</div>`;
+  }
+  return items.slice(-20).reverse().map((item) => {
+    const title = item[titleKey] || item.task_id || item.status || "memory";
+    const body = item.content || item.reason || item.final_output_preview || item.intent || JSON.stringify(item);
+    return `
+      <article class="memoryCard">
+        <strong>${escapeHtml(String(title))}</strong>
+        <small>${escapeHtml(String(body))}</small>
+      </article>
+    `;
+  }).join("");
 }
 
 function resetRunSurface() {
@@ -306,6 +373,7 @@ function sourceFor(event) {
     tool_executed: "Executor",
     verified: "Verifier",
     reflection: "Reflection",
+    replanned: "Replan",
     step_done: "Loop",
     memory_saved: "Memory",
     task_completed: "Result",
@@ -325,6 +393,7 @@ function messageFor(event) {
   if (event.type === "tool_executed") return `工具 ${data.tool_name} 执行 ${data.success ? "成功" : "失败"}`;
   if (event.type === "verified") return `步骤 ${data.step_id} 校验 ${data.passed ? "通过" : "未通过"}`;
   if (event.type === "reflection") return `${data.failure_type}，${data.repair_strategy}`;
+  if (event.type === "replanned") return `从步骤 ${data.resume_step_id} 继续`;
   if (event.type === "step_done") return `步骤 ${data.step_id} ${data.status}`;
   if (event.type === "memory_saved") return `保存状态：${data.saved ? "true" : "false"}`;
   if (event.type === "task_completed") return `任务结束：${data.status}`;
@@ -339,6 +408,7 @@ async function handleProgress(event) {
   if (event.type === "plan_created") renderPlan(data.steps || []);
   if (event.type === "step_started") markStep(data.step_id, "active", "running");
   if (event.type === "tool_selected") markStep(data.step_id, "active", "tool", data.tool_name);
+  if (event.type === "replanned") markStep(data.failed_step_id, "active", "重新规划");
   if (event.type === "step_done") markStep(data.step_id, data.status === "completed" ? "done" : "failed", data.status);
 
   if (event.type === "task_completed") {
@@ -410,7 +480,9 @@ function escapeHtml(value) {
 function bindEvents() {
   els.openTaskView.addEventListener("click", showTaskView);
   els.openHistory.addEventListener("click", showHistoryView);
+  els.openMemory.addEventListener("click", showMemoryView);
   els.refreshHistory.addEventListener("click", loadHistoryRuns);
+  els.refreshMemory.addEventListener("click", loadMemoryOverview);
   els.openSettings.addEventListener("click", openSettings);
   els.openSettingsSide.addEventListener("click", openSettings);
   els.closeSettings.addEventListener("click", closeSettings);
