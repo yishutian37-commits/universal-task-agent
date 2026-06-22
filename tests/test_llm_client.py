@@ -115,6 +115,109 @@ def test_default_transport_uses_certifi_when_ssl_verification_enabled(monkeypatc
     assert captured["context"] == "certifi-context"
 
 
+def test_chat_falls_back_to_curl_transport_on_urllib_ssl_eof():
+    calls = []
+
+    def eof_transport(endpoint, headers, payload, timeout):
+        calls.append(("primary", endpoint, headers, payload, timeout))
+        raise LLMClientError(
+            "LLM network error: [SSL: UNEXPECTED_EOF_WHILE_READING] "
+            "EOF occurred in violation of protocol"
+        )
+
+    def fallback_transport(endpoint, headers, payload, timeout):
+        calls.append(("fallback", endpoint, headers, payload, timeout))
+        return {"choices": [{"message": {"content": "fallback ok"}}]}
+
+    client = LLMClient(
+        api_key="key",
+        model="mimo-v2.5-pro",
+        base_url="https://example.com/v1",
+        transport=eof_transport,
+        fallback_transport=fallback_transport,
+    )
+
+    assert client.chat("sys", "user") == "fallback ok"
+    assert [call[0] for call in calls] == ["primary", "fallback"]
+    assert calls[1][2]["Authorization"] == "Bearer key"
+
+
+def test_chat_does_not_fallback_for_non_eof_errors():
+    def http_error_transport(endpoint, headers, payload, timeout):
+        raise LLMClientError("LLM HTTP error 500: broken")
+
+    def fallback_transport(endpoint, headers, payload, timeout):
+        raise AssertionError("fallback should not be called")
+
+    client = LLMClient(
+        api_key="key",
+        model="mimo-v2.5-pro",
+        base_url="https://example.com/v1",
+        transport=http_error_transport,
+        fallback_transport=fallback_transport,
+    )
+
+    with pytest.raises(LLMClientError, match="LLM HTTP error 500"):
+        client.chat("sys", "user")
+
+
+def test_curl_transport_passes_secret_through_stdin_not_command(monkeypatch):
+    captured = {}
+
+    def fake_run(cmd, input, text, capture_output, timeout):
+        captured["cmd"] = cmd
+        captured["input"] = input
+        captured["text"] = text
+        captured["capture_output"] = capture_output
+        captured["timeout"] = timeout
+        return SimpleNamespace(
+            returncode=0,
+            stdout='{"choices":[{"message":{"content":"curl ok"}}]}\n200',
+            stderr="",
+        )
+
+    monkeypatch.setattr("llm.llm_client.shutil.which", lambda name: "/usr/bin/curl")
+    monkeypatch.setattr("llm.llm_client.subprocess.run", fake_run)
+    client = LLMClient(api_key="secret-key", model="mimo-v2.5-pro", base_url="https://example.com/v1")
+
+    response = client._curl_transport(
+        client.endpoint,
+        {"Authorization": "Bearer secret-key", "Content-Type": "application/json"},
+        {"model": "mimo-v2.5-pro", "messages": [{"role": "user", "content": "ping"}]},
+        30,
+    )
+
+    assert response["choices"][0]["message"]["content"] == "curl ok"
+    assert captured["cmd"] == ["/usr/bin/curl", "--config", "-"]
+    assert "secret-key" not in " ".join(captured["cmd"])
+    assert "Authorization: Bearer secret-key" in captured["input"]
+    assert "data-raw" in captured["input"]
+
+
+def test_curl_transport_converts_http_errors(monkeypatch):
+    def fake_run(cmd, input, text, capture_output, timeout):
+        return SimpleNamespace(
+            returncode=0,
+            stdout='{"error":{"message":"Invalid API Key"}}\n401',
+            stderr="",
+        )
+
+    monkeypatch.setattr("llm.llm_client.shutil.which", lambda name: "/usr/bin/curl")
+    monkeypatch.setattr("llm.llm_client.subprocess.run", fake_run)
+    client = LLMClient(api_key="key", model="mimo-v2.5-pro", base_url="https://example.com/v1")
+
+    with pytest.raises(LLMClientError, match="LLM HTTP error 401"):
+        client._curl_transport(client.endpoint, {}, {"model": "mimo-v2.5-pro"}, 30)
+
+
+def test_curl_transport_reports_missing_curl(monkeypatch):
+    monkeypatch.setattr("llm.llm_client.shutil.which", lambda name: None)
+    client = LLMClient(api_key="key", model="mimo-v2.5-pro", base_url="https://example.com/v1")
+
+    with pytest.raises(LLMClientError, match="curl is not available"):
+        client._curl_transport(client.endpoint, {}, {"model": "mimo-v2.5-pro"}, 30)
+
+
 def test_chat_requires_api_key():
     client = LLMClient(api_key="", model="mimo-v2.5-pro", base_url="http://example.com/v1")
 
