@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>UTA Desktop</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="window">
+    <header class="titlebar">
+      <strong>UTA Desktop</strong>
+      <span id="bridgeState">初始化</span>
+    </header>
+
+    <div class="app">
+      <aside class="sidebar">
+        <div class="brand">
+          <h1>UTA</h1>
+          <span>本地 Agent 控制台</span>
+        </div>
+        <button class="nav active" type="button" id="openTaskView">任务</button>
+        <button class="nav" type="button" id="openHistory">运行记录</button>
+        <button class="nav" type="button" id="openMemory">记忆</button>
+        <button class="nav" type="button" id="openSettingsSide">设置</button>
+        <div class="sidebarFooter">
+          <span>输出：~/.uta/outputs</span>
+          <span id="keyState">Key：未配置</span>
+        </div>
+      </aside>
+
+      <main class="main">
+        <header class="mainHead">
+          <div>
+            <h2>任务控制台</h2>
+            <span id="taskIdLabel">未运行</span>
+          </div>
+          <div class="headActions">
+            <span class="status ready" id="statusPill"><i></i><span id="statusText">就绪</span></span>
+            <button class="button ghost" type="button" id="openSettings">设置</button>
+          </div>
+        </header>
+
+        <section class="workspace" id="taskView">
+          <div class="leftColumn">
+            <section class="panel composer">
+              <div class="panelHead">
+                <h3>任务输入</h3>
+                <div class="segments">
+                  <button class="segment active" type="button" data-example="summarize">文本</button>
+                  <button class="segment" type="button" data-example="data">表格</button>
+                </div>
+              </div>
+              <textarea id="taskInput" spellcheck="false">帮我总结一段文本：面对庞杂的Agent学习资料，其知识内容并非无序堆砌，而是一种高度结构化、模块化但分布在不同载体中的体系。</textarea>
+              <div class="toolbar">
+                <button class="button secondary" type="button" id="loadExample">载入示例</button>
+                <button class="button secondary" type="button" id="clearTask">清空</button>
+                <button class="button primary" type="button" id="runTask">运行任务</button>
+              </div>
+            </section>
+
+            <section class="panel grow">
+              <div class="panelHead">
+                <h3>执行过程</h3>
+                <span id="planMeta">0 步</span>
+              </div>
+              <div class="steps" id="planList"></div>
+            </section>
+
+            <section class="panel logsPanel">
+              <div class="panelHead">
+                <h3>实时日志</h3>
+                <button class="button ghost compact" type="button" id="clearLogs">清空</button>
+              </div>
+              <div class="logs" id="logPanel"></div>
+            </section>
+          </div>
+
+          <div class="rightColumn">
+            <section class="panel reportPanel">
+              <div class="panelHead">
+                <h3>最终结果</h3>
+                <button class="button secondary compact" type="button" id="copyReport" disabled>复制</button>
+              </div>
+              <article class="report empty" id="report">等待任务运行</article>
+            </section>
+
+            <details class="stateBox">
+              <summary>state.json</summary>
+              <pre id="stateJson">{
+  "status": "idle",
+  "task_id": null
+}</pre>
+            </details>
+          </div>
+        </section>
+
+        <section class="workspace historyWorkspace hidden" id="historyView">
+          <div class="historyListColumn">
+            <section class="panel historyPanel">
+              <div class="panelHead">
+                <h3>运行记录</h3>
+                <button class="button secondary compact" type="button" id="refreshHistory">刷新</button>
+              </div>
+              <div class="historyList" id="historyList"></div>
+            </section>
+          </div>
+
+          <div class="historyDetailColumn">
+            <section class="panel reportPanel">
+              <div class="panelHead">
+                <h3>历史结果</h3>
+                <span id="historyTaskMeta">未选择</span>
+              </div>
+              <article class="report empty" id="historyReport">选择一条运行记录</article>
+            </section>
+
+            <section class="panel logsPanel historyLogsPanel">
+              <div class="panelHead">
+                <h3>历史日志</h3>
+              </div>
+              <div class="logs" id="historyLogPanel"></div>
+            </section>
+
+            <details class="stateBox">
+              <summary>历史 state.json</summary>
+              <pre id="historyStateJson">{
+  "status": "idle",
+  "task_id": null
+}</pre>
+            </details>
+          </div>
+        </section>
+
+        <section class="workspace memoryWorkspace hidden" id="memoryView">
+          <div class="memoryColumn">
+            <section class="panel memoryPanel">
+              <div class="panelHead">
+                <h3>短期记忆</h3>
+                <button class="button secondary compact" type="button" id="refreshMemory">刷新</button>
+              </div>
+              <div class="memoryBlock" id="memoryShortTerm"></div>
+            </section>
+
+            <section class="panel memoryPanel">
+              <div class="panelHead">
+                <h3>任务历史</h3>
+              </div>
+              <div class="memoryBlock" id="memoryTaskHistory"></div>
+            </section>
+          </div>
+
+          <div class="memoryColumn">
+            <section class="panel memoryPanel">
+              <div class="panelHead">
+                <h3>经验</h3>
+              </div>
+              <div class="memoryBlock" id="memoryLessons"></div>
+            </section>
+
+            <section class="panel memoryPanel">
+              <div class="panelHead">
+                <h3>负向规则</h3>
+              </div>
+              <div class="memoryBlock" id="memoryNegativeRules"></div>
+            </section>
+
+            <section class="panel memoryPanel">
+              <div class="panelHead">
+                <h3>Skill 候选</h3>
+              </div>
+              <div class="memoryBlock" id="memorySkillCandidates"></div>
+            </section>
+          </div>
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <div class="modalBackdrop" id="settingsModal" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
+    <form class="modal" id="settingsForm">
+      <header>
+        <h2 id="settingsTitle">本地设置</h2>
+        <button class="button ghost compact" type="button" id="closeSettings">关闭</button>
+      </header>
+      <label>
+        <span>Base URL</span>
+        <input id="baseUrl" autocomplete="off" />
+      </label>
+      <label>
+        <span>模型</span>
+        <input id="modelName" autocomplete="off" />
+      </label>
+      <label>
+        <span>API Key</span>
+        <input id="apiKey" type="password" autocomplete="off" placeholder="留空则保留原 Key" />
+      </label>
+      <label class="switchRow">
+        <span>SSL 校验</span>
+        <input id="sslVerify" type="checkbox" />
+      </label>
+      <footer>
+        <button class="button secondary" type="button" id="clearKey">清除 Key</button>
+        <button class="button primary" type="submit">保存</button>
+      </footer>
+    </form>
+  </div>
+
+  <div class="toast" id="toast">
+    <strong id="toastTitle">提示</strong>
+    <p id="toastBody"></p>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

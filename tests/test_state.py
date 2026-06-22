@@ -58,3 +58,14 @@ def test_agent_state_includes_memory_saved_flag():
 
     assert state.memory_saved is False
     assert state.to_dict()["memory_saved"] is False
+
+
+def test_agent_state_exports_replan_tracking_fields():
+    state = AgentState(task_id="task_test", user_input="测试")
+    state.replan_count = 1
+    state.replan_events.append({"failed_step_id": 2, "resume_step_id": 2})
+
+    exported = state.to_dict()
+
+    assert exported["replan_count"] == 1
+    assert exported["replan_events"] == [{"failed_step_id": 2, "resume_step_id": 2}]

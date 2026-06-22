@@ -12,7 +12,7 @@ from memory_providers.json_memory_provider import JsonMemoryProvider
 
 
 def generate_task_id() -> str:
-    return "task_" + datetime.now().strftime("%Y%m%d_%H%M%S")
+    return "task_" + datetime.now().strftime("%Y%m%d_%H%M%S_%f")
 
 
 def create_initial_state(task_id: str, user_input: str) -> AgentState:
@@ -55,6 +55,13 @@ def build_log_lines(state: AgentState) -> list[str]:
         lines.append(f"[Reflection] failure_type = {feedback.failure_type}")
         lines.append(f"[Reflection] repair_strategy = {feedback.repair_strategy}")
 
+    lines.append(f"[Replan] count = {state.replan_count}")
+    for event in state.replan_events:
+        lines.append(
+            "[Replan] failed_step = "
+            f"{event.get('failed_step_id')}, resume_step = {event.get('resume_step_id')}"
+        )
+
     lines.append(f"[Memory] saved = {str(state.memory_saved).lower()}")
 
     lines.extend(
@@ -73,6 +80,18 @@ def save_log(state: AgentState, log_dir: Path) -> Path:
     return log_path
 
 
+def emit_progress(on_progress, event_type: str, state: AgentState, data: dict) -> None:
+    if on_progress is None:
+        return
+    on_progress(
+        {
+            "type": event_type,
+            "task_id": state.task_id,
+            "data": data,
+        }
+    )
+
+
 def run_task(
     task: str,
     output_root: Path | str = "outputs",
@@ -81,31 +100,62 @@ def run_task(
     tool_registry=None,
     memory_provider=None,
     skill_loader=None,
+    on_progress=None,
 ) -> AgentState:
     root = Path(output_root)
     state = create_initial_state(task_id or generate_task_id(), task)
+    emit_progress(
+        on_progress,
+        "task_received",
+        state,
+        {"user_input": state.user_input},
+    )
     parser = task_parser if task_parser is not None else TaskParser()
     parsed_task = parser.parse(state.task_id, state.user_input)
     apply_task_to_state(state, parsed_task)
+    emit_progress(
+        on_progress,
+        "parsed",
+        state,
+        {"task_type": state.task_type, "intent": state.intent},
+    )
     if skill_loader is False:
         state.matched_skill = None
     else:
         loader = skill_loader if skill_loader is not None else SkillLoader()
         state.matched_skill = loader.match(parsed_task)
-    state = run_minimal_loop(state, tool_registry=tool_registry)
+    emit_progress(
+        on_progress,
+        "skill_matched",
+        state,
+        {"skill_id": state.matched_skill.get("id") if state.matched_skill else None},
+    )
+    state = run_minimal_loop(state, tool_registry=tool_registry, on_progress=on_progress)
     if memory_provider is False:
         state.memory_saved = False
     else:
         provider = memory_provider if memory_provider is not None else JsonMemoryProvider()
         provider.save_task(state)
         state.memory_saved = True
+    emit_progress(
+        on_progress,
+        "memory_saved",
+        state,
+        {"saved": state.memory_saved},
+    )
     state.save_json(root / "states")
     save_log(state, root / "logs")
+    emit_progress(
+        on_progress,
+        "task_completed",
+        state,
+        {"status": state.status, "final_output": state.final_output},
+    )
     return state
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Universal Task Agent V0.6")
+    parser = argparse.ArgumentParser(description="Universal Task Agent V1.0 Learning Agent")
     parser.add_argument("--task", required=True, help="要执行的任务")
     parser.add_argument("--output-root", default="outputs", help="运行产物输出目录")
     return parser.parse_args()

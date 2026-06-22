@@ -9,6 +9,9 @@ venv/
 
 # outputs
 outputs/
+/dist/
+/build/
+*.spec.log
 
 # local db
 *.db

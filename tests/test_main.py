@@ -1,5 +1,7 @@
 import json
+from datetime import datetime
 
+import main
 from core.state import Feedback, Task
 from main import build_log_lines, create_initial_state, run_task
 from tools.base_tool import BaseTool
@@ -71,6 +73,29 @@ class FakeSkillLoader:
         return self.matched_skill
 
 
+def test_generate_task_id_uses_microseconds_to_avoid_same_second_collisions(monkeypatch):
+    class FakeDateTime:
+        values = iter(
+            [
+                datetime(2026, 6, 22, 1, 2, 3, 123456),
+                datetime(2026, 6, 22, 1, 2, 3, 123457),
+            ]
+        )
+
+        @classmethod
+        def now(cls):
+            return next(cls.values)
+
+    monkeypatch.setattr(main, "datetime", FakeDateTime)
+
+    first = main.generate_task_id()
+    second = main.generate_task_id()
+
+    assert first != second
+    assert first == "task_20260622_010203_123456"
+    assert second == "task_20260622_010203_123457"
+
+
 def test_create_initial_state_starts_unknown_before_parser():
     state = create_initial_state("task_test", "帮我分析 CSV")
 
@@ -108,6 +133,36 @@ def test_run_task_writes_state_and_log(tmp_path):
     log_text = log_path.read_text(encoding="utf-8")
     assert "[Planner] created 3 steps" in log_text
     assert "[Router] selected tool = file_tool" in log_text
+
+
+def test_run_task_emits_progress_events(tmp_path):
+    events = []
+
+    state = run_task(
+        "帮我总结一段文本",
+        output_root=tmp_path,
+        task_id="task_test",
+        task_parser=FakeParser(),
+        tool_registry=make_static_summary_registry(),
+        memory_provider=False,
+        skill_loader=False,
+        on_progress=events.append,
+    )
+
+    assert state.status == "completed"
+    assert [event["task_id"] for event in events] == ["task_test"] * len(events)
+    event_types = [event["type"] for event in events]
+    assert event_types[:4] == [
+        "task_received",
+        "parsed",
+        "skill_matched",
+        "plan_created",
+    ]
+    assert "memory_saved" in event_types
+    assert event_types[-1] == "task_completed"
+    completed = events[-1]
+    assert completed["data"]["status"] == "completed"
+    assert completed["data"]["final_output"] == VALID_SUMMARY_REPORT
 
 
 def test_run_task_outputs_real_summary_with_injected_tools(tmp_path):
@@ -248,6 +303,25 @@ def test_log_lines_include_reflection_feedback():
 
     assert "[Reflection] failure_type = incomplete_output" in log_text
     assert "[Reflection] repair_strategy = 补齐风险点小节" in log_text
+
+
+def test_build_log_lines_includes_replan_events():
+    state = create_initial_state("task_test", "测试")
+    state.task_type = "summarize"
+    state.replan_count = 1
+    state.replan_events.append(
+        {
+            "failed_step_id": 2,
+            "failed_goal": "提取核心信息",
+            "resume_step_id": 2,
+            "root_cause": "缺少必要小节：风险点",
+        }
+    )
+
+    lines = build_log_lines(state)
+
+    assert "[Replan] count = 1" in lines
+    assert "[Replan] failed_step = 2, resume_step = 2" in lines
 
 
 def test_run_task_saves_matched_skill_with_injected_loader(tmp_path):

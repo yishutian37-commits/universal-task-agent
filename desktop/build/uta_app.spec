@@ -1,0 +1,97 @@
+# -*- mode: python ; coding: utf-8 -*-
+
+from pathlib import Path
+
+
+ROOT = Path.cwd()
+FRONTEND = ROOT / "desktop" / "frontend"
+EXAMPLES = ROOT / "examples"
+SKILLS = ROOT / "skills"
+
+datas = [
+    (str(FRONTEND), "frontend"),
+    (str(EXAMPLES), "examples"),
+    (str(SKILLS), "skills"),
+]
+
+a = Analysis(
+    [str(ROOT / "desktop" / "build" / "uta_app.py")],
+    pathex=[str(ROOT)],
+    binaries=[],
+    datas=datas,
+    hiddenimports=[
+        "webview.platforms.cocoa",
+        "certifi",
+        "desktop.api",
+        "desktop.app",
+        "desktop.runner",
+        "desktop.settings_store",
+        "core.executor",
+        "core.loop",
+        "core.planner",
+        "core.reflection",
+        "core.router",
+        "core.skill_loader",
+        "core.state",
+        "core.task_parser",
+        "core.verifier",
+        "llm.llm_client",
+        "memory_providers.json_memory_provider",
+        "tools.file_tool",
+        "tools.mock_tool",
+        "tools.report_tool",
+        "tools.table_tool",
+        "tools.text_tool",
+    ],
+    hookspath=[],
+    hooksconfig={},
+    runtime_hooks=[],
+    excludes=[],
+    noarchive=False,
+    optimize=0,
+)
+
+pyz = PYZ(a.pure)
+
+exe = EXE(
+    pyz,
+    a.scripts,
+    [],
+    exclude_binaries=True,
+    name="UTA Desktop",
+    debug=False,
+    bootloader_ignore_signals=False,
+    strip=False,
+    upx=True,
+    console=False,
+    disable_windowed_traceback=False,
+    argv_emulation=False,
+    target_arch=None,
+    codesign_identity=None,
+    entitlements_file=None,
+)
+
+coll = COLLECT(
+    exe,
+    a.binaries,
+    a.datas,
+    strip=False,
+    upx=True,
+    upx_exclude=[],
+    name="UTA Desktop",
+)
+
+app = BUNDLE(
+    coll,
+    name="UTA Desktop.app",
+    icon=None,
+    bundle_identifier="com.uta.desktop",
+    info_plist={
+        "CFBundleName": "UTA Desktop",
+        "CFBundleDisplayName": "UTA Desktop",
+        "CFBundleShortVersionString": "2.0.0",
+        "CFBundleVersion": "2.0.0",
+        "LSMinimumSystemVersion": "11.0",
+        "NSHighResolutionCapable": True,
+    },
+)
