@@ -1,8 +1,8 @@
 # Universal Task Agent
 
-UTA 是一个学习型 Agent 框架。当前里程碑是 `v0.8-skill-runtime`：在总结、表格分析和基础 JSON Memory 之外，新增本地 Markdown Skill 的沉淀、加载和 Planner 注入闭环。
+UTA 是一个学习型 Agent 框架。当前核心里程碑是 `v1.0-learning-agent`：支持文本总结和表格分析两类任务，跑通 Task Parser、Planner、Agent Loop、Router、Executor、Verifier、Reflection、Replan、JSON Memory 和 Skill Loader。
 
-## Quickstart
+## 快速开始
 
 ```bash
 python3 -m venv .venv
@@ -10,13 +10,30 @@ python3 -m venv .venv
 .venv/bin/python main.py --task "帮我总结一段文本"
 ```
 
-## 表格分析示例
+## V1.0 Demo
+
+文本总结：
+
+```bash
+.venv/bin/python main.py --task "帮我总结一段文本：UTA V1.0 要跑通 Agent Loop、Verifier、Memory 和 Skill。"
+```
+
+表格分析：
 
 ```bash
 .venv/bin/python main.py --task "分析 examples/orders.csv"
 ```
 
-## Memory 示例
+## 短期记忆与长期记忆
+
+- 短期记忆：单次任务内的 `AgentState`，保存到 `outputs/states/<task_id>_state.json`，日志保存到 `outputs/logs/<task_id>.log`。
+- 长期记忆：跨任务 JSON Memory，保存在 `memory/*.json`。
+- `memory/task_history.json`：任务历史。
+- `memory/lessons.json`：成功任务沉淀出的可复用经验。
+- `memory/negative_rules.json`：失败任务沉淀出的负向规则。
+- `memory/skill_candidates.json`：可能值得人工确认成 Skill 的候选。
+
+## 记忆示例
 
 任务完成后，UTA 会更新 `memory/*.json`：
 
@@ -26,10 +43,10 @@ python3 -m venv .venv
 
 重点文件：
 
-- `memory/task_history.json`: 跨任务历史
-- `memory/lessons.json`: 成功任务的可复用经验
-- `memory/negative_rules.json`: 失败任务的负向规则
-- `memory/skill_candidates.json`: v0.8 Skill Builder 的候选输入
+- `memory/task_history.json`：跨任务历史。
+- `memory/lessons.json`：成功任务的可复用经验。
+- `memory/negative_rules.json`：失败任务的负向规则。
+- `memory/skill_candidates.json`：Skill Builder 的候选输入。
 
 ## Skill 示例
 
@@ -72,4 +89,5 @@ LLM_SSL_VERIFY=0
 - `v0.6-data-analysis`: `table_tool` 读取 CSV / Excel，生成字段、基础统计、缺失值、异常值和分类汇总，并由 `Verifier` 做表格报告校验。
 - `v0.7-memory`: 新增 `JsonMemoryProvider`，任务完成后写入 `memory/*.json`，保存任务历史、经验、失败规则和 Skill 候选。
 - `v0.8-skill-runtime`: 新增 `SkillLoader` 和 `SkillBuilder`，支持本地 Markdown Skill 的加载、候选草稿生成和 Planner workflow 注入。
+- `v1.0-learning-agent`: 新增 A11 replan，单个 step 重试耗尽后可重新规划一次，并从失败 step 继续；完成 README、CHANGELOG 和两类 demo 验收。
 - TAM Memory 不属于 UTA v1.0 核心范围。
