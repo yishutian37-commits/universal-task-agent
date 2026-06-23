@@ -49,3 +49,13 @@ def test_defaults_reuses_existing_db(tmp_path: Path):
 
     kb2 = create_default_kb(db_path=db)  # 重新打开同一库
     assert kb2._store.count() == 1  # 数据持久化了
+
+
+def test_knowledgebase_from_config_classmethod(tmp_path: Path):
+    from rag.kb import KnowledgeBase
+
+    kb = KnowledgeBase.from_config(db_path=str(tmp_path / "kb.db"))
+    f = tmp_path / "x.md"
+    f.write_text("内容", encoding="utf-8")
+    kb.ingest_path(str(f))
+    assert kb._store.count() == 1

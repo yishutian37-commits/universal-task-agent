@@ -40,6 +40,13 @@ class KnowledgeBase:
         self.retriever = retriever
         self.generator = generator
 
+    @classmethod
+    def from_config(cls, db_path: str = "data/knowledge.db") -> "KnowledgeBase":
+        """无参装配：用 v0.2 默认组件创建实例。"""
+        from rag.defaults import create_default_kb
+
+        return create_default_kb(db_path=db_path)
+
     def ingest_path(self, source: str) -> dict:
         """摄入单个来源（文件路径）：加载→切片→嵌入→存储，幂等。"""
         loader = self.loader_factory.get(source)

@@ -5,6 +5,7 @@
 ## 当前状态
 
 - `v0.1-skeleton`：六层管线骨架（Loader/Chunker/Embedder/VectorStore/Retriever/Generator），全 fake 实现，接口契约确立。
+- `v0.2-mvp`：真实管线（TextLoader/FixedChunker/SqliteStore/VectorRetriever），能摄入 MD 文件、检索、生成答案。embedding/generator 为临时实现，真实版本见 v0.2.5。
 
 ## 架构
 
@@ -27,3 +28,23 @@ python -m pytest -v
 ```
 
 预期：六层接口 + KnowledgeBase 编排测试全部通过。本阶段为骨架，真实 Loader/Embedder/Store 实现见 v0.2-mvp。
+
+## v0.2 验收
+
+```bash
+cd rag-knowledge-base
+python -m pip install -r requirements.txt
+python -m pytest -v          # 全量测试通过（71 passed）
+```
+
+端到端冒烟（摄入真实 MD 并问答）：
+
+```python
+from rag import create_default_kb
+kb = create_default_kb(db_path="data/knowledge.db")
+kb.ingest_path("notes.md")
+ans = kb.ask("UTA 是什么")
+print(ans.answer)
+```
+
+本阶段能真实摄入 MD 文件并检索问答。真实语义 embedding 和 LLM 生成见 v0.2.5。
