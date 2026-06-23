@@ -17,3 +17,13 @@ answer = kb.ask("问题")
 ```
 
 详细设计见 `docs/superpowers/specs/2026-06-24-rag-knowledge-base-design.md`。
+
+## v0.1 验收
+
+```bash
+cd rag-knowledge-base
+python -m pip install -r requirements.txt
+python -m pytest -v
+```
+
+预期：六层接口 + KnowledgeBase 编排测试全部通过。本阶段为骨架，真实 Loader/Embedder/Store 实现见 v0.2-mvp。
