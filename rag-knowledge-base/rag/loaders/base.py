@@ -39,3 +39,10 @@ class LoaderFactory:
                 f"当前支持：{sorted(self._loaders.keys())}"
             )
         return loader
+
+    @classmethod
+    def for_text(cls) -> "LoaderFactory":
+        """便捷构造：注册 .md/.txt 的 TextLoader。"""
+        from rag.loaders.text_loader import TextLoader
+
+        return cls({".md": TextLoader(), ".txt": TextLoader()})
