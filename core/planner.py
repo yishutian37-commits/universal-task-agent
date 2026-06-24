@@ -32,4 +32,6 @@ class Planner:
             return ["搜索相关资料", "生成带来源的调研报告"]
         if task_type == "code_reading":
             return ["扫描 UTA 任务执行链路代码", "生成代码阅读报告"]
+        if task_type == "geo_analysis":
+            return ["读取 GEO 规则包并生成问题矩阵", "生成 GEO 分析报告"]
         return ["执行 V0.3 mock 工具"]

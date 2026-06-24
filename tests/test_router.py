@@ -88,3 +88,10 @@ def test_router_routes_code_reading_goal_to_code_tool():
 
     assert action.tool_name == "code_tool"
     assert action.action_name == "scan"
+
+
+def test_router_routes_geo_goal_to_geo_tool():
+    action = route("读取 GEO 规则包并生成问题矩阵")
+
+    assert action.tool_name == "geo_tool"
+    assert action.action_name == "analyze"

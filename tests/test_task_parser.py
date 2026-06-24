@@ -155,3 +155,18 @@ def test_task_parser_fallback_detects_code_reading_when_llm_fails():
 
 def test_task_parser_system_prompt_allows_code_reading():
     assert "code_reading" in TaskParser._system_prompt()
+
+
+def test_task_parser_fallback_detects_geo_analysis_when_llm_fails():
+    parser = TaskParser(llm_client=FailingLLMClient())
+
+    task = parser.parse("task_test", "帮我做 GEO 分析，生成问题矩阵和平台合规检查")
+
+    assert task.task_type == "geo_analysis"
+    assert task.intent == "geo_analysis"
+    assert task.input_type == "text"
+    assert task.expected_output == "geo_report"
+
+
+def test_task_parser_system_prompt_allows_geo_analysis():
+    assert "geo_analysis" in TaskParser._system_prompt()

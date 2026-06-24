@@ -117,3 +117,12 @@ def test_planner_creates_code_reading_plan():
         "扫描 UTA 任务执行链路代码",
         "生成代码阅读报告",
     ]
+
+
+def test_planner_creates_geo_analysis_plan():
+    plan = Planner().create_plan(make_task("geo_analysis"))
+
+    assert [step.goal for step in plan.steps] == [
+        "读取 GEO 规则包并生成问题矩阵",
+        "生成 GEO 分析报告",
+    ]

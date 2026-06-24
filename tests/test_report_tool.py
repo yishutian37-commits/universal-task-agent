@@ -64,6 +64,54 @@ CODE_ANALYSIS = {
     ],
 }
 
+GEO_ANALYSIS = {
+    "message": "已完成 GEO 分析",
+    "geo_analysis": True,
+    "industry": "本地装修",
+    "region": "包头",
+    "brand_facts": ["有官网", "提供设计和施工服务", "需要避免夸大承诺"],
+    "fact_gaps": ["资质", "价格", "地址", "案例"],
+    "question_matrix": [
+        {
+            "question": "包头本地装修哪家靠谱？",
+            "layer": "pool_layer",
+            "intent": "本地推荐",
+            "formula": "地域+品类+推荐",
+            "business_value": "high",
+            "content_actionability": "high",
+            "recommended_platforms": ["公众号", "百家号"],
+        }
+    ],
+    "content_briefs": [
+        {
+            "platform": "公众号",
+            "template": "品牌介绍",
+            "target_question": "包头本地装修哪家靠谱？",
+            "title_candidates": ["包头本地装修哪家靠谱？先看这几个核验点"],
+            "writing_guidance": "先回答目标问题，再列核验标准。",
+            "compliance_level": "warning",
+        }
+    ],
+    "compliance_checks": [
+        {
+            "level": "warning",
+            "issues": [
+                {
+                    "type": "claim_risk",
+                    "message": "输入中出现承诺或夸大相关表达。",
+                    "suggestion": "改成可核验事实。",
+                }
+            ],
+            "can_save_publish_record": True,
+        }
+    ],
+    "vendor_rules": {
+        "question_matrix_contract": "skills/vendor/geo-agent-marketing-optimized/skills/geo-content-optimization/references/question-matrix-contract.md",
+        "citability_framework": "skills/vendor/geo-agent-marketing-optimized/skills/geo-content-optimization/references/citability-framework.md",
+        "platform_risk_levels": "skills/vendor/geo-agent-marketing-optimized/skills/platform-compliance-check/references/risk-levels.md",
+    },
+}
+
 
 def test_report_tool_uses_summary_markdown_as_final_message():
     result = ReportTool().run(
@@ -160,6 +208,21 @@ def test_report_tool_generates_code_reading_report():
     assert "core/loop.py" in report
     assert "core/router.py" in report
     assert "core/verifier.py" in report
+
+
+def test_report_tool_generates_geo_report():
+    result = ReportTool().run("generate", {"previous_result": GEO_ANALYSIS})
+
+    report = result["report_markdown"]
+
+    assert result["message"] == report
+    assert result["source_geo_analysis"] == GEO_ANALYSIS
+    for section in ["事实输入", "事实缺口", "问题矩阵", "内容Brief", "平台合规", "规则来源", "下一步建议"]:
+        assert f"## {section}" in report
+    assert "本地装修" in report
+    assert "包头" in report
+    assert "包头本地装修哪家靠谱？" in report
+    assert "question-matrix-contract.md" in report
 
 
 def test_report_tool_generates_weather_report():

@@ -8,6 +8,7 @@ TABLE_REQUIRED_SECTIONS = ["字段说明", "基础统计", "异常数据"]
 RESEARCH_REQUIRED_SECTIONS = ["结论", "关键发现", "来源", "注意事项"]
 CODE_REQUIRED_SECTIONS = ["任务链路", "关键文件", "模块职责", "调用顺序", "状态与记忆", "桌面端入口", "风险点", "下一步建议"]
 CODE_REQUIRED_FILES = ["main.py", "core/loop.py", "core/router.py", "core/verifier.py"]
+GEO_REQUIRED_SECTIONS = ["事实输入", "事实缺口", "问题矩阵", "内容Brief", "平台合规", "规则来源", "下一步建议"]
 
 
 class Verifier:
@@ -34,6 +35,9 @@ class Verifier:
 
         if self._should_check_code_report(state, result):
             return self._check_code_report(result)
+
+        if self._should_check_geo_report(state, result):
+            return self._check_geo_report(result)
 
         return CheckResult(passed=True, failed_reasons=[], suggested_fix=[])
 
@@ -70,6 +74,13 @@ class Verifier:
         return (
             state is not None
             and state.task_type == "code_reading"
+            and result.tool_name == "report_tool"
+        )
+
+    def _should_check_geo_report(self, state: AgentState | None, result: ToolResult) -> bool:
+        return (
+            state is not None
+            and state.task_type == "geo_analysis"
             and result.tool_name == "report_tool"
         )
 
@@ -139,6 +150,44 @@ class Verifier:
             if path not in key_files_section:
                 failed_reasons.append(f"关键文件小节缺少文件：{path}")
                 suggested_fix.append(f"在关键文件小节补充：{path}")
+
+        return CheckResult(
+            passed=not failed_reasons,
+            failed_reasons=failed_reasons,
+            suggested_fix=suggested_fix,
+        )
+
+    def _check_geo_report(self, result: ToolResult) -> CheckResult:
+        report_text = str(result.result.get("message") or result.result.get("report_markdown") or "")
+        source_analysis = result.result.get("source_geo_analysis") or {}
+        question_matrix = source_analysis.get("question_matrix") if isinstance(source_analysis, dict) else []
+        if not isinstance(question_matrix, list):
+            question_matrix = []
+
+        failed_reasons = []
+        suggested_fix = []
+
+        for section in GEO_REQUIRED_SECTIONS:
+            content = self._section_content(report_text, section, GEO_REQUIRED_SECTIONS)
+            if content is None:
+                failed_reasons.append(f"缺少必要小节：{section}")
+                suggested_fix.append(f"补齐{section}小节")
+            elif not content.strip():
+                failed_reasons.append(f"小节内容为空：{section}")
+                suggested_fix.append(f"补充{section}小节内容")
+
+        if not question_matrix:
+            failed_reasons.append("GEO 分析缺少问题矩阵")
+            suggested_fix.append("补充 GEO 问题矩阵")
+
+        matrix_section = self._section_content(report_text, "问题矩阵", GEO_REQUIRED_SECTIONS) or ""
+        for item in question_matrix:
+            if not isinstance(item, dict):
+                continue
+            question = str(item.get("question") or "").strip()
+            if question and question not in matrix_section:
+                failed_reasons.append(f"问题矩阵小节缺少问题：{question}")
+                suggested_fix.append(f"在问题矩阵小节补充：{question}")
 
         return CheckResult(
             passed=not failed_reasons,

@@ -18,6 +18,7 @@ def _generate_task_id() -> str:
 def build_tool_registry() -> dict[str, Any]:
     from tools.code_tool import CodeTool
     from tools.file_tool import FileTool
+    from tools.geo_tool import GeoTool
     from tools.mock_tool import MockTool
     from tools.report_tool import ReportTool
     from tools.search_tool import SearchTool
@@ -28,6 +29,7 @@ def build_tool_registry() -> dict[str, Any]:
         "mock_tool": MockTool(),
         "code_tool": CodeTool(resource_path(".")),
         "file_tool": FileTool(),
+        "geo_tool": GeoTool(resource_path("skills/vendor/geo-agent-marketing-optimized")),
         "text_tool": TextTool(),
         "table_tool": TableTool(),
         "report_tool": ReportTool(),

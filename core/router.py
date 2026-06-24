@@ -3,6 +3,7 @@ from core.state import Action, AgentState, PlanStep
 
 class Router:
     RULES = [
+        (("GEO 规则包", "生成式引擎优化", "AI可见性", "AI 可见性", "问题矩阵", "内容Brief", "内容 Brief", "平台合规"), "geo_tool", "analyze"),
         (("读取", "文件", "txt", "md", "csv", "excel", "表格文件"), "file_tool", "read"),
         (("文本", "摘要", "提取", "核心信息", "核心观点", "风险"), "text_tool", "process"),
         (("报告", "Markdown", "输出", "调研报告"), "report_tool", "generate"),

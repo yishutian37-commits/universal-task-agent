@@ -6,7 +6,7 @@ from core.state import Task
 from llm.llm_client import LLMClient
 
 
-ALLOWED_TASK_TYPES = {"summarize", "data_analysis", "research", "code_reading", "unknown"}
+ALLOWED_TASK_TYPES = {"summarize", "data_analysis", "research", "code_reading", "geo_analysis", "unknown"}
 
 
 class TaskParser:
@@ -42,7 +42,7 @@ class TaskParser:
     def _system_prompt() -> str:
         return (
             "你是 UTA 的 Task Parser。只返回 JSON，不要输出解释。"
-            "task_type 只能是 summarize、data_analysis、research、code_reading、unknown。"
+            "task_type 只能是 summarize、data_analysis、research、code_reading、geo_analysis、unknown。"
         )
 
     @staticmethod
@@ -118,6 +118,17 @@ class TaskParser:
                 constraints=[],
                 missing_info=[],
             )
+        if guessed_type == "geo_analysis":
+            return Task(
+                task_id=task_id,
+                user_input=user_input,
+                task_type="geo_analysis",
+                intent="geo_analysis",
+                input_type="text",
+                expected_output="geo_report",
+                constraints=[],
+                missing_info=[],
+            )
         return Task(
             task_id=task_id,
             user_input=user_input,
@@ -132,6 +143,10 @@ class TaskParser:
     @staticmethod
     def _guess_task_type(user_input: str) -> str:
         text = user_input.lower()
+        if any(marker in text for marker in ["geo", "生成式引擎优化"]):
+            return "geo_analysis"
+        if any(marker in user_input for marker in ["AI可见性", "AI 可见性", "问题矩阵", "内容Brief", "内容 Brief", "平台合规"]):
+            return "geo_analysis"
         if any(marker in text for marker in [".csv", ".xlsx", "csv", "excel", "xlsx", "表格"]):
             return "data_analysis"
         if any(

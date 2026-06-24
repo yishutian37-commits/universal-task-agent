@@ -63,6 +63,7 @@ a = Analysis(
         "memory_providers.json_memory_provider",
         "tools.code_tool",
         "tools.file_tool",
+        "tools.geo_tool",
         "tools.mock_tool",
         "tools.report_tool",
         "tools.table_tool",

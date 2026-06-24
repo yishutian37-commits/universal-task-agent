@@ -10,6 +10,13 @@ class ReportTool(BaseTool):
     def run(self, action_name: str, params: dict[str, Any]) -> dict[str, Any]:
         del action_name
         previous = params.get("previous_result")
+        if isinstance(previous, dict) and previous.get("geo_analysis") is True:
+            report = self._geo_report(previous)
+            return {
+                "message": report,
+                "report_markdown": report,
+                "source_geo_analysis": previous,
+            }
         if isinstance(previous, dict) and previous.get("code_analysis") is True:
             report = self._code_report(previous)
             return {
@@ -49,6 +56,120 @@ class ReportTool(BaseTool):
             "message": summary,
             "report_markdown": summary,
         }
+
+    def _geo_report(self, analysis: dict[str, Any]) -> str:
+        return "\n\n".join(
+            [
+                self._geo_facts_section(analysis),
+                self._geo_fact_gaps_section(analysis),
+                self._geo_question_matrix_section(analysis),
+                self._geo_brief_section(analysis),
+                self._geo_compliance_section(analysis),
+                self._geo_rule_sources_section(analysis),
+                self._geo_next_steps_section(analysis),
+            ]
+        )
+
+    def _geo_facts_section(self, analysis: dict[str, Any]) -> str:
+        facts = analysis.get("brand_facts") if isinstance(analysis.get("brand_facts"), list) else []
+        fact_text = "；".join(str(item) for item in facts) if facts else "未提供已确认品牌事实"
+        return "\n".join(
+            [
+                "## 事实输入",
+                f"- 行业：{analysis.get('industry') or '未提供行业'}",
+                f"- 地区：{analysis.get('region') or '未提供地区'}",
+                f"- 品牌事实：{fact_text}",
+            ]
+        )
+
+    def _geo_fact_gaps_section(self, analysis: dict[str, Any]) -> str:
+        gaps = analysis.get("fact_gaps") if isinstance(analysis.get("fact_gaps"), list) else []
+        lines = ["## 事实缺口"]
+        if not gaps:
+            lines.append("- 未发现明显事实缺口")
+        else:
+            lines.extend(f"- {gap}" for gap in gaps)
+        return "\n".join(lines)
+
+    def _geo_question_matrix_section(self, analysis: dict[str, Any]) -> str:
+        questions = analysis.get("question_matrix")
+        if not isinstance(questions, list):
+            questions = []
+        lines = ["## 问题矩阵"]
+        if not questions:
+            lines.append("- 未生成问题矩阵")
+            return "\n".join(lines)
+        for item in questions:
+            if not isinstance(item, dict):
+                continue
+            lines.append(
+                "- "
+                f"{item.get('question') or '未命名问题'}"
+                f"（{item.get('layer') or 'unknown'}，{item.get('intent') or 'unknown'}，"
+                f"商业价值：{item.get('business_value') or 'unknown'}）"
+            )
+        return "\n".join(lines)
+
+    def _geo_brief_section(self, analysis: dict[str, Any]) -> str:
+        briefs = analysis.get("content_briefs")
+        if not isinstance(briefs, list):
+            briefs = []
+        lines = ["## 内容Brief"]
+        if not briefs:
+            lines.append("- 未生成内容 Brief")
+            return "\n".join(lines)
+        for item in briefs:
+            if not isinstance(item, dict):
+                continue
+            titles = item.get("title_candidates") if isinstance(item.get("title_candidates"), list) else []
+            title_text = "；".join(str(title) for title in titles[:3]) if titles else "未提供标题候选"
+            lines.append(
+                f"- {item.get('platform') or '未知平台'} × {item.get('template') or '未知模板'}："
+                f"{item.get('target_question') or '未绑定问题'}。标题候选：{title_text}"
+            )
+        return "\n".join(lines)
+
+    def _geo_compliance_section(self, analysis: dict[str, Any]) -> str:
+        checks = analysis.get("compliance_checks")
+        if not isinstance(checks, list):
+            checks = []
+        lines = ["## 平台合规"]
+        if not checks:
+            lines.append("- 未生成合规检查")
+            return "\n".join(lines)
+        for check in checks:
+            if not isinstance(check, dict):
+                continue
+            issues = check.get("issues") if isinstance(check.get("issues"), list) else []
+            if not issues:
+                lines.append(f"- {check.get('level') or 'suggestion'}：未发现阻断风险")
+            for issue in issues:
+                if isinstance(issue, dict):
+                    lines.append(
+                        f"- {check.get('level') or 'warning'}：{issue.get('message') or '存在风险'}"
+                        f" 建议：{issue.get('suggestion') or '人工复核'}"
+                    )
+        return "\n".join(lines)
+
+    def _geo_rule_sources_section(self, analysis: dict[str, Any]) -> str:
+        rules = analysis.get("vendor_rules") if isinstance(analysis.get("vendor_rules"), dict) else {}
+        lines = ["## 规则来源"]
+        for key in ["question_matrix_contract", "citability_framework", "platform_risk_levels"]:
+            if rules.get(key):
+                lines.append(f"- {key}: {rules[key]}")
+        if len(lines) == 1:
+            lines.append("- 未提供规则来源")
+        return "\n".join(lines)
+
+    def _geo_next_steps_section(self, analysis: dict[str, Any]) -> str:
+        return "\n".join(
+            [
+                "## 下一步建议",
+                "- 先补齐事实缺口，避免在内容中生成无法核验的确定性承诺。",
+                "- 从问题矩阵中选择一个问题，生成平台内容 Brief。",
+                "- 发布前按平台合规结果做人工复核。",
+            ]
+        )
 
     def _code_report(self, analysis: dict[str, Any]) -> str:
         files = analysis.get("files")

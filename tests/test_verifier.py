@@ -401,3 +401,70 @@ def test_verifier_rejects_code_report_missing_required_file():
     assert check.passed is False
     assert "扫描结果缺少关键文件：core/verifier.py" in check.failed_reasons
     assert "关键文件小节缺少文件：core/verifier.py" in check.failed_reasons
+
+
+def test_verifier_accepts_complete_geo_report():
+    state = AgentState(
+        task_id="task_test",
+        user_input="做 GEO 分析",
+        task_type="geo_analysis",
+        intent="geo_analysis",
+    )
+    result = ToolResult(
+        success=True,
+        tool_name="report_tool",
+        action_name="generate",
+        result={
+            "message": (
+                "## 事实输入\n行业：本地装修；地区：包头。\n\n"
+                "## 事实缺口\n- 价格\n\n"
+                "## 问题矩阵\n- 包头本地装修哪家靠谱？（pool_layer，本地推荐）\n\n"
+                "## 内容Brief\n- 公众号 × 品牌介绍：包头本地装修哪家靠谱？\n\n"
+                "## 平台合规\n- warning：避免夸大承诺。\n\n"
+                "## 规则来源\n- question-matrix-contract.md\n\n"
+                "## 下一步建议\n- 补齐价格和案例事实。"
+            ),
+            "source_geo_analysis": {
+                "geo_analysis": True,
+                "question_matrix": [{"question": "包头本地装修哪家靠谱？"}],
+            },
+        },
+    )
+
+    check = Verifier().check(state, PlanStep(step_id=2, goal="生成 GEO 分析报告"), result)
+
+    assert check.passed is True
+
+
+def test_verifier_rejects_geo_report_without_matrix_question():
+    state = AgentState(
+        task_id="task_test",
+        user_input="做 GEO 分析",
+        task_type="geo_analysis",
+        intent="geo_analysis",
+    )
+    result = ToolResult(
+        success=True,
+        tool_name="report_tool",
+        action_name="generate",
+        result={
+            "message": (
+                "## 事实输入\n行业：本地装修；地区：包头。\n\n"
+                "## 事实缺口\n- 价格\n\n"
+                "## 问题矩阵\n- 缺少真实问题。\n\n"
+                "## 内容Brief\n- 公众号 × 品牌介绍。\n\n"
+                "## 平台合规\n- warning：避免夸大承诺。\n\n"
+                "## 规则来源\n- question-matrix-contract.md\n\n"
+                "## 下一步建议\n- 补齐价格和案例事实。"
+            ),
+            "source_geo_analysis": {
+                "geo_analysis": True,
+                "question_matrix": [{"question": "包头本地装修哪家靠谱？"}],
+            },
+        },
+    )
+
+    check = Verifier().check(state, PlanStep(step_id=2, goal="生成 GEO 分析报告"), result)
+
+    assert check.passed is False
+    assert "问题矩阵小节缺少问题：包头本地装修哪家靠谱？" in check.failed_reasons

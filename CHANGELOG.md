@@ -12,6 +12,8 @@
 - 桌面端注册 `code_tool`，并把一份源码快照打包到 `.app` 内，供代码阅读任务只读扫描。
 - 将桌面端历史记录读取逻辑迁移到 `core.history_store`，供桌面/API 等入口复用。
 - 修正 RAG API 真实模型环境变量，统一使用 `KB_USE_REAL_MODELS`。
+- 嫁接 `geo-agent-marketing-optimized` Skill 包：新增 `geo_analysis` 任务类型、`geo_tool`、GEO 问题矩阵/内容 Brief/平台合规报告和 Verifier 硬校验。
+- 桌面端注册 `geo_tool`，并把 GEO vendor 规则包随 `.app` 一起打包。
 
 ## v1.0-learning-agent
 

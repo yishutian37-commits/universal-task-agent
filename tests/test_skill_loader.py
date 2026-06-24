@@ -136,6 +136,24 @@ def test_skill_loader_uses_default_skills_root(tmp_path, monkeypatch):
     assert skills[0]["source_path"].endswith("skills/default.md")
 
 
+def test_project_geo_analysis_skill_is_available():
+    matched = SkillLoader("skills").match(
+        make_task(
+            task_type="geo_analysis",
+            user_input="帮我做 GEO 分析，生成问题矩阵和平台合规检查",
+            intent="geo_analysis",
+        )
+    )
+
+    assert matched is not None
+    assert matched["id"] == "geo_analysis"
+    assert matched["task_type"] == "geo_analysis"
+    assert matched["workflow"] == [
+        "读取 GEO 规则包并生成问题矩阵",
+        "生成 GEO 分析报告",
+    ]
+
+
 def test_skill_loader_matches_by_task_type_when_keywords_omitted(tmp_path):
     skills_root = tmp_path / "skills"
     skills_root.mkdir()

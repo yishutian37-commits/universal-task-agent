@@ -1,6 +1,6 @@
 # Universal Task Agent
 
-UTA 是一个学习型 Agent 框架。当前主线已经整合 V1.0 学习型 Agent、V1.1 调研搜索/API、V1.2 代码阅读、RAG 知识库和桌面端体验层。
+UTA 是一个学习型 Agent 框架。当前主线已经整合 V1.0 学习型 Agent、V1.1 调研搜索/API、V1.2 代码阅读、RAG 知识库、GEO 分析 Skill 和桌面端体验层。
 
 ## 快速开始
 
@@ -40,6 +40,12 @@ python3 -m venv .venv
 
 ```bash
 .venv/bin/python main.py --task "阅读 UTA 代码，说明一次任务从输入到输出怎么跑"
+```
+
+GEO 分析：
+
+```bash
+.venv/bin/python main.py --task "帮我做 GEO 分析：行业是本地装修，地区是包头，品牌事实：有官网、提供设计和施工服务、需要避免夸大承诺。"
 ```
 
 UTA API：
@@ -84,6 +90,7 @@ UTA 会在任务开始时读取 `skills/*.md`。命中 Skill 后，`Planner` 优
 
 - `skills/summarize_article.md`
 - `skills/analyze_table.md`
+- `skills/geo_analysis.md`
 
 草稿 Skill 放在 `skills/drafts/`，不会被运行时自动加载。人工确认后，把草稿移动到 `skills/` 根目录，并把 `enabled` 改为 `true`。
 
@@ -117,6 +124,7 @@ LLM_SSL_VERIFY=0
 - `research-search`: 当前分支新增 `research` 任务类型、可插拔 Search Provider、`search_tool`、带来源的调研报告和 CLI demo；默认使用 Bing HTML 联网搜索，无需额外 search key。天气类问题会走 Open-Meteo 实时天气接口，避免把普通网页摘要误当成天气结果。
 - `api-code-reading-alignment`: 当前分支已恢复 UTA 根 FastAPI 接口，并合并只读代码阅读任务；桌面端会打包源码快照供 `code_tool` 扫描。
 - `rag-integration`: 当前分支已把 RAG 整合进主项目，提供 CLI、FastAPI、桌面端知识库 Tab 和自动 seed。
+- `geo-skill-adapter`: 当前分支嫁接 `geo-agent-marketing-optimized` Skill 包，新增 `geo_analysis` 任务类型、`geo_tool`、GEO 报告生成和硬校验，并会随桌面端一起打包。
 - TAM Memory 不属于 UTA v1.0 核心范围。
 
 ## RAG 知识库

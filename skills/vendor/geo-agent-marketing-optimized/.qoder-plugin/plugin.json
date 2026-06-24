@@ -1,0 +1,34 @@
+{
+  "name": "geo-agent-marketing-optimized",
+  "displayName": "GEO Agent 营销规则优化包",
+  "description": "A GEO Flow Agent oriented marketing skill pack. It focuses on fact-driven GEO question matrices, AI-visible content generation, platform compliance, brand voice memory, monitoring analysis, and optional competitor/trend/campaign support.",
+  "descriptionZh": "面向 GEO Flow Agent 的营销规则优化包。重点服务“项目知识库 / 品牌事实库 -> 问题矩阵 -> AI 监测 -> 内容任务 -> 平台稿件 -> 发布检查 -> 复测报告 -> 经验沉淀”主链路，避免把传统营销能力硬塞进核心流程。",
+  "author": {
+    "name": "QoderWork / GEO Agent Adapted"
+  },
+  "version": "2.1.0-geoagent",
+  "category": "marketing",
+  "keywords": [
+    "GEO",
+    "生成式引擎优化",
+    "AI可见性",
+    "品牌事实库",
+    "问题矩阵",
+    "平台规则",
+    "发布合规",
+    "经验技能库",
+    "监测分析",
+    "报告中心"
+  ],
+  "customizedFrom": "市场营销-custom-v2.0.0",
+  "skills": [
+    "./skills/geo-content-optimization",
+    "./skills/geo-copywriting",
+    "./skills/platform-compliance-check",
+    "./skills/brand-voice-memory",
+    "./skills/geo-monitoring-analysis",
+    "./skills/competitive-visibility-tracking",
+    "./skills/social-trend-screening",
+    "./skills/lightweight-campaign-planning"
+  ]
+}
