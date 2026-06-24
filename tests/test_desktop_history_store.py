@@ -2,6 +2,7 @@ import json
 import os
 import time
 
+from core.history_store import HistoryStore as CoreHistoryStore
 from desktop.history_store import HistoryStore
 
 
@@ -160,3 +161,9 @@ def test_history_store_rejects_unknown_or_unsafe_task_ids(tmp_path):
 
     assert unsafe["ok"] is False
     assert unsafe["error"] == "任务不存在"
+
+
+def test_desktop_history_store_uses_core_history_store():
+    from desktop.history_store import HistoryStore
+
+    assert HistoryStore is CoreHistoryStore

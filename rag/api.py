@@ -19,7 +19,10 @@ def _get_kb() -> KnowledgeBase:
     global _kb
     if _kb is None:
         db_path = os.getenv("KB_DB_PATH", "data/knowledge.db")
-        use_real = os.getenv("KB_USE_REAL_MODES", "0") == "1"
+        use_real = os.getenv(
+            "KB_USE_REAL_MODELS",
+            os.getenv("KB_USE_REAL_MODES", "0"),
+        ) == "1"
         from rag.defaults import create_default_kb
 
         _kb = create_default_kb(db_path=db_path, use_real_models=use_real)

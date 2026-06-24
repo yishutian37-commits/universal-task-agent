@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
+import rag.api as rag_api
 from rag.api import app, set_kb
 from rag.defaults import create_default_kb
 
@@ -35,6 +36,27 @@ def test_stats_empty(client):
     data = resp.json()
     assert data["documents"] == 0
     assert data["chunks"] == 0
+
+
+def test_api_uses_real_models_env_var(monkeypatch, tmp_path):
+    captured = {}
+
+    def fake_create_default_kb(db_path: str, use_real_models: bool):
+        captured["db_path"] = db_path
+        captured["use_real_models"] = use_real_models
+        return create_default_kb(db_path=str(tmp_path / "fake.db"))
+
+    monkeypatch.setattr(rag_api, "_kb", None)
+    monkeypatch.setenv("KB_DB_PATH", str(tmp_path / "env.db"))
+    monkeypatch.setenv("KB_USE_REAL_MODELS", "1")
+    monkeypatch.setattr("rag.defaults.create_default_kb", fake_create_default_kb)
+
+    rag_api._get_kb()
+
+    assert captured == {
+        "db_path": str(tmp_path / "env.db"),
+        "use_real_models": True,
+    }
 
 
 def test_ingest(client, md_file):

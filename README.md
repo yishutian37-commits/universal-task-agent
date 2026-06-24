@@ -24,6 +24,12 @@ python3 -m venv .venv
 .venv/bin/python main.py --task "分析 examples/orders.csv"
 ```
 
+调研报告：
+
+```bash
+SEARCH_PROVIDER=fixture .venv/bin/python main.py --task "调研 UTA Agent 路线"
+```
+
 ## 短期记忆与长期记忆
 
 - 短期记忆：单次任务内的 `AgentState`，保存到 `outputs/states/<task_id>_state.json`，日志保存到 `outputs/logs/<task_id>.log`。
@@ -90,17 +96,28 @@ LLM_SSL_VERIFY=0
 - `v0.7-memory`: 新增 `JsonMemoryProvider`，任务完成后写入 `memory/*.json`，保存任务历史、经验、失败规则和 Skill 候选。
 - `v0.8-skill-runtime`: 新增 `SkillLoader` 和 `SkillBuilder`，支持本地 Markdown Skill 的加载、候选草稿生成和 Planner workflow 注入。
 - `v1.0-learning-agent`: 新增 A11 replan，单个 step 重试耗尽后可重新规划一次，并从失败 step 继续；完成 README、CHANGELOG 和两类 demo 验收。
+- `research-search`: 当前分支新增 `research` 任务类型、可插拔 Search Provider、`search_tool`、带来源的调研报告和 CLI demo。
+- `rag-integration`: 当前分支已把 RAG 整合进主项目，提供 CLI、FastAPI、桌面端知识库 Tab 和自动 seed。
 - TAM Memory 不属于 UTA v1.0 核心范围。
 
 ## RAG 知识库
 
-`rag/` 模块提供文档摄入、向量检索和问答能力，可独立使用，也可供 Agent 调用。当前完成 v0.2-mvp：真实文件摄入（MD/TXT）、定长切片、SQLite 持久化、numpy 向量检索。
+`rag/` 模块提供文档摄入、向量检索和问答能力，可独立使用，也可供 Agent 和桌面端调用。当前已经完成真实文件摄入、定长切片、SQLite 持久化、numpy 向量检索、CLI、FastAPI、桌面端知识库接入，以及可选真实模型模式。
 
 ```python
 from rag import create_default_kb
 kb = create_default_kb()
 kb.ingest_path("notes.md")
 print(kb.ask("问题").answer)
+```
+
+常用命令：
+
+```bash
+.venv/bin/python -m rag.cli --help
+.venv/bin/python -m rag.cli ingest README.md
+.venv/bin/python -m rag.cli ask "UTA 当前能做什么"
+.venv/bin/python -m rag.api
 ```
 
 详见 `rag/README.md` 和 `docs/superpowers/specs/2026-06-24-rag-knowledge-base-design.md`。
