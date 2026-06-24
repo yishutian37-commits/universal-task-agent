@@ -10,6 +10,13 @@ class ReportTool(BaseTool):
     def run(self, action_name: str, params: dict[str, Any]) -> dict[str, Any]:
         del action_name
         previous = params.get("previous_result")
+        if isinstance(previous, dict) and "search_results" in previous:
+            report = self._research_report(previous)
+            return {
+                "message": report,
+                "report_markdown": report,
+                "source_search_results": previous.get("search_results", []),
+            }
         if isinstance(previous, dict) and previous.get("table_analysis") is True:
             report = self._table_report(previous)
             return {
@@ -27,6 +34,37 @@ class ReportTool(BaseTool):
             "message": summary,
             "report_markdown": summary,
         }
+
+    def _research_report(self, search_payload: dict[str, Any]) -> str:
+        query = str(search_payload.get("query") or "调研主题")
+        results = search_payload.get("search_results") or []
+        if not results:
+            return "\n\n".join(
+                [
+                    "## 结论\n未找到可用来源。",
+                    "## 关键发现\n- 未找到可用来源。",
+                    "## 来源\n未找到可用来源。",
+                    "## 注意事项\n当前报告只基于搜索摘要，不等同于阅读全文后的事实核验。",
+                ]
+            )
+
+        findings = "\n".join(
+            f"- {item.get('snippet') or item.get('title') or '搜索结果未提供摘要'}"
+            for item in results
+        )
+        sources = "\n".join(
+            f"- [{item.get('title') or item.get('url')}]({item.get('url')}): {item.get('snippet') or '无摘要'}"
+            for item in results
+            if item.get("url")
+        )
+        return "\n\n".join(
+            [
+                f"## 结论\n基于当前搜索结果，{query} 可以先形成一份初步调研结论。",
+                f"## 关键发现\n{findings}",
+                f"## 来源\n{sources}",
+                "## 注意事项\n当前报告只基于搜索摘要，不等同于阅读全文后的事实核验。",
+            ]
+        )
 
     def _table_report(self, analysis: dict[str, Any]) -> str:
         return "\n\n".join(

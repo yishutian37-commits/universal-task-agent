@@ -5,6 +5,7 @@ from core.state import AgentState, CheckResult, PlanStep, ToolResult
 
 SUMMARY_REQUIRED_SECTIONS = ["摘要", "核心观点", "风险点"]
 TABLE_REQUIRED_SECTIONS = ["字段说明", "基础统计", "异常数据"]
+RESEARCH_REQUIRED_SECTIONS = ["结论", "关键发现", "来源", "注意事项"]
 
 
 class Verifier:
@@ -22,6 +23,9 @@ class Verifier:
 
         if self._should_check_summary(state, result):
             return self._check_summary(result)
+
+        if self._should_check_research_report(state, result):
+            return self._check_research_report(result)
 
         if self._should_check_table_report(state, result):
             return self._check_table_report(result)
@@ -48,6 +52,46 @@ class Verifier:
             state is not None
             and state.task_type == "data_analysis"
             and result.tool_name == "report_tool"
+        )
+
+    def _should_check_research_report(self, state: AgentState | None, result: ToolResult) -> bool:
+        return (
+            state is not None
+            and state.task_type == "research"
+            and result.tool_name == "report_tool"
+        )
+
+    def _check_research_report(self, result: ToolResult) -> CheckResult:
+        report_text = str(result.result.get("message") or result.result.get("report_markdown") or "")
+        failed_reasons = []
+        suggested_fix = []
+
+        for section in RESEARCH_REQUIRED_SECTIONS:
+            content = self._section_content(report_text, section, RESEARCH_REQUIRED_SECTIONS)
+            if content is None:
+                failed_reasons.append(f"缺少必要小节：{section}")
+                suggested_fix.append(f"补齐{section}小节")
+            elif not content.strip():
+                failed_reasons.append(f"小节内容为空：{section}")
+                suggested_fix.append(f"补充{section}小节内容")
+
+        source_results = result.result.get("source_search_results") or []
+        if source_results:
+            for item in source_results:
+                if not isinstance(item, dict):
+                    continue
+                url = str(item.get("url") or "").strip()
+                if url and url not in report_text:
+                    failed_reasons.append(f"来源缺少 URL：{url}")
+                    suggested_fix.append(f"在来源小节补充 URL：{url}")
+        elif "未找到可用来源" not in report_text:
+            failed_reasons.append("无搜索结果时必须写明：未找到可用来源")
+            suggested_fix.append("在结论或来源小节写明：未找到可用来源")
+
+        return CheckResult(
+            passed=not failed_reasons,
+            failed_reasons=failed_reasons,
+            suggested_fix=suggested_fix,
         )
 
     def _check_summary(self, result: ToolResult) -> CheckResult:

@@ -242,3 +242,85 @@ def test_verifier_fails_table_report_without_no_anomaly_wording():
 
     assert check.passed is False
     assert "未检测到异常时必须写明：未检测到异常" in check.failed_reasons
+
+
+def test_verifier_accepts_research_report_with_sources():
+    state = AgentState(
+        task_id="task_test",
+        user_input="调研 UTA",
+        task_type="research",
+        intent="research_topic",
+    )
+    result = ToolResult(
+        success=True,
+        tool_name="report_tool",
+        action_name="generate",
+        result={
+            "message": (
+                "## 结论\n初步结论。\n\n"
+                "## 关键发现\n- 发现一。\n\n"
+                "## 来源\n- [来源](https://example.com/uta)：摘要\n\n"
+                "## 注意事项\n当前报告只基于搜索摘要。"
+            ),
+            "source_search_results": [{"url": "https://example.com/uta"}],
+        },
+    )
+
+    check = Verifier().check(state, PlanStep(step_id=2, goal="生成带来源的调研报告"), result)
+
+    assert check.passed is True
+
+
+def test_verifier_rejects_research_report_missing_source_url():
+    state = AgentState(
+        task_id="task_test",
+        user_input="调研 UTA",
+        task_type="research",
+        intent="research_topic",
+    )
+    result = ToolResult(
+        success=True,
+        tool_name="report_tool",
+        action_name="generate",
+        result={
+            "message": (
+                "## 结论\n初步结论。\n\n"
+                "## 关键发现\n- 发现一。\n\n"
+                "## 来源\n- 来源缺少链接\n\n"
+                "## 注意事项\n当前报告只基于搜索摘要。"
+            ),
+            "source_search_results": [{"url": "https://example.com/uta"}],
+        },
+    )
+
+    check = Verifier().check(state, PlanStep(step_id=2, goal="生成带来源的调研报告"), result)
+
+    assert check.passed is False
+    assert "来源缺少 URL：https://example.com/uta" in check.failed_reasons
+
+
+def test_verifier_accepts_empty_research_report_when_no_sources_available():
+    state = AgentState(
+        task_id="task_test",
+        user_input="调研 不存在的主题",
+        task_type="research",
+        intent="research_topic",
+    )
+    result = ToolResult(
+        success=True,
+        tool_name="report_tool",
+        action_name="generate",
+        result={
+            "message": (
+                "## 结论\n未找到可用来源。\n\n"
+                "## 关键发现\n- 未找到可用来源。\n\n"
+                "## 来源\n未找到可用来源。\n\n"
+                "## 注意事项\n当前报告只基于搜索摘要。"
+            ),
+            "source_search_results": [],
+        },
+    )
+
+    check = Verifier().check(state, PlanStep(step_id=2, goal="生成带来源的调研报告"), result)
+
+    assert check.passed is True
