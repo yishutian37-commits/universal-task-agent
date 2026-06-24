@@ -40,5 +40,9 @@ class SearchTool(BaseTool):
         if explicit:
             return explicit
         text = str(params.get("user_input") or params.get("goal") or "").strip()
-        text = re.sub(r"^(请|帮我|请帮我|麻烦)?(调研|搜索|查找|研究)", "", text).strip()
+        text = re.sub(
+            r"^(?:请|帮我|请帮我|麻烦)?(?:联网|上网|网络|互联网|在线)?(?:搜索|调研|查找|研究|查询)",
+            "",
+            text,
+        ).strip()
         return text or "UTA Agent"

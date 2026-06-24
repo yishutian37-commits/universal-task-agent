@@ -53,6 +53,17 @@ def test_search_tool_extracts_query_from_chinese_task():
     assert provider.seen_query == "UTA Agent 框架下一步路线"
 
 
+def test_search_tool_strips_live_search_prefix_from_chinese_task():
+    provider = FakeSearchProvider()
+
+    SearchTool(search_provider=provider).run(
+        "search",
+        {"user_input": "联网搜索包头市的介绍"},
+    )
+
+    assert provider.seen_query == "包头市的介绍"
+
+
 def test_search_tool_returns_empty_results():
     class EmptyProvider:
         provider_name = "empty"
