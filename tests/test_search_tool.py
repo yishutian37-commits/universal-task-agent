@@ -26,6 +26,29 @@ class FakeSearchProvider:
         )
 
 
+class FakeWeatherProvider:
+    provider_name = "fake-weather"
+
+    def __init__(self):
+        self.seen_city = None
+
+    def current_weather(self, city):
+        self.seen_city = city
+        return {
+            "city": city,
+            "provider": self.provider_name,
+            "source_url": "https://example.com/weather",
+            "time": "2026-06-24T14:00",
+            "weather_text": "晴",
+            "temperature": 23.4,
+            "apparent_temperature": 22.8,
+            "relative_humidity": 41,
+            "precipitation": 0,
+            "wind_speed": 12.5,
+            "wind_direction": 270,
+        }
+
+
 def test_search_tool_uses_explicit_query():
     provider = FakeSearchProvider()
     result = SearchTool(search_provider=provider).run(
@@ -62,6 +85,27 @@ def test_search_tool_strips_live_search_prefix_from_chinese_task():
     )
 
     assert provider.seen_query == "包头市的介绍"
+
+
+def test_search_tool_handles_weather_query_without_generic_search():
+    search_provider = FakeSearchProvider()
+    weather_provider = FakeWeatherProvider()
+
+    result = SearchTool(
+        search_provider=search_provider,
+        weather_provider=weather_provider,
+    ).run(
+        "search",
+        {"user_input": "联网搜索包头今日天气状况"},
+    )
+
+    assert search_provider.seen_query is None
+    assert weather_provider.seen_city == "包头"
+    assert result["message"] == "获取到 包头 当前天气"
+    assert result["provider"] == "fake-weather"
+    assert result["weather_result"]["weather_text"] == "晴"
+    assert result["search_results"][0]["title"] == "包头 今日天气"
+    assert result["sources"] == ["https://example.com/weather"]
 
 
 def test_search_tool_returns_empty_results():

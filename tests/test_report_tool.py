@@ -109,6 +109,62 @@ def test_report_tool_generates_research_report_with_sources():
     assert result["source_search_results"][0]["url"] == "https://example.com/uta"
 
 
+def test_report_tool_generates_weather_report():
+    result = ReportTool().run(
+        "generate",
+        {
+            "previous_result": {
+                "query": "包头今日天气状况",
+                "weather_result": {
+                    "city": "包头",
+                    "provider": "fake-weather",
+                    "source_url": "https://example.com/weather",
+                    "time": "2026-06-24T14:00",
+                    "weather_text": "晴",
+                    "temperature": 23.4,
+                    "apparent_temperature": 22.8,
+                    "relative_humidity": 41,
+                    "precipitation": 0,
+                    "wind_speed": 12.5,
+                    "wind_direction": 270,
+                },
+                "search_results": [
+                    {
+                        "title": "包头 今日天气",
+                        "url": "https://example.com/weather",
+                        "snippet": "包头当前晴，气温 23.4℃。",
+                        "source": "fake-weather",
+                    }
+                ],
+            }
+        },
+    )
+
+    report = result["report_markdown"]
+
+    assert "## 结论" in report
+    assert "包头当前天气：晴" in report
+    assert "气温：23.4℃" in report
+    assert "体感温度：22.8℃" in report
+    assert "湿度：41%" in report
+    assert "降水量：0 mm" in report
+    assert "[fake-weather](https://example.com/weather)" in report
+    assert "不是普通网页搜索摘要" in report
+    assert result["source_weather"] == {
+        "city": "包头",
+        "provider": "fake-weather",
+        "source_url": "https://example.com/weather",
+        "time": "2026-06-24T14:00",
+        "weather_text": "晴",
+        "temperature": 23.4,
+        "apparent_temperature": 22.8,
+        "relative_humidity": 41,
+        "precipitation": 0,
+        "wind_speed": 12.5,
+        "wind_direction": 270,
+    }
+
+
 def test_report_tool_handles_empty_research_results():
     result = ReportTool().run(
         "generate",

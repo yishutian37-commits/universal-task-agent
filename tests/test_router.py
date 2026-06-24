@@ -74,3 +74,10 @@ def test_router_routes_search_goal_to_search_tool():
 
     assert action.tool_name == "search_tool"
     assert action.action_name == "search"
+
+
+def test_router_routes_weather_goal_to_search_tool():
+    action = route("查询今日天气")
+
+    assert action.tool_name == "search_tool"
+    assert action.action_name == "search"

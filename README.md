@@ -30,6 +30,12 @@ python3 -m venv .venv
 .venv/bin/python main.py --task "调研 UTA Agent 路线"
 ```
 
+实时天气：
+
+```bash
+.venv/bin/python main.py --task "包头今日天气状况"
+```
+
 ## 短期记忆与长期记忆
 
 - 短期记忆：单次任务内的 `AgentState`，保存到 `outputs/states/<task_id>_state.json`，日志保存到 `outputs/logs/<task_id>.log`。
@@ -96,7 +102,7 @@ LLM_SSL_VERIFY=0
 - `v0.7-memory`: 新增 `JsonMemoryProvider`，任务完成后写入 `memory/*.json`，保存任务历史、经验、失败规则和 Skill 候选。
 - `v0.8-skill-runtime`: 新增 `SkillLoader` 和 `SkillBuilder`，支持本地 Markdown Skill 的加载、候选草稿生成和 Planner workflow 注入。
 - `v1.0-learning-agent`: 新增 A11 replan，单个 step 重试耗尽后可重新规划一次，并从失败 step 继续；完成 README、CHANGELOG 和两类 demo 验收。
-- `research-search`: 当前分支新增 `research` 任务类型、可插拔 Search Provider、`search_tool`、带来源的调研报告和 CLI demo；默认使用 Bing HTML 联网搜索，无需额外 search key。
+- `research-search`: 当前分支新增 `research` 任务类型、可插拔 Search Provider、`search_tool`、带来源的调研报告和 CLI demo；默认使用 Bing HTML 联网搜索，无需额外 search key。天气类问题会走 Open-Meteo 实时天气接口，避免把普通网页摘要误当成天气结果。
 - `rag-integration`: 当前分支已把 RAG 整合进主项目，提供 CLI、FastAPI、桌面端知识库 Tab 和自动 seed。
 - TAM Memory 不属于 UTA v1.0 核心范围。
 

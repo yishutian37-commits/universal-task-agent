@@ -129,3 +129,14 @@ def test_task_parser_fallback_detects_research_when_llm_fails():
     assert task.intent == "research_topic"
     assert task.input_type == "text"
     assert task.expected_output == "research_report"
+
+
+def test_task_parser_fallback_detects_weather_research_when_llm_fails():
+    parser = TaskParser(llm_client=FailingLLMClient())
+
+    task = parser.parse("task_test", "包头今日天气状况")
+
+    assert task.task_type == "research"
+    assert task.intent == "research_topic"
+    assert task.input_type == "text"
+    assert task.expected_output == "research_report"

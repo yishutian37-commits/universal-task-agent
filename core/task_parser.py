@@ -123,7 +123,26 @@ class TaskParser:
         text = user_input.lower()
         if any(marker in text for marker in [".csv", ".xlsx", "csv", "excel", "xlsx", "表格"]):
             return "data_analysis"
-        if any(marker in user_input for marker in ["调研", "搜索", "查找", "资料", "来源", "研究", "竞品", "趋势"]):
+        if any(
+            marker in user_input
+            for marker in [
+                "调研",
+                "搜索",
+                "查找",
+                "资料",
+                "来源",
+                "研究",
+                "竞品",
+                "趋势",
+                "天气",
+                "气温",
+                "温度",
+                "降雨",
+                "降水",
+                "湿度",
+                "风力",
+            ]
+        ):
             return "research"
         if "总结" in user_input or "摘要" in user_input:
             return "summarize"

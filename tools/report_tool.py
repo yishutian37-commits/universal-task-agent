@@ -10,6 +10,14 @@ class ReportTool(BaseTool):
     def run(self, action_name: str, params: dict[str, Any]) -> dict[str, Any]:
         del action_name
         previous = params.get("previous_result")
+        if isinstance(previous, dict) and "weather_result" in previous:
+            report = self._weather_report(previous)
+            return {
+                "message": report,
+                "report_markdown": report,
+                "source_weather": previous.get("weather_result", {}),
+                "source_search_results": previous.get("search_results", []),
+            }
         if isinstance(previous, dict) and "search_results" in previous:
             report = self._research_report(previous)
             return {
@@ -65,6 +73,51 @@ class ReportTool(BaseTool):
                 "## 注意事项\n当前报告只基于搜索摘要，不等同于阅读全文后的事实核验。",
             ]
         )
+
+    def _weather_report(self, weather_payload: dict[str, Any]) -> str:
+        weather = weather_payload.get("weather_result") or {}
+        city = str(weather.get("city") or weather_payload.get("query") or "当前城市")
+        weather_text = str(weather.get("weather_text") or "未知天气")
+        temperature = self._weather_value(weather.get("temperature"), "℃")
+        apparent = self._weather_value(weather.get("apparent_temperature"), "℃")
+        humidity = self._weather_value(weather.get("relative_humidity"), "%")
+        precipitation = self._weather_value(weather.get("precipitation"), " mm")
+        wind_speed = self._weather_value(weather.get("wind_speed"), " km/h")
+        wind_direction = self._weather_value(weather.get("wind_direction"), "°")
+        observed_at = str(weather.get("time") or "未知")
+        provider = str(weather.get("provider") or "天气数据接口")
+        source_url = str(weather.get("source_url") or "")
+
+        source = f"- [{provider}]({source_url}): 当前天气数据接口。" if source_url else f"- {provider}"
+        return "\n\n".join(
+            [
+                (
+                    f"## 结论\n{city}当前天气：{weather_text}。"
+                    f"气温：{temperature}，体感温度：{apparent}。"
+                ),
+                "\n".join(
+                    [
+                        "## 关键发现",
+                        f"- 观测时间：{observed_at}",
+                        f"- 气温：{temperature}",
+                        f"- 体感温度：{apparent}",
+                        f"- 湿度：{humidity}",
+                        f"- 降水量：{precipitation}",
+                        f"- 风速：{wind_speed}",
+                        f"- 风向：{wind_direction}",
+                    ]
+                ),
+                f"## 来源\n{source}",
+                "## 注意事项\n当前结果来自天气数据接口，不是普通网页搜索摘要；实时天气可能随时间变化。",
+            ]
+        )
+
+    def _weather_value(self, value: Any, unit: str) -> str:
+        if value is None or value == "":
+            return "未知"
+        if isinstance(value, float) and value.is_integer():
+            value = int(value)
+        return f"{value}{unit}"
 
     def _table_report(self, analysis: dict[str, Any]) -> str:
         return "\n\n".join(

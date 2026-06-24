@@ -6,6 +6,7 @@
 - 新增 RAG CLI、FastAPI、桌面端知识库 Tab、自动 seed，以及可选真实 bge + mimo 模式。
 - 新增 research 任务链路：Search Provider、`search_tool`、调研报告生成和来源校验。
 - research 默认搜索从 fixture 改为 Bing HTML 联网搜索，fixture 只保留给测试/演示使用。
+- 修复天气类问题被普通搜索摘要误导的问题：`search_tool` 会识别天气意图并调用 Open-Meteo 实时天气接口，`report_tool` 会生成天气报告。
 - 将桌面端历史记录读取逻辑迁移到 `core.history_store`，供桌面/API 等入口复用。
 - 修正 RAG API 真实模型环境变量，统一使用 `KB_USE_REAL_MODELS`。
 
