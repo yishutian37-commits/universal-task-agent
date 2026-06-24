@@ -34,7 +34,13 @@ class RAGClient:
             from rag.defaults import create_default_kb
 
             db_path = str(uta_home() / "rag" / "knowledge.db")
-            self._kb = create_default_kb(db_path=db_path, use_real_models=False)
+            # 内嵌模式用真实模型（bge 语义检索 + LLM 答案）。
+            # torch/sentence-transformers 已打进 .app，开箱即用。
+            # 若加载失败（如打包环境无 torch），回退到临时实现。
+            try:
+                self._kb = create_default_kb(db_path=db_path, use_real_models=True)
+            except Exception:
+                self._kb = create_default_kb(db_path=db_path, use_real_models=False)
         return self._kb
 
     def _http(self, method: str, path: str, data: dict | None = None) -> dict[str, Any]:

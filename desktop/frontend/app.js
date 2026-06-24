@@ -4,9 +4,11 @@ const els = {
   openTaskView: document.getElementById("openTaskView"),
   openHistory: document.getElementById("openHistory"),
   openMemory: document.getElementById("openMemory"),
+  openKnowledge: document.getElementById("openKnowledge"),
   taskView: document.getElementById("taskView"),
   historyView: document.getElementById("historyView"),
   memoryView: document.getElementById("memoryView"),
+  knowledgeView: document.getElementById("knowledgeView"),
   refreshHistory: document.getElementById("refreshHistory"),
   refreshMemory: document.getElementById("refreshMemory"),
   historyList: document.getElementById("historyList"),
@@ -45,7 +47,19 @@ const els = {
   clearKey: document.getElementById("clearKey"),
   toast: document.getElementById("toast"),
   toastTitle: document.getElementById("toastTitle"),
-  toastBody: document.getElementById("toastBody")
+  toastBody: document.getElementById("toastBody"),
+  kbMode: document.getElementById("kbMode"),
+  kbIngestPath: document.getElementById("kbIngestPath"),
+  kbIngestBtn: document.getElementById("kbIngestBtn"),
+  kbRefreshBtn: document.getElementById("kbRefreshBtn"),
+  kbDocList: document.getElementById("kbDocList"),
+  kbStats: document.getElementById("kbStats"),
+  kbQuestion: document.getElementById("kbQuestion"),
+  kbAskBtn: document.getElementById("kbAskBtn"),
+  kbQueryBtn: document.getElementById("kbQueryBtn"),
+  kbAskMeta: document.getElementById("kbAskMeta"),
+  kbAnswer: document.getElementById("kbAnswer"),
+  kbSources: document.getElementById("kbSources")
 };
 
 const state = {
@@ -156,6 +170,7 @@ function showTaskView() {
   els.taskView.classList.remove("hidden");
   els.historyView.classList.add("hidden");
   els.memoryView.classList.add("hidden");
+  els.knowledgeView.classList.add("hidden");
   setActiveNav(els.openTaskView);
 }
 
@@ -163,6 +178,7 @@ async function showHistoryView() {
   els.taskView.classList.add("hidden");
   els.historyView.classList.remove("hidden");
   els.memoryView.classList.add("hidden");
+  els.knowledgeView.classList.add("hidden");
   setActiveNav(els.openHistory);
   await loadHistoryRuns();
 }
@@ -171,8 +187,18 @@ async function showMemoryView() {
   els.taskView.classList.add("hidden");
   els.historyView.classList.add("hidden");
   els.memoryView.classList.remove("hidden");
+  els.knowledgeView.classList.add("hidden");
   setActiveNav(els.openMemory);
   await loadMemoryOverview();
+}
+
+async function showKnowledgeView() {
+  els.taskView.classList.add("hidden");
+  els.historyView.classList.add("hidden");
+  els.memoryView.classList.add("hidden");
+  els.knowledgeView.classList.remove("hidden");
+  setActiveNav(els.openKnowledge);
+  await loadKnowledgeBase();
 }
 
 async function loadHistoryRuns() {
@@ -237,6 +263,147 @@ function renderEmptyHistoryDetail() {
   els.historyReport.textContent = "暂无运行记录";
   els.historyLogPanel.textContent = "";
   els.historyStateJson.textContent = JSON.stringify({ status: "idle", task_id: null }, null, 2);
+}
+
+// ---- 知识库 ----
+
+async function loadKnowledgeBase() {
+  try {
+    const statsResult = await callApi("rag_stats");
+    if (!statsResult.ok) {
+      els.kbMode.textContent = "不可用";
+      showToast("知识库错误", statsResult.error || "未知错误");
+      return;
+    }
+    els.kbMode.textContent = statsResult.mode === "http" ? "HTTP 模式" : "内嵌模式";
+    const s = statsResult.stats;
+    els.kbStats.innerHTML = `文档：<strong>${s.documents}</strong> · 片段：<strong>${s.chunks}</strong> · 维度：<strong>${s.dim}</strong>`;
+    await loadKnowledgeDocs();
+  } catch (error) {
+    els.kbMode.textContent = "错误";
+    showToast("知识库加载失败", error.message);
+  }
+}
+
+async function loadKnowledgeDocs() {
+  try {
+    const result = await callApi("rag_list_docs");
+    if (!result.ok || !result.docs || !result.docs.length) {
+      els.kbDocList.innerHTML = '<div class="emptyState">暂无文档，请摄入文件</div>';
+      return;
+    }
+    els.kbDocList.innerHTML = result.docs.map((doc) => `
+      <button class="historyItem" type="button" data-doc-id="${escapeHtml(doc.doc_id)}">
+        <span><strong>${escapeHtml(doc.title || doc.source)}</strong><small>${escapeHtml(doc.type || "?")} · ${doc.chunk_count} 片段</small></span>
+        <small>${escapeHtml(doc.source)}</small>
+      </button>
+    `).join("");
+    els.kbDocList.querySelectorAll(".historyItem").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const docId = btn.dataset.docId;
+        const r = await callApi("rag_delete", docId);
+        if (r.ok !== false) {
+          showToast("已删除", docId);
+          await loadKnowledgeBase();
+        }
+      });
+    });
+  } catch (error) {
+    showToast("读取文档失败", error.message);
+  }
+}
+
+async function ingestKnowledge() {
+  const path = els.kbIngestPath.value.trim();
+  if (!path) {
+    showToast("请输入路径", "输入文件或目录路径");
+    return;
+  }
+  els.kbIngestBtn.disabled = true;
+  els.kbMode.textContent = "摄入中...";
+  try {
+    const result = await callApi("rag_ingest", path);
+    if (result.ok === false) {
+      showToast("摄入失败", result.error || "未知错误");
+    } else {
+      const count = result.chunk_count || (result.ingested ? result.ingested.length : 0);
+      showToast("摄入成功", `${count} 个片段已加入知识库`);
+      els.kbIngestPath.value = "";
+      await loadKnowledgeBase();
+    }
+  } catch (error) {
+    showToast("摄入失败", error.message);
+  } finally {
+    els.kbIngestBtn.disabled = false;
+  }
+}
+
+async function askKnowledge() {
+  const question = els.kbQuestion.value.trim();
+  if (!question) {
+    showToast("请输入问题", "在上方输入框中输入你的问题");
+    return;
+  }
+  els.kbAskBtn.disabled = true;
+  els.kbQueryBtn.disabled = true;
+  els.kbAskMeta.textContent = "检索中...";
+  els.kbAnswer.className = "report";
+  els.kbAnswer.textContent = "正在检索并生成答案...";
+  els.kbSources.innerHTML = "";
+  try {
+    const result = await callApi("rag_ask", question);
+    renderKnowledgeResult(result, true);
+  } catch (error) {
+    els.kbAnswer.textContent = "错误：" + error.message;
+  } finally {
+    els.kbAskBtn.disabled = false;
+    els.kbQueryBtn.disabled = false;
+  }
+}
+
+async function queryKnowledge() {
+  const question = els.kbQuestion.value.trim();
+  if (!question) {
+    showToast("请输入问题", "在上方输入框中输入你的问题");
+    return;
+  }
+  els.kbAskBtn.disabled = true;
+  els.kbQueryBtn.disabled = true;
+  els.kbAskMeta.textContent = "检索中...";
+  els.kbAnswer.className = "report";
+  els.kbAnswer.textContent = "正在检索...";
+  els.kbSources.innerHTML = "";
+  try {
+    const result = await callApi("rag_query", question);
+    renderKnowledgeResult(result, false);
+  } catch (error) {
+    els.kbAnswer.textContent = "错误：" + error.message;
+  } finally {
+    els.kbAskBtn.disabled = false;
+    els.kbQueryBtn.disabled = false;
+  }
+}
+
+function renderKnowledgeResult(result, isAsk) {
+  if (result.ok === false) {
+    els.kbAskMeta.textContent = "失败";
+    els.kbAnswer.textContent = result.error || "未知错误";
+    return;
+  }
+  els.kbAskMeta.textContent = "完成";
+  if (isAsk && result.answer) {
+    els.kbAnswer.innerHTML = renderMarkdown(result.answer);
+  } else {
+    els.kbAnswer.textContent = "仅检索模式，结果见下方来源片段。";
+  }
+  const sources = result.sources || result.chunks || [];
+  if (sources.length) {
+    els.kbSources.innerHTML = sources.map((s, i) => `
+      <p class="logLine"><b>[${i + 1}]</b> score=${(s.score || 0).toFixed(3)} · ${escapeHtml(s.source || "?")}<br/>${escapeHtml((s.text || "").slice(0, 150))}</p>
+    `).join("");
+  } else {
+    els.kbSources.innerHTML = '<p class="logLine">无检索结果</p>';
+  }
 }
 
 async function loadMemoryOverview() {
@@ -481,7 +648,12 @@ function bindEvents() {
   els.openTaskView.addEventListener("click", showTaskView);
   els.openHistory.addEventListener("click", showHistoryView);
   els.openMemory.addEventListener("click", showMemoryView);
+  els.openKnowledge.addEventListener("click", showKnowledgeView);
   els.refreshHistory.addEventListener("click", loadHistoryRuns);
+  els.kbIngestBtn.addEventListener("click", ingestKnowledge);
+  els.kbRefreshBtn.addEventListener("click", loadKnowledgeBase);
+  els.kbAskBtn.addEventListener("click", askKnowledge);
+  els.kbQueryBtn.addEventListener("click", queryKnowledge);
   els.refreshMemory.addEventListener("click", loadMemoryOverview);
   els.openSettings.addEventListener("click", openSettings);
   els.openSettingsSide.addEventListener("click", openSettings);
