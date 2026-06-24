@@ -50,6 +50,7 @@ class JsonMemoryProvider(BaseMemoryProvider):
         payload = self._read_json(path)
         record = {
             "task_id": state.task_id,
+            "user_input": state.user_input,
             "task_type": state.task_type,
             "intent": state.intent,
             "status": state.status,

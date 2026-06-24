@@ -91,6 +91,7 @@ def test_save_completed_task_writes_history_and_lesson(tmp_path):
     assert len(history["tasks"]) == 1
     task = history["tasks"][0]
     assert task["task_id"] == "task_1"
+    assert task["user_input"] == state.user_input
     assert task["task_type"] == "summarize"
     assert task["intent"] == "summarize_intent"
     assert task["status"] == "completed"

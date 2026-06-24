@@ -65,6 +65,7 @@ a = Analysis(
         "tools.code_tool",
         "tools.file_tool",
         "tools.geo_tool",
+        "tools.history_tool",
         "tools.mock_tool",
         "tools.report_tool",
         "tools.table_tool",

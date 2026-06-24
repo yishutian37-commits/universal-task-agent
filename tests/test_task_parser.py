@@ -53,6 +53,46 @@ def test_parser_returns_data_analysis_task():
     assert task.intent == "analyze_csv"
 
 
+def test_parser_returns_history_query_task():
+    parser = TaskParser(
+        FakeClient(
+            {
+                "task_type": "history_query",
+                "intent": "list_previous_tasks",
+                "input_type": "memory",
+                "expected_output": "history_task_list",
+            }
+        )
+    )
+
+    task = parser.parse("task_1", "我之前让你进行过什么任务，给我列出来")
+
+    assert task.task_type == "history_query"
+    assert task.intent == "list_previous_tasks"
+    assert task.input_type == "memory"
+    assert task.expected_output == "history_task_list"
+
+
+def test_parser_overrides_llm_summary_for_obvious_history_query():
+    parser = TaskParser(
+        FakeClient(
+            {
+                "task_type": "summarize",
+                "intent": "summarize_article",
+                "input_type": "text",
+                "expected_output": "summary_report",
+            }
+        )
+    )
+
+    task = parser.parse("task_1", "我之前让你进行过什么任务，给我列出来")
+
+    assert task.task_type == "history_query"
+    assert task.intent == "list_previous_tasks"
+    assert task.input_type == "memory"
+    assert task.expected_output == "history_task_list"
+
+
 def test_parser_normalizes_unknown_task_type():
     parser = TaskParser(FakeClient({"task_type": "bogus_type"}))
 
@@ -170,3 +210,18 @@ def test_task_parser_fallback_detects_geo_analysis_when_llm_fails():
 
 def test_task_parser_system_prompt_allows_geo_analysis():
     assert "geo_analysis" in TaskParser._system_prompt()
+
+
+def test_task_parser_fallback_detects_history_query_when_llm_fails():
+    parser = TaskParser(llm_client=FailingLLMClient())
+
+    task = parser.parse("task_test", "我之前让你进行过什么任务，给我列出来")
+
+    assert task.task_type == "history_query"
+    assert task.intent == "list_previous_tasks"
+    assert task.input_type == "memory"
+    assert task.expected_output == "history_task_list"
+
+
+def test_task_parser_system_prompt_allows_history_query():
+    assert "history_query" in TaskParser._system_prompt()

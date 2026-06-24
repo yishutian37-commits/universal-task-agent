@@ -34,4 +34,6 @@ class Planner:
             return ["扫描 UTA 任务执行链路代码", "生成代码阅读报告"]
         if task_type == "geo_analysis":
             return ["读取 GEO 规则包并生成问题矩阵", "生成 GEO 分析报告"]
+        if task_type == "history_query":
+            return ["读取历史任务记录"]
         return ["执行 V0.3 mock 工具"]

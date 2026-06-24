@@ -95,3 +95,10 @@ def test_router_routes_geo_goal_to_geo_tool():
 
     assert action.tool_name == "geo_tool"
     assert action.action_name == "analyze"
+
+
+def test_router_routes_history_goal_to_history_tool():
+    action = route("读取历史任务记录")
+
+    assert action.tool_name == "history_tool"
+    assert action.action_name == "list"

@@ -6,7 +6,15 @@ from core.state import Task
 from llm.llm_client import LLMClient
 
 
-ALLOWED_TASK_TYPES = {"summarize", "data_analysis", "research", "code_reading", "geo_analysis", "unknown"}
+ALLOWED_TASK_TYPES = {
+    "summarize",
+    "data_analysis",
+    "research",
+    "code_reading",
+    "geo_analysis",
+    "history_query",
+    "unknown",
+}
 
 
 class TaskParser:
@@ -26,6 +34,9 @@ class TaskParser:
         if not isinstance(payload, dict):
             return self._fallback_task(task_id, user_input)
 
+        if self._looks_like_history_query(user_input):
+            return self._history_query_task(task_id, user_input)
+
         task_type = self._normalize_task_type(payload.get("task_type"))
         return Task(
             task_id=task_id,
@@ -42,7 +53,7 @@ class TaskParser:
     def _system_prompt() -> str:
         return (
             "你是 UTA 的 Task Parser。只返回 JSON，不要输出解释。"
-            "task_type 只能是 summarize、data_analysis、research、code_reading、geo_analysis、unknown。"
+            "task_type 只能是 summarize、data_analysis、research、code_reading、geo_analysis、history_query、unknown。"
         )
 
     @staticmethod
@@ -129,6 +140,8 @@ class TaskParser:
                 constraints=[],
                 missing_info=[],
             )
+        if guessed_type == "history_query":
+            return TaskParser._history_query_task(task_id, user_input)
         return Task(
             task_id=task_id,
             user_input=user_input,
@@ -143,6 +156,8 @@ class TaskParser:
     @staticmethod
     def _guess_task_type(user_input: str) -> str:
         text = user_input.lower()
+        if TaskParser._looks_like_history_query(user_input):
+            return "history_query"
         if any(marker in text for marker in ["geo", "生成式引擎优化"]):
             return "geo_analysis"
         if any(marker in user_input for marker in ["AI可见性", "AI 可见性", "问题矩阵", "内容Brief", "内容 Brief", "平台合规"]):
@@ -178,3 +193,37 @@ class TaskParser:
         ):
             return "code_reading"
         return "unknown"
+
+    @staticmethod
+    def _looks_like_history_query(user_input: str) -> bool:
+        return any(
+            marker in user_input
+            for marker in [
+                "之前让你",
+                "之前给你",
+                "之前叫你",
+                "之前让你做",
+                "以前让你",
+                "历史任务",
+                "任务历史",
+                "任务记录",
+                "做过什么任务",
+                "进行过什么任务",
+                "分配过什么任务",
+                "列出之前",
+                "列出来之前",
+            ]
+        )
+
+    @staticmethod
+    def _history_query_task(task_id: str, user_input: str) -> Task:
+        return Task(
+            task_id=task_id,
+            user_input=user_input,
+            task_type="history_query",
+            intent="list_previous_tasks",
+            input_type="memory",
+            expected_output="history_task_list",
+            constraints=[],
+            missing_info=[],
+        )

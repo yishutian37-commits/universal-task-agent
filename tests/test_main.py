@@ -5,6 +5,7 @@ import main
 from core.state import Feedback, Task
 from main import build_log_lines, create_initial_state, run_task
 from tools.base_tool import BaseTool
+from tools.history_tool import HistoryTool
 
 
 VALID_SUMMARY_REPORT = "## 摘要\n库存接口已完成联调。\n## 核心观点\n流程清晰。\n## 风险点\n原文未提供明确风险。"
@@ -180,6 +181,43 @@ def test_run_task_outputs_real_summary_with_injected_tools(tmp_path):
 
     assert state.status == "completed"
     assert state.final_output == summary
+
+
+def test_run_task_lists_previous_tasks_for_history_query(tmp_path):
+    states_dir = tmp_path / "states"
+    states_dir.mkdir(parents=True)
+    (states_dir / "task_old_state.json").write_text(
+        json.dumps(
+            {
+                "task_id": "task_old",
+                "user_input": "帮我做 GEO 分析",
+                "task_type": "geo_analysis",
+                "intent": "geo_analysis",
+                "status": "completed",
+                "final_output": "done",
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    state = run_task(
+        "我之前让你进行过什么任务，给我列出来",
+        output_root=tmp_path,
+        task_id="task_history",
+        task_parser=FakeParser(task_type="history_query", intent="list_previous_tasks"),
+        tool_registry={
+            "history_tool": HistoryTool(output_root=tmp_path, memory_root=tmp_path / "memory"),
+        },
+        memory_provider=False,
+        skill_loader=False,
+    )
+
+    assert state.status == "completed"
+    assert state.final_output is not None
+    assert "## 历史任务" in state.final_output
+    assert "帮我做 GEO 分析" in state.final_output
+    assert "## 摘要" not in state.final_output
 
 
 def test_run_task_writes_parser_result_to_state_and_log(tmp_path):

@@ -48,6 +48,12 @@ GEO 分析：
 .venv/bin/python main.py --task "帮我做 GEO 分析：行业是本地装修，地区是包头，品牌事实：有官网、提供设计和施工服务、需要避免夸大承诺。"
 ```
 
+历史任务查询：
+
+```bash
+.venv/bin/python main.py --task "我之前让你进行过什么任务，给我列出来"
+```
+
 UTA API：
 
 ```bash
@@ -125,6 +131,7 @@ LLM_SSL_VERIFY=0
 - `api-code-reading-alignment`: 当前分支已恢复 UTA 根 FastAPI 接口，并合并只读代码阅读任务；桌面端会打包源码快照供 `code_tool` 扫描。
 - `rag-integration`: 当前分支已把 RAG 整合进主项目，提供 CLI、FastAPI、桌面端知识库 Tab 和自动 seed。
 - `geo-skill-adapter`: 当前分支嫁接 `geo-agent-marketing-optimized` Skill 包，新增 `geo_analysis` 任务类型、`geo_tool`、GEO 报告生成和硬校验，并会随桌面端一起打包。
+- `history-query`: 当前分支新增 `history_query` 任务类型和 `history_tool`，用户可直接询问“之前让我做过什么任务”，UTA 会从 state 历史和 JSON Memory 中列出历史任务。
 - TAM Memory 不属于 UTA v1.0 核心范围。
 
 ## RAG 知识库

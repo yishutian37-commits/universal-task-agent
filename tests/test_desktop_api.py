@@ -118,6 +118,12 @@ def test_desktop_runner_registers_geo_tool():
     assert "geo_tool" in registry
 
 
+def test_desktop_runner_registers_history_tool():
+    registry = runner_module.build_tool_registry()
+
+    assert "history_tool" in registry
+
+
 def test_desktop_api_saves_settings_and_hides_key(tmp_path, monkeypatch):
     monkeypatch.setenv("UTA_HOME", str(tmp_path / "uta"))
     api = DesktopAPI(settings_store=SettingsStore(), runner=FakeRunner())

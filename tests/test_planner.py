@@ -126,3 +126,9 @@ def test_planner_creates_geo_analysis_plan():
         "读取 GEO 规则包并生成问题矩阵",
         "生成 GEO 分析报告",
     ]
+
+
+def test_planner_creates_history_query_plan():
+    plan = Planner().create_plan(make_task("history_query"))
+
+    assert [step.goal for step in plan.steps] == ["读取历史任务记录"]
