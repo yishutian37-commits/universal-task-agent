@@ -48,6 +48,11 @@ class _FakeStore(BaseVectorStore):
     def count(self):
         return len(self.chunks)
 
+    def clear(self):
+        self.chunks = []
+        self.vectors = []
+        self.docs = {}
+
 
 def _make_chunk(source="a.md", doc_id="d1"):
     return Chunk(

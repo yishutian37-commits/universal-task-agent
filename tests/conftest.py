@@ -93,6 +93,11 @@ class FakeStore(BaseVectorStore):
     def count(self):
         return len(self.chunks)
 
+    def clear(self):
+        self.chunks = []
+        self.vectors = []
+        self.docs = {}
+
 
 class FakeRetriever(BaseRetriever):
     def search(self, vectors, chunks, query_vec, top_k):

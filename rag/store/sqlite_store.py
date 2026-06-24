@@ -183,5 +183,11 @@ class SqliteStore:
     def count(self) -> int:
         return self._conn.execute("SELECT COUNT(*) FROM chunks").fetchone()[0]
 
+    def clear(self) -> None:
+        """清空 chunks 和 documents，保留表结构和 kb_meta（维度不变）。"""
+        self._conn.execute("DELETE FROM chunks")
+        self._conn.execute("DELETE FROM documents")
+        self._conn.commit()
+
     def close(self) -> None:
         self._conn.close()

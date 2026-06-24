@@ -90,3 +90,29 @@ class KnowledgeBase:
         contexts = [r.chunk for r in retrieved]
         answer_text = self.generator.generate(question, contexts)
         return Answer(answer=answer_text, sources=retrieved)
+
+    def list_docs(self) -> list[Document]:
+        """列出库内所有文档。"""
+        return self._store.list_docs()
+
+    def stats(self) -> dict:
+        """返回库统计：文档数、chunk 数、维度。"""
+        docs = self._store.list_docs()
+        return {
+            "documents": len(docs),
+            "chunks": self._store.count(),
+            "dim": self.embedder.dim,
+        }
+
+    def delete(self, target: str) -> dict:
+        """按 doc_id 或 source 删除文档。返回删除条数和目标。"""
+        # 先尝试按 source 删 chunk，再按 doc_id 删
+        deleted = self._store.delete_by_source(target)
+        if deleted == 0:
+            deleted = self._store.delete_doc(target)
+        return {"deleted": deleted, "target": target}
+
+    def rebuild(self) -> dict:
+        """清空库（换 embedder 后重建用）。返回清空后的统计。"""
+        self._store.clear()
+        return self.stats()

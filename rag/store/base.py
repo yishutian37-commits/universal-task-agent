@@ -35,3 +35,7 @@ class BaseVectorStore(ABC):
     @abstractmethod
     def count(self) -> int:
         """返回库内 chunk 总数。"""
+
+    @abstractmethod
+    def clear(self) -> None:
+        """清空所有 chunk 和文档（rebuild 用），保留表结构。"""
