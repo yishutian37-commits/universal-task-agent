@@ -50,6 +50,7 @@ a = Analysis(
         "rag.errors",
         "rag.cli",
         "rag.api",
+        "rag.seed",
         "rag.loaders.base",
         "rag.loaders.text_loader",
         "rag.chunkers.base",
