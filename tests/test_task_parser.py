@@ -54,7 +54,7 @@ def test_parser_returns_data_analysis_task():
 
 
 def test_parser_normalizes_unknown_task_type():
-    parser = TaskParser(FakeClient({"task_type": "research"}))
+    parser = TaskParser(FakeClient({"task_type": "bogus_type"}))
 
     task = parser.parse("task_1", "帮我调研")
 
@@ -113,3 +113,19 @@ def test_parser_normalizes_non_list_fields():
 
     assert task.constraints == []
     assert task.missing_info == []
+
+
+class FailingLLMClient:
+    def chat_json(self, system_prompt, user_prompt, schema=None):
+        raise RuntimeError("LLM unavailable")
+
+
+def test_task_parser_fallback_detects_research_when_llm_fails():
+    parser = TaskParser(llm_client=FailingLLMClient())
+
+    task = parser.parse("task_test", "请帮我调研 UTA Agent 框架下一步路线")
+
+    assert task.task_type == "research"
+    assert task.intent == "research_topic"
+    assert task.input_type == "text"
+    assert task.expected_output == "research_report"

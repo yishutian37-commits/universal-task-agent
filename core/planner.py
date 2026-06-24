@@ -28,4 +28,6 @@ class Planner:
             return ["读取输入内容", "提取核心信息", "生成结构化报告"]
         if task_type == "data_analysis":
             return ["读取表格文件", "分析字段、行数、列数和缺失值", "生成表格分析报告"]
+        if task_type == "research":
+            return ["搜索相关资料", "生成带来源的调研报告"]
         return ["执行 V0.3 mock 工具"]

@@ -64,3 +64,13 @@ def test_router_passes_previous_tool_result_to_next_action():
     action = Router().choose_tool(state, PlanStep(step_id=2, goal="提取核心信息"))
 
     assert action.params["previous_result"] == {"content": "上一段文本"}
+
+
+def test_router_routes_search_goal_to_search_tool():
+    state = AgentState(task_id="task_test", user_input="调研 UTA Agent 框架")
+    step = PlanStep(step_id=1, goal="搜索相关资料")
+
+    action = Router().choose_tool(state, step)
+
+    assert action.tool_name == "search_tool"
+    assert action.action_name == "search"

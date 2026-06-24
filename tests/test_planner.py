@@ -90,3 +90,21 @@ def test_planner_ignores_non_string_workflow_entries():
         "读取客户文本",
         "生成客户版报告",
     ]
+
+
+def test_planner_creates_research_plan():
+    task = Task(
+        task_id="task_test",
+        user_input="调研 UTA Agent 框架",
+        task_type="research",
+        intent="research_topic",
+        input_type="text",
+        expected_output="research_report",
+    )
+
+    plan = Planner().create_plan(task)
+
+    assert [step.goal for step in plan.steps] == [
+        "搜索相关资料",
+        "生成带来源的调研报告",
+    ]
