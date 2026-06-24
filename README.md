@@ -91,3 +91,16 @@ LLM_SSL_VERIFY=0
 - `v0.8-skill-runtime`: 新增 `SkillLoader` 和 `SkillBuilder`，支持本地 Markdown Skill 的加载、候选草稿生成和 Planner workflow 注入。
 - `v1.0-learning-agent`: 新增 A11 replan，单个 step 重试耗尽后可重新规划一次，并从失败 step 继续；完成 README、CHANGELOG 和两类 demo 验收。
 - TAM Memory 不属于 UTA v1.0 核心范围。
+
+## RAG 知识库
+
+`rag/` 模块提供文档摄入、向量检索和问答能力，可独立使用，也可供 Agent 调用。当前完成 v0.2-mvp：真实文件摄入（MD/TXT）、定长切片、SQLite 持久化、numpy 向量检索。
+
+```python
+from rag import create_default_kb
+kb = create_default_kb()
+kb.ingest_path("notes.md")
+print(kb.ask("问题").answer)
+```
+
+详见 `rag/README.md` 和 `docs/superpowers/specs/2026-06-24-rag-knowledge-base-design.md`。
