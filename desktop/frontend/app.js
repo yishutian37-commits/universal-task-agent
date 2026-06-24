@@ -5,12 +5,15 @@ const els = {
   openHistory: document.getElementById("openHistory"),
   openMemory: document.getElementById("openMemory"),
   openKnowledge: document.getElementById("openKnowledge"),
+  openSkills: document.getElementById("openSkills"),
   taskView: document.getElementById("taskView"),
   historyView: document.getElementById("historyView"),
   memoryView: document.getElementById("memoryView"),
   knowledgeView: document.getElementById("knowledgeView"),
+  skillsView: document.getElementById("skillsView"),
   refreshHistory: document.getElementById("refreshHistory"),
   refreshMemory: document.getElementById("refreshMemory"),
+  refreshSkills: document.getElementById("refreshSkills"),
   historyList: document.getElementById("historyList"),
   historyTaskMeta: document.getElementById("historyTaskMeta"),
   historyReport: document.getElementById("historyReport"),
@@ -59,7 +62,11 @@ const els = {
   kbQueryBtn: document.getElementById("kbQueryBtn"),
   kbAskMeta: document.getElementById("kbAskMeta"),
   kbAnswer: document.getElementById("kbAnswer"),
-  kbSources: document.getElementById("kbSources")
+  kbSources: document.getElementById("kbSources"),
+  runtimeSkillList: document.getElementById("runtimeSkillList"),
+  vendorSkillPackList: document.getElementById("vendorSkillPackList"),
+  skillPackMeta: document.getElementById("skillPackMeta"),
+  skillErrorList: document.getElementById("skillErrorList")
 };
 
 const state = {
@@ -171,6 +178,7 @@ function showTaskView() {
   els.historyView.classList.add("hidden");
   els.memoryView.classList.add("hidden");
   els.knowledgeView.classList.add("hidden");
+  els.skillsView.classList.add("hidden");
   setActiveNav(els.openTaskView);
 }
 
@@ -179,6 +187,7 @@ async function showHistoryView() {
   els.historyView.classList.remove("hidden");
   els.memoryView.classList.add("hidden");
   els.knowledgeView.classList.add("hidden");
+  els.skillsView.classList.add("hidden");
   setActiveNav(els.openHistory);
   await loadHistoryRuns();
 }
@@ -188,6 +197,7 @@ async function showMemoryView() {
   els.historyView.classList.add("hidden");
   els.memoryView.classList.remove("hidden");
   els.knowledgeView.classList.add("hidden");
+  els.skillsView.classList.add("hidden");
   setActiveNav(els.openMemory);
   await loadMemoryOverview();
 }
@@ -197,8 +207,19 @@ async function showKnowledgeView() {
   els.historyView.classList.add("hidden");
   els.memoryView.classList.add("hidden");
   els.knowledgeView.classList.remove("hidden");
+  els.skillsView.classList.add("hidden");
   setActiveNav(els.openKnowledge);
   await loadKnowledgeBase();
+}
+
+async function showSkillsView() {
+  els.taskView.classList.add("hidden");
+  els.historyView.classList.add("hidden");
+  els.memoryView.classList.add("hidden");
+  els.knowledgeView.classList.add("hidden");
+  els.skillsView.classList.remove("hidden");
+  setActiveNav(els.openSkills);
+  await loadSkillOverview();
 }
 
 async function loadHistoryRuns() {
@@ -457,6 +478,77 @@ function renderMemoryCards(items, titleKey, emptyText) {
   }).join("");
 }
 
+async function loadSkillOverview() {
+  try {
+    const result = await callApi("get_skill_overview");
+    if (!result.ok) {
+      showToast("读取技能包失败", result.error || "未知错误");
+      return;
+    }
+    renderSkillOverview(result);
+  } catch (error) {
+    showToast("读取技能包失败", error.message);
+  }
+}
+
+function renderSkillOverview(result) {
+  const runtimeSkills = result.runtime_skills || [];
+  const vendorPacks = result.vendor_packs || [];
+  const errors = result.errors || [];
+  els.skillPackMeta.textContent = `${runtimeSkills.length} 个 Skill · ${vendorPacks.length} 个规则包`;
+  els.runtimeSkillList.innerHTML = renderRuntimeSkills(runtimeSkills);
+  els.vendorSkillPackList.innerHTML = renderVendorPacks(vendorPacks);
+  els.skillErrorList.innerHTML = renderSkillErrors(errors);
+}
+
+function renderRuntimeSkills(skills) {
+  if (!skills.length) {
+    return '<div class="emptyState">暂无运行时 Skill</div>';
+  }
+  return skills.map((skill) => {
+    const keywords = (skill.trigger_keywords || []).join("、") || "无关键词";
+    const workflow = (skill.workflow || []).join(" → ") || "无 workflow";
+    return `
+      <article class="memoryCard">
+        <strong>${escapeHtml(skill.id || skill.name || "skill")}</strong>
+        <small>${escapeHtml(skill.name || "")} · ${escapeHtml(skill.task_type || "unknown")} · ${skill.enabled ? "已启用" : "已停用"} · priority ${escapeHtml(skill.priority ?? 0)}</small>
+        <small>关键词：${escapeHtml(keywords)}</small>
+        <small>流程：${escapeHtml(workflow)}</small>
+        <small>${escapeHtml(skill.source_path || "")}</small>
+      </article>
+    `;
+  }).join("");
+}
+
+function renderVendorPacks(packs) {
+  if (!packs.length) {
+    return '<div class="emptyState">暂无 vendor 规则包</div>';
+  }
+  return packs.map((pack) => {
+    const skillNames = (pack.skills || []).join("、") || "无子 skill";
+    return `
+      <article class="memoryCard">
+        <strong>${escapeHtml(pack.name || "vendor")}</strong>
+        <small>${pack.has_readme ? "README 已打包" : "缺少 README"} · ${escapeHtml(pack.skill_count || 0)} 个子 Skill</small>
+        <small>${escapeHtml(skillNames)}</small>
+        <small>${escapeHtml(pack.path || "")}</small>
+      </article>
+    `;
+  }).join("");
+}
+
+function renderSkillErrors(errors) {
+  if (!errors.length) {
+    return '<div class="emptyState">未发现加载问题</div>';
+  }
+  return errors.map((error) => `
+    <article class="memoryCard">
+      <strong>${escapeHtml(error.path || "skill")}</strong>
+      <small>${escapeHtml(error.error || "未知错误")}</small>
+    </article>
+  `).join("");
+}
+
 function resetRunSurface() {
   els.planList.innerHTML = "";
   els.logPanel.innerHTML = "";
@@ -651,12 +743,14 @@ function bindEvents() {
   els.openHistory.addEventListener("click", showHistoryView);
   els.openMemory.addEventListener("click", showMemoryView);
   els.openKnowledge.addEventListener("click", showKnowledgeView);
+  els.openSkills.addEventListener("click", showSkillsView);
   els.refreshHistory.addEventListener("click", loadHistoryRuns);
   els.kbIngestBtn.addEventListener("click", ingestKnowledge);
   els.kbRefreshBtn.addEventListener("click", loadKnowledgeBase);
   els.kbAskBtn.addEventListener("click", askKnowledge);
   els.kbQueryBtn.addEventListener("click", queryKnowledge);
   els.refreshMemory.addEventListener("click", loadMemoryOverview);
+  els.refreshSkills.addEventListener("click", loadSkillOverview);
   els.openSettings.addEventListener("click", openSettings);
   els.openSettingsSide.addEventListener("click", openSettings);
   els.closeSettings.addEventListener("click", closeSettings);

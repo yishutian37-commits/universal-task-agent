@@ -8,6 +8,7 @@ from desktop.paths import resource_path, uta_home
 from desktop.rag_client import RAGClient
 from desktop.runner import TaskRunner
 from desktop.settings_store import SettingsStore
+from desktop.skill_store import SkillStore
 
 
 class DesktopAPI:
@@ -18,12 +19,15 @@ class DesktopAPI:
         history_store: HistoryStore | None = None,
         memory_store: MemoryStore | None = None,
         rag_client: RAGClient | None = None,
+        skill_store: SkillStore | None = None,
+        skills_root=None,
     ):
         self.settings_store = settings_store if settings_store is not None else SettingsStore()
         self.runner = runner if runner is not None else TaskRunner(settings_store=self.settings_store)
         self.history_store = history_store if history_store is not None else HistoryStore(uta_home() / "outputs")
         self.memory_store = memory_store if memory_store is not None else MemoryStore(uta_home() / "memory")
         self.rag_client = rag_client if rag_client is not None else RAGClient()
+        self.skill_store = skill_store if skill_store is not None else SkillStore(skills_root or resource_path("skills"))
 
     def bind_window(self, window) -> None:
         if hasattr(self.runner, "bind_window"):
@@ -89,6 +93,12 @@ class DesktopAPI:
     def get_memory_overview(self) -> dict[str, Any]:
         try:
             return self.memory_store.overview()
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)}
+
+    def get_skill_overview(self) -> dict[str, Any]:
+        try:
+            return self.skill_store.overview()
         except Exception as exc:
             return {"ok": False, "error": str(exc)}
 

@@ -23,6 +23,7 @@
         <button class="nav" type="button" id="openHistory">运行记录</button>
         <button class="nav" type="button" id="openMemory">记忆</button>
         <button class="nav" type="button" id="openKnowledge">知识库</button>
+        <button class="nav" type="button" id="openSkills">技能包</button>
         <button class="nav" type="button" id="openSettingsSide">设置</button>
         <div class="sidebarFooter">
           <span>输出：~/.uta/outputs</span>
@@ -217,6 +218,35 @@
                 <h3>检索来源</h3>
               </div>
               <div class="logs" id="kbSources"></div>
+            </section>
+          </div>
+        </section>
+
+        <section class="workspace memoryWorkspace hidden" id="skillsView">
+          <div class="memoryColumn">
+            <section class="panel memoryPanel">
+              <div class="panelHead">
+                <h3>运行时 Skill</h3>
+                <button class="button secondary compact" type="button" id="refreshSkills">刷新</button>
+              </div>
+              <div class="memoryBlock" id="runtimeSkillList"></div>
+            </section>
+          </div>
+
+          <div class="memoryColumn">
+            <section class="panel memoryPanel">
+              <div class="panelHead">
+                <h3>Vendor 规则包</h3>
+                <span id="skillPackMeta">加载中</span>
+              </div>
+              <div class="memoryBlock" id="vendorSkillPackList"></div>
+            </section>
+
+            <section class="panel memoryPanel">
+              <div class="panelHead">
+                <h3>加载问题</h3>
+              </div>
+              <div class="memoryBlock" id="skillErrorList"></div>
             </section>
           </div>
         </section>

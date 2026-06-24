@@ -242,3 +242,42 @@ def test_desktop_api_gets_memory_overview(tmp_path, monkeypatch):
 
     assert result["ok"] is True
     assert memory_store.called is True
+
+
+def test_desktop_api_exposes_runtime_skills_and_vendor_packs(tmp_path, monkeypatch):
+    monkeypatch.setenv("UTA_HOME", str(tmp_path / "uta"))
+    skills_root = tmp_path / "skills"
+    vendor_root = skills_root / "vendor" / "geo-agent-marketing-optimized"
+    vendor_root.mkdir(parents=True)
+    (vendor_root / "README.md").write_text("# GEO Agent\n", encoding="utf-8")
+    (skills_root / "geo_analysis.md").write_text(
+        "\n".join(
+            [
+                "---",
+                "id: geo_analysis",
+                "name: GEO 分析",
+                "task_type: geo_analysis",
+                "enabled: true",
+                "priority: 120",
+                "trigger_keywords:",
+                "  - GEO",
+                "workflow:",
+                "  - 读取 GEO 规则包并生成问题矩阵",
+                "  - 生成 GEO 分析报告",
+                "---",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    api = DesktopAPI(settings_store=SettingsStore(), runner=FakeRunner(), skills_root=skills_root)
+
+    result = api.get_skill_overview()
+
+    assert result["ok"] is True
+    assert result["counts"] == {"runtime_skills": 1, "vendor_packs": 1}
+    assert result["runtime_skills"][0]["id"] == "geo_analysis"
+    assert result["runtime_skills"][0]["task_type"] == "geo_analysis"
+    assert result["runtime_skills"][0]["enabled"] is True
+    assert result["vendor_packs"][0]["name"] == "geo-agent-marketing-optimized"
+    assert result["vendor_packs"][0]["has_readme"] is True

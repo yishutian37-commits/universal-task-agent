@@ -47,6 +47,7 @@ a = Analysis(
         "desktop.app",
         "desktop.runner",
         "desktop.settings_store",
+        "desktop.skill_store",
         "desktop.rag_client",
         "api",
         "api.server",

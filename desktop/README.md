@@ -4,6 +4,12 @@
 
 当前桌面包支持文本总结、表格分析、调研搜索、实时天气、RAG 知识库、只读代码阅读和 GEO 分析。代码阅读任务扫描打包进 `.app` 的 `source/` 源码快照，不会修改项目文件；GEO 分析会读取打包进 `.app` 的 vendor 规则包。
 
+左侧“技能包”页会显示：
+
+- 运行时 Skill，例如 `geo_analysis`。
+- Vendor 规则包，例如 `geo-agent-marketing-optimized`。
+- Skill 加载问题，便于判断包是否真的被桌面端识别。
+
 GEO 示例：
 
 ```bash

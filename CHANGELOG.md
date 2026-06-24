@@ -14,6 +14,7 @@
 - 修正 RAG API 真实模型环境变量，统一使用 `KB_USE_REAL_MODELS`。
 - 嫁接 `geo-agent-marketing-optimized` Skill 包：新增 `geo_analysis` 任务类型、`geo_tool`、GEO 问题矩阵/内容 Brief/平台合规报告和 Verifier 硬校验。
 - 桌面端注册 `geo_tool`，并把 GEO vendor 规则包随 `.app` 一起打包。
+- 桌面端新增“技能包”页，可直观看到运行时 Skill、vendor 规则包和 Skill 加载问题。
 
 ## v1.0-learning-agent
 
