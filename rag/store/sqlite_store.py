@@ -31,7 +31,7 @@ class SqliteStore:
         self.db_path = db_path
         self.dim = dim
         os.makedirs(os.path.dirname(db_path) or ".", exist_ok=True)
-        self._conn = sqlite3.connect(db_path)
+        self._conn = sqlite3.connect(db_path, check_same_thread=False)
         self._conn.execute("PRAGMA foreign_keys = ON")
         self._init_schema()
         self._check_dim()
