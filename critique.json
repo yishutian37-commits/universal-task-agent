@@ -1,0 +1,33 @@
+{
+  "kind": "critique-panel",
+  "score": 4.5,
+  "axes": {
+    "clarity": {
+      "score": 4,
+      "notes": "落地页先讲本地可审计 Agent 控制台的价值，再引导进入桌面控制台；本轮移除了版本式首屏标签和重复区块小标签，决策路径更直接。"
+    },
+    "hierarchy": {
+      "score": 4,
+      "notes": "首屏由 H1、三项证据和产品窗口形成主路径；能力区改为不对称账本，架构承诺和验收区改为清单节奏，减少同构卡片堆叠。"
+    },
+    "typography": {
+      "score": 4,
+      "notes": "继续使用 Neutral Modern 字阶，减少全大写小标签和编号步骤，让标题、正文和产品事实承担层级。"
+    },
+    "motion": {
+      "score": 4.2,
+      "notes": "保留一次性首屏产品窗口入场与轻量滚动 reveal；本轮未增加新动效，避免把工具型页面推向展示页。"
+    },
+    "brand": {
+      "score": 4.5,
+      "notes": "严格沿用 Neutral Modern 令牌，收回过多钴蓝用法，让强调色集中在主动作、活动状态和焦点反馈。"
+    }
+  },
+  "odReviewAxes": {
+    "philosophy": 4,
+    "hierarchy": 4.5,
+    "execution": 4.4,
+    "specificity": 4.3,
+    "restraint": 4.7
+  }
+}

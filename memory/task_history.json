@@ -12,6 +12,66 @@
       "feedback_count": 0,
       "created_at": "2026-06-21 00:05:24",
       "updated_at": "2026-06-21 00:05:24"
+    },
+    {
+      "task_id": "task_20260621_001655",
+      "task_type": "data_analysis",
+      "intent": "analyze_table",
+      "status": "completed",
+      "final_output_preview": "## 字段说明\n- order_id：类型 int64，非空 10，缺失 0\n- warehouse：类型 object，非空 10，缺失 0\n- category：类型 object，非空 10，缺失 0\n- quantity：类型 float64，非空 9，缺失 1\n- amount：类型 float64，非空 9，缺失 1\n- status：类型 object，非空 10，缺失 0\n\n## 基础统计\n- 行数：10\n- 列数：6\n- 缺失值数量：2\n- 异常值数量：2\n\n## 异常数据\n- 第 8 行，字段 quantity，值 999.0：IQR 异常值\n- 第 8 行，字段 amou",
+      "result_count": 3,
+      "check_count": 3,
+      "feedback_count": 0,
+      "created_at": "2026-06-21 00:16:55",
+      "updated_at": "2026-06-21 00:16:55"
+    },
+    {
+      "task_id": "task_20260621_050748",
+      "task_type": "data_analysis",
+      "intent": "analyze_table",
+      "status": "completed",
+      "final_output_preview": "## 字段说明\n- order_id：类型 int64，非空 10，缺失 0\n- warehouse：类型 object，非空 10，缺失 0\n- category：类型 object，非空 10，缺失 0\n- quantity：类型 float64，非空 9，缺失 1\n- amount：类型 float64，非空 9，缺失 1\n- status：类型 object，非空 10，缺失 0\n\n## 基础统计\n- 行数：10\n- 列数：6\n- 缺失值数量：2\n- 异常值数量：2\n\n## 异常数据\n- 第 8 行，字段 quantity，值 999.0：IQR 异常值\n- 第 8 行，字段 amou",
+      "result_count": 3,
+      "check_count": 3,
+      "feedback_count": 0,
+      "created_at": "2026-06-21 05:07:48",
+      "updated_at": "2026-06-21 05:07:48"
+    },
+    {
+      "task_id": "task_20260621_053819",
+      "task_type": "summarize",
+      "intent": "summarize_article",
+      "status": "failed",
+      "final_output_preview": "工具执行失败：tool_error: LLM network error: [Errno 8] nodename nor servname provided, or not known",
+      "result_count": 4,
+      "check_count": 4,
+      "feedback_count": 3,
+      "created_at": "2026-06-21 05:38:19",
+      "updated_at": "2026-06-21 05:38:19"
+    },
+    {
+      "task_id": "task_20260621_055119",
+      "task_type": "summarize",
+      "intent": "总结文件 examples/summarize_example.txt 的内容",
+      "status": "completed",
+      "final_output_preview": "## 摘要\n这是一段用于 V0.1 骨架演示的文本，当前阶段旨在验证 Agent 执行链路而非进行真实总结。\n\n## 核心观点\n文本的核心目的是通过演示来验证 Agent 的执行链路。\n\n## 关键事实\n- 文本用于 V0.1 骨架演示。\n- 当前阶段不做真实总结，只验证 Agent 执行链路。\n\n## 待办事项\n未提及\n\n## 风险点\n未提及",
+      "result_count": 3,
+      "check_count": 3,
+      "feedback_count": 0,
+      "created_at": "2026-06-21 05:51:19",
+      "updated_at": "2026-06-21 05:51:44"
+    },
+    {
+      "task_id": "task_20260621_055703",
+      "task_type": "summarize",
+      "intent": "Summarize the content of the specified file 'examples/summarize_example.txt'",
+      "status": "completed",
+      "final_output_preview": "## 摘要\n本文本是一个用于V0.1版本骨架演示的占位文本，目的是在当前阶段验证代理的执行链路，而非进行真实的内容总结。\n\n## 核心观点\n文本指出其自身是演示用的，当前阶段不进行真实总结，只用于验证代理的执行链路。\n\n## 关键事实\n1. 文本用于V0.1骨架演示。\n2. 当前阶段不做真实总结。\n3. 目的是验证代理执行链路。\n\n## 待办事项\n未提及\n\n## 风险点\n未提及",
+      "result_count": 3,
+      "check_count": 3,
+      "feedback_count": 0,
+      "created_at": "2026-06-21 05:57:03",
+      "updated_at": "2026-06-21 05:57:27"
     }
   ]
 }

@@ -1,0 +1,876 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>UTA Desktop · 可点击桌面应用界面</title>
+  <style>
+    :root {
+      --bg: #fafafa;
+      --surface: #ffffff;
+      --surface-warm: var(--surface);
+      --fg: #111111;
+      --fg-2: var(--fg);
+      --muted: #6b6b6b;
+      --meta: var(--muted);
+      --border: #e5e5e5;
+      --border-soft: var(--border);
+      --accent: #2f6feb;
+      --accent-on: #ffffff;
+      --accent-hover: color-mix(in oklab, var(--accent), black 8%);
+      --accent-active: color-mix(in oklab, var(--accent), black 14%);
+      --success: #17a34a;
+      --warn: #eab308;
+      --danger: #dc2626;
+      --font-display: "Inter", -apple-system, system-ui, sans-serif;
+      --font-body: "Inter", -apple-system, system-ui, sans-serif;
+      --font-mono: ui-monospace, "JetBrains Mono", monospace;
+      --text-xs: 12px;
+      --text-sm: 14px;
+      --text-base: 16px;
+      --text-lg: 20px;
+      --text-xl: 24px;
+      --text-2xl: 32px;
+      --text-3xl: 48px;
+      --text-4xl: 64px;
+      --leading-body: 1.5;
+      --leading-tight: 1.2;
+      --tracking-display: -0.01em;
+      --space-1: 4px;
+      --space-2: 8px;
+      --space-3: 12px;
+      --space-4: 16px;
+      --space-5: 20px;
+      --space-6: 24px;
+      --space-8: 32px;
+      --space-12: 48px;
+      --space-20: 80px;
+      --section-y-desktop: 80px;
+      --section-y-tablet: 48px;
+      --section-y-phone: 32px;
+      --radius-sm: 8px;
+      --radius-md: 12px;
+      --radius-lg: 16px;
+      --radius-pill: 9999px;
+      --elev-flat: none;
+      --elev-ring: 0 0 0 1px var(--border);
+      --elev-raised: 0 2px 8px color-mix(in oklab, var(--fg), transparent 92%);
+      --focus-ring: 0 0 0 3px color-mix(in oklab, var(--accent), transparent 70%);
+      --motion-fast: 150ms;
+      --motion-base: 200ms;
+      --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+      --container-max: 1200px;
+      --container-gutter-desktop: 24px;
+      --container-gutter-tablet: 16px;
+      --container-gutter-phone: 12px;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--fg);
+      font-family: var(--font-body);
+      line-height: var(--leading-body);
+      -webkit-font-smoothing: antialiased;
+      overflow: hidden;
+    }
+    button, textarea, input { font: inherit; }
+    button { cursor: pointer; }
+    a { color: inherit; text-decoration: none; }
+    h1, h2, h3 { font-family: var(--font-display); letter-spacing: 0; line-height: var(--leading-tight); margin: 0; text-wrap: balance; }
+    p { margin: 0; text-wrap: pretty; }
+    .desktop-window {
+      height: 100%;
+      display: grid;
+      grid-template-rows: 42px 1fr;
+      background: var(--surface);
+    }
+    .window-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding-inline: var(--space-4);
+      border-bottom: 1px solid var(--border);
+      background: var(--bg);
+      user-select: none;
+    }
+    .traffic { display: flex; gap: var(--space-2); }
+    .traffic span { width: 11px; height: 11px; border-radius: var(--radius-pill); background: var(--border); }
+    .traffic span:nth-child(1) { background: var(--danger); }
+    .traffic span:nth-child(2) { background: var(--warn); }
+    .traffic span:nth-child(3) { background: var(--success); }
+    .window-title { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--muted); }
+    .app {
+      min-height: 0;
+      display: grid;
+      grid-template-columns: 248px minmax(0, 1fr);
+    }
+    .sidebar {
+      border-right: 1px solid var(--border);
+      background: var(--bg);
+      padding: var(--space-5);
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-5);
+      min-height: 0;
+    }
+    .brand { display: flex; flex-direction: column; gap: var(--space-1); }
+    .brand strong { font-size: var(--text-lg); }
+    .brand span { color: var(--muted); font-size: var(--text-xs); font-family: var(--font-mono); }
+    .nav-list { display: grid; gap: var(--space-2); }
+    .nav-btn {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--space-3);
+      min-height: 42px;
+      padding: 10px 12px;
+      border-radius: var(--radius-sm);
+      border: 1px solid transparent;
+      background: transparent;
+      color: var(--muted);
+      text-align: left;
+    }
+    .nav-btn.active { color: var(--fg); background: var(--surface); border-color: var(--border); }
+    .nav-btn:hover { color: var(--fg); }
+    .sidebar-foot {
+      margin-top: auto;
+      display: grid;
+      gap: var(--space-3);
+      color: var(--muted);
+      font-size: var(--text-xs);
+      font-family: var(--font-mono);
+    }
+    .main {
+      min-width: 0;
+      min-height: 0;
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr);
+      background: var(--surface);
+    }
+    .main-head {
+      padding: var(--space-5) var(--space-6);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--space-5);
+      background: var(--surface);
+    }
+    .main-head h1 { font-size: var(--text-2xl); font-weight: 600; }
+    .subtle { color: var(--muted); font-size: var(--text-sm); }
+    .head-actions { display: flex; align-items: center; gap: var(--space-3); }
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-2);
+      min-height: 34px;
+      padding: 6px 10px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-pill);
+      color: var(--muted);
+      font-size: var(--text-sm);
+      white-space: nowrap;
+    }
+    .status-dot { width: 8px; height: 8px; border-radius: var(--radius-pill); background: var(--muted); }
+    .status-pill.ready .status-dot { background: var(--muted); }
+    .status-pill.running .status-dot { background: var(--accent); }
+    .status-pill.done .status-dot { background: var(--success); }
+    .status-pill.error .status-dot { background: var(--danger); }
+    .btn {
+      min-height: 38px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: var(--space-2);
+      padding: 9px 14px;
+      border: 1px solid transparent;
+      border-radius: var(--radius-sm);
+      background: transparent;
+      color: var(--fg);
+      font-size: var(--text-sm);
+      font-weight: 600;
+      transition: background var(--motion-fast) var(--ease-standard), border-color var(--motion-fast) var(--ease-standard), color var(--motion-fast) var(--ease-standard), transform var(--motion-fast) var(--ease-standard);
+    }
+    .btn:focus-visible, .nav-btn:focus-visible, .seg-btn:focus-visible, summary:focus-visible, textarea:focus-visible, input:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+    .btn:active { transform: translateY(1px); }
+    .btn-primary { background: var(--accent); color: var(--accent-on); border-color: var(--accent); }
+    .btn-primary:hover { background: var(--accent-hover); }
+    .btn-secondary { border-color: var(--border); }
+    .btn-secondary:hover { border-color: var(--fg); }
+    .btn-ghost:hover { background: var(--bg); }
+    .workspace {
+      min-height: 0;
+      padding: var(--space-6);
+      display: grid;
+      grid-template-columns: minmax(360px, 0.95fr) minmax(440px, 1.05fr);
+      gap: var(--space-6);
+      overflow: auto;
+      background: var(--bg);
+    }
+    .panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      min-width: 0;
+    }
+    .panel-head {
+      min-height: 54px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--space-4);
+      padding: var(--space-4) var(--space-5);
+      border-bottom: 1px solid var(--border);
+    }
+    .panel-head h2 { font-size: var(--text-lg); }
+    .panel-body { padding: var(--space-5); }
+    .left-stack { display: grid; grid-template-rows: auto minmax(220px, 1fr) minmax(180px, 0.8fr); gap: var(--space-5); min-height: 0; }
+    .right-stack { display: grid; grid-template-rows: minmax(0, 1fr) auto; gap: var(--space-5); min-height: 0; }
+    .composer { display: grid; gap: var(--space-4); }
+    .segmented {
+      display: inline-grid;
+      grid-auto-flow: column;
+      width: max-content;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      overflow: hidden;
+      background: var(--bg);
+    }
+    .seg-btn {
+      min-height: 36px;
+      padding: 8px 12px;
+      border: 0;
+      border-right: 1px solid var(--border);
+      background: transparent;
+      color: var(--muted);
+      font-size: var(--text-sm);
+    }
+    .seg-btn:last-child { border-right: 0; }
+    .seg-btn.active { background: var(--surface); color: var(--fg); font-weight: 600; }
+    .task-input {
+      width: 100%;
+      min-height: 118px;
+      resize: vertical;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: var(--space-4);
+      background: var(--surface);
+      color: var(--fg);
+      font-size: var(--text-base);
+      line-height: 1.5;
+    }
+    .task-input[readonly] { color: var(--muted); background: color-mix(in oklab, var(--bg), var(--surface) 40%); }
+    .toolbar { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap; }
+    .plan-list { display: grid; gap: var(--space-3); max-height: 360px; overflow: auto; }
+    .step-btn {
+      width: 100%;
+      display: grid;
+      grid-template-columns: 30px minmax(0, 1fr) auto;
+      align-items: start;
+      gap: var(--space-3);
+      padding: var(--space-3);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      background: var(--surface);
+      text-align: left;
+    }
+    .step-btn:hover { background: var(--bg); }
+    .step-icon {
+      width: 24px;
+      height: 24px;
+      border-radius: var(--radius-pill);
+      display: grid;
+      place-items: center;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      font-family: var(--font-mono);
+      font-size: var(--text-xs);
+    }
+    .step-btn.active .step-icon { background: color-mix(in oklab, var(--accent), transparent 88%); border-color: var(--accent); color: var(--accent); }
+    .step-btn.done .step-icon { background: color-mix(in oklab, var(--success), transparent 88%); border-color: var(--success); color: var(--success); }
+    .step-title { font-weight: 600; }
+    .step-detail { grid-column: 2 / 4; display: none; color: var(--muted); font-size: var(--text-sm); padding-top: var(--space-2); }
+    .step-btn.expanded .step-detail { display: block; }
+    .tool-chip { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--muted); white-space: nowrap; }
+    .log-panel {
+      height: 220px;
+      overflow: auto;
+      background: var(--fg);
+      color: var(--surface);
+      border-radius: var(--radius-sm);
+      padding: var(--space-4);
+      font-family: var(--font-mono);
+      font-size: var(--text-xs);
+      line-height: 1.7;
+    }
+    .log-line { color: color-mix(in oklab, var(--surface), transparent 18%); }
+    .log-line strong { color: var(--surface); font-weight: 600; }
+    .report {
+      height: 100%;
+      min-height: 520px;
+      overflow: auto;
+      padding: var(--space-6);
+    }
+    .report h2 { font-size: var(--text-xl); margin: 0 0 var(--space-3); }
+    .report h3 { font-size: var(--text-lg); margin: var(--space-6) 0 var(--space-2); }
+    .report p, .report li { color: var(--muted); }
+    .report ul { margin: var(--space-2) 0 0; padding-left: var(--space-5); }
+    .report table { width: 100%; border-collapse: collapse; margin-top: var(--space-3); font-size: var(--text-sm); }
+    .report th, .report td { padding: 10px 12px; border-bottom: 1px solid var(--border); text-align: left; }
+    .report th { color: var(--muted); font-family: var(--font-mono); font-size: var(--text-xs); font-weight: 500; }
+    details.state-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-md); }
+    details.state-card summary { cursor: pointer; padding: var(--space-4) var(--space-5); font-weight: 600; }
+    pre {
+      margin: 0;
+      padding: 0 var(--space-5) var(--space-5);
+      white-space: pre-wrap;
+      color: var(--muted);
+      font-size: var(--text-xs);
+      line-height: 1.6;
+      font-family: var(--font-mono);
+    }
+    .empty-state {
+      min-height: 440px;
+      display: grid;
+      place-items: center;
+      text-align: center;
+      color: var(--muted);
+      padding: var(--space-8);
+    }
+    .empty-state strong { display: block; color: var(--fg); font-size: var(--text-xl); margin-bottom: var(--space-2); }
+    .modal-backdrop {
+      position: fixed;
+      inset: 42px 0 0;
+      display: none;
+      place-items: center;
+      background: color-mix(in oklab, var(--fg), transparent 78%);
+      padding: var(--space-6);
+      z-index: 40;
+    }
+    .modal-backdrop.open { display: grid; }
+    .modal {
+      width: min(560px, 100%);
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--elev-raised);
+    }
+    .modal header { display: flex; justify-content: space-between; align-items: center; padding: var(--space-5); border-bottom: 1px solid var(--border); }
+    .modal form { display: grid; gap: var(--space-4); padding: var(--space-5); }
+    .field { display: grid; gap: var(--space-2); }
+    .field label { color: var(--muted); font-size: var(--text-sm); }
+    .field input {
+      width: 100%;
+      min-height: 42px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding-inline: var(--space-3);
+      background: var(--surface);
+      color: var(--fg);
+    }
+    .check-row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); padding: var(--space-3); border: 1px solid var(--border); border-radius: var(--radius-sm); }
+    .toast {
+      position: fixed;
+      right: var(--space-6);
+      bottom: var(--space-6);
+      width: min(360px, calc(100vw - var(--space-12)));
+      padding: var(--space-4);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      background: var(--surface);
+      box-shadow: var(--elev-raised);
+      display: none;
+      z-index: 50;
+    }
+    .toast.show { display: block; }
+    .toast strong { display: block; margin-bottom: var(--space-1); }
+    .toast p { color: var(--muted); font-size: var(--text-sm); }
+    @media (max-width: 1180px) {
+      body { overflow: auto; }
+      .desktop-window { min-height: 100%; height: auto; }
+      .app { grid-template-columns: 1fr; }
+      .sidebar { flex-direction: row; align-items: center; overflow: auto; border-right: 0; border-bottom: 1px solid var(--border); }
+      .nav-list { grid-auto-flow: column; grid-auto-columns: max-content; }
+      .sidebar-foot { margin-top: 0; margin-left: auto; }
+      .workspace { grid-template-columns: 1fr; overflow: visible; }
+      .report { min-height: 420px; }
+    }
+    @media (max-width: 720px) {
+      .main-head { align-items: flex-start; flex-direction: column; padding: var(--space-4); }
+      .head-actions { width: 100%; justify-content: space-between; flex-wrap: wrap; }
+      .workspace { padding: var(--space-3); gap: var(--space-3); }
+      .panel-body, .report { padding: var(--space-4); }
+      .sidebar { padding: var(--space-3); }
+      .brand { min-width: 180px; }
+      .toolbar { align-items: stretch; }
+      .toolbar .btn, .toolbar > div { width: 100%; }
+      .toolbar > div { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2); }
+      .segmented { width: 100%; grid-auto-columns: 1fr; }
+      .seg-btn { width: 100%; }
+    }
+  </style>
+</head>
+<body>
+  <div class="desktop-window">
+    <header class="window-bar" data-od-id="desktop-window-bar">
+      <div class="traffic" aria-hidden="true"><span></span><span></span><span></span></div>
+      <span class="window-title">UTA Desktop · pywebview</span>
+      <a class="window-title" href="landing.html">产品页</a>
+    </header>
+
+    <div class="app">
+      <aside class="sidebar" data-od-id="sidebar">
+        <div class="brand">
+          <strong>UTA Desktop</strong>
+          <span>v2.0 控制台</span>
+        </div>
+        <nav class="nav-list" aria-label="应用导航">
+          <button class="nav-btn active" type="button"><span>任务控制台</span><span>⌘1</span></button>
+          <button class="nav-btn" type="button"><span>运行记录</span><span>⌘2</span></button>
+          <button class="nav-btn" type="button" id="sidebarSettings"><span>本地设置</span><span>⌘,</span></button>
+        </nav>
+        <div class="sidebar-foot">
+          <span>输出路径：~/.uta/outputs</span>
+          <span id="keyState">Key 状态：已配置</span>
+        </div>
+      </aside>
+
+      <main class="main" data-od-id="console">
+        <section class="main-head" data-od-id="console-header">
+          <div>
+            <h1>任务控制台</h1>
+            <p class="subtle">输入任务后实时查看计划、工具、校验、报告与 state。</p>
+          </div>
+          <div class="head-actions">
+            <span class="status-pill ready" id="statusPill"><span class="status-dot"></span><span id="statusText">就绪</span></span>
+            <button class="btn btn-secondary" type="button" id="openSettings">设置</button>
+          </div>
+        </section>
+
+        <section class="workspace" data-od-id="workspace">
+          <div class="left-stack">
+            <section class="panel" data-od-id="task-input">
+              <div class="panel-head">
+                <h2>任务输入</h2>
+                <div class="segmented" role="group" aria-label="任务类型">
+                  <button class="seg-btn active" type="button" data-mode="data">表格分析</button>
+                  <button class="seg-btn" type="button" data-mode="summary">文本总结</button>
+                </div>
+              </div>
+              <div class="panel-body composer">
+                <textarea class="task-input" id="taskInput">分析 examples/orders.csv，输出字段说明、基础统计、异常数据、分类汇总和后续建议。</textarea>
+                <div class="toolbar">
+                  <div>
+                    <button class="btn btn-secondary" type="button" id="loadExample">载入示例</button>
+                    <button class="btn btn-secondary" type="button" id="clearTask">清空</button>
+                  </div>
+                  <button class="btn btn-primary" type="button" id="runTask">运行任务</button>
+                </div>
+              </div>
+            </section>
+
+            <section class="panel" data-od-id="plan">
+              <div class="panel-head">
+                <h2>执行过程</h2>
+                <span class="subtle" id="planHint">点击步骤查看事件详情</span>
+              </div>
+              <div class="panel-body">
+                <div class="plan-list" id="planList"></div>
+              </div>
+            </section>
+
+            <section class="panel" data-od-id="logs">
+              <div class="panel-head">
+                <h2>实时日志</h2>
+                <button class="btn btn-ghost" type="button" id="clearLogs">清空日志</button>
+              </div>
+              <div class="panel-body">
+                <div class="log-panel" id="logPanel" aria-live="polite"></div>
+              </div>
+            </section>
+          </div>
+
+          <div class="right-stack">
+            <section class="panel" data-od-id="result">
+              <div class="panel-head">
+                <h2>最终结果</h2>
+                <button class="btn btn-secondary" type="button" id="copyReport" disabled>复制报告</button>
+              </div>
+              <div class="report" id="report">
+                <div class="empty-state">
+                  <div>
+                    <strong>等待任务运行</strong>
+                    <p>运行后这里会渲染 Markdown 报告；state.json 会在下方同步更新。</p>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <details class="state-card" data-od-id="state-json">
+              <summary>state.json</summary>
+              <pre id="stateJson">{
+  "status": "idle",
+  "task_id": null,
+  "results": []
+}</pre>
+            </details>
+          </div>
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <div class="modal-backdrop" id="settingsModal" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
+    <div class="modal">
+      <header>
+        <h2 id="settingsTitle">本地 LLM 设置</h2>
+        <button class="btn btn-ghost" type="button" id="closeSettings">关闭</button>
+      </header>
+      <form id="settingsForm">
+        <div class="field">
+          <label for="baseUrl">Base URL</label>
+          <input id="baseUrl" value="https://open.bigmodel.cn/api/paas/v4" />
+        </div>
+        <div class="field">
+          <label for="modelName">模型</label>
+          <input id="modelName" value="glm-5.2" />
+        </div>
+        <div class="field">
+          <label for="apiKey">API Key</label>
+          <input id="apiKey" type="password" placeholder="保存后只记录本地已配置状态" />
+        </div>
+        <label class="check-row">
+          <span>启用 SSL 校验</span>
+          <input id="sslVerify" type="checkbox" checked />
+        </label>
+        <div class="toolbar">
+          <button class="btn btn-secondary" type="button" id="clearKey">清除 Key</button>
+          <button class="btn btn-primary" type="submit">保存设置</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite">
+    <strong id="toastTitle">提示</strong>
+    <p id="toastBody">操作已完成。</p>
+  </div>
+
+  <script>
+    const definitions = {
+      data: {
+        input: "分析 examples/orders.csv，输出字段说明、基础统计、异常数据、分类汇总和后续建议。",
+        steps: [
+          { id: "read", title: "读取表格文件", tool: "file_tool", detail: "识别 .csv / .xlsx 路径，返回 file_kind=table 与 source。" },
+          { id: "analyze", title: "分析字段、缺失值和异常值", tool: "table_tool", detail: "读取表格，输出 row_count、column_count、missing_count、anomaly_count、columns、anomalies、category_summaries。" },
+          { id: "report", title: "生成表格分析报告", tool: "report_tool", detail: "渲染固定 Markdown 小节：字段说明、基础统计、异常数据、分类汇总、业务解释、后续建议。" },
+          { id: "verify", title: "校验报告数字一致性", tool: "verifier", detail: "检查必要小节、字段覆盖和行列/缺失/异常数字完全一致。" }
+        ],
+        logs: [
+          ["task_received", "Main", "收到任务：分析 examples/orders.csv"],
+          ["parsed", "TaskParser", "识别任务类型 data_analysis"],
+          ["plan_created", "Planner", "生成 4 步数据分析计划"],
+          ["step_started:read", "Executor", "开始读取表格文件"],
+          ["step_done:read", "FileTool", "已读取表格文件 examples/orders.csv"],
+          ["step_started:analyze", "Router", "路由到 table_tool"],
+          ["step_done:analyze", "TableTool", "行数 10，列数 6，缺失值 2，异常值 1"],
+          ["step_started:report", "ReportTool", "生成 Markdown 表格分析报告"],
+          ["step_done:report", "ReportTool", "报告包含 6 个固定小节"],
+          ["step_started:verify", "Verifier", "执行结构校验与 L1 数字一致性校验"],
+          ["step_done:verify", "Verifier", "报告通过校验"],
+          ["task_completed", "Loop", "任务完成，state 已写入 ~/.uta/outputs/states"]
+        ],
+        report: `
+          <h2>表格分析报告</h2>
+          <p>数据源：<code>examples/orders.csv</code>。本报告由 table_tool 的结构化结果生成，数字用于 Verifier L1 一致性校验。</p>
+          <h3>字段说明</h3>
+          <table>
+            <thead><tr><th>字段</th><th>类型</th><th>非空</th><th>缺失</th></tr></thead>
+            <tbody>
+              <tr><td>order_id</td><td>number</td><td>10</td><td>0</td></tr>
+              <tr><td>warehouse</td><td>object</td><td>10</td><td>0</td></tr>
+              <tr><td>category</td><td>object</td><td>10</td><td>0</td></tr>
+              <tr><td>quantity</td><td>number</td><td>9</td><td>1</td></tr>
+              <tr><td>amount</td><td>number</td><td>9</td><td>1</td></tr>
+              <tr><td>status</td><td>object</td><td>10</td><td>0</td></tr>
+            </tbody>
+          </table>
+          <h3>基础统计</h3>
+          <ul><li>行数：10</li><li>列数：6</li><li>缺失值数量：2</li><li>异常值数量：1</li></ul>
+          <h3>异常数据</h3>
+          <p>quantity 第 8 行的值 999 被 IQR 规则标记为异常值。</p>
+          <h3>分类汇总</h3>
+          <p>warehouse Top values：上海仓 4、北京仓 3、广州仓 3。status Top values：已出库 6、待拣货 3、已取消 1。</p>
+          <h3>业务解释</h3>
+          <p>订单集中在上海仓，quantity 存在一个明显异常点，建议复核第 8 行是否为录入错误或大宗订单。</p>
+          <h3>后续建议</h3>
+          <p>先补齐 quantity 与 amount 的缺失值，再决定是否保留异常订单参与后续分析。</p>
+        `,
+        state: {
+          task_type: "data_analysis",
+          status: "completed",
+          source: "examples/orders.csv",
+          row_count: 10,
+          column_count: 6,
+          missing_count: 2,
+          anomaly_count: 1,
+          verifier: { passed: true, checks: ["sections", "field_coverage", "number_consistency"] }
+        }
+      },
+      summary: {
+        input: "帮我总结 examples/summarize_example.txt，输出结构化中文报告。",
+        steps: [
+          { id: "read", title: "读取文本内容", tool: "file_tool", detail: "读取本地 .txt / .md 文件，或回退到用户输入。" },
+          { id: "summarize", title: "生成中文结构化总结", tool: "text_tool", detail: "调用 LLM 生成重点、细节和行动项。" },
+          { id: "report", title: "输出 Markdown 报告", tool: "report_tool", detail: "把总结结果格式化为可阅读报告。" },
+          { id: "verify", title: "结构校验与必要时重试", tool: "verifier", detail: "缺小节时进入 Reflection + 单步重试。" }
+        ],
+        logs: [
+          ["task_received", "Main", "收到任务：总结示例文本"],
+          ["parsed", "TaskParser", "识别任务类型 summarize"],
+          ["plan_created", "Planner", "生成 4 步总结计划"],
+          ["step_started:read", "Executor", "开始读取文本文件"],
+          ["step_done:read", "FileTool", "已读取文本内容"],
+          ["step_started:summarize", "Router", "路由到 text_tool"],
+          ["step_done:summarize", "TextTool", "已生成结构化总结"],
+          ["step_started:report", "ReportTool", "生成 Markdown 报告"],
+          ["step_done:report", "ReportTool", "报告写入 final_output"],
+          ["step_started:verify", "Verifier", "检查必要结构"],
+          ["step_done:verify", "Verifier", "报告通过校验"],
+          ["task_completed", "Loop", "任务完成"]
+        ],
+        report: `
+          <h2>文本总结报告</h2>
+          <p>数据源：<code>examples/summarize_example.txt</code>。报告保留重点、细节和后续行动，适合桌面端快速审阅。</p>
+          <h3>核心结论</h3>
+          <p>UTA 已具备从任务解析、计划生成、工具路由、执行、校验到报告输出的最小 Agent Loop。</p>
+          <h3>关键细节</h3>
+          <ul><li>CLI 主链路保持不变。</li><li>桌面端通过 on_progress 回调接收步骤事件。</li><li>Verifier 失败时可进入 Reflection 并触发单步重试。</li></ul>
+          <h3>后续建议</h3>
+          <p>在桌面端优先打通总结任务，再按 v0.6 接入 CSV/XLSX 表格分析。</p>
+        `,
+        state: {
+          task_type: "summarize",
+          status: "completed",
+          final_output: "Markdown summary",
+          verifier: { passed: true, checks: ["required_sections"] }
+        }
+      }
+    };
+
+    const els = {
+      taskInput: document.getElementById("taskInput"),
+      planList: document.getElementById("planList"),
+      logPanel: document.getElementById("logPanel"),
+      report: document.getElementById("report"),
+      stateJson: document.getElementById("stateJson"),
+      statusPill: document.getElementById("statusPill"),
+      statusText: document.getElementById("statusText"),
+      runTask: document.getElementById("runTask"),
+      loadExample: document.getElementById("loadExample"),
+      clearTask: document.getElementById("clearTask"),
+      clearLogs: document.getElementById("clearLogs"),
+      copyReport: document.getElementById("copyReport"),
+      modal: document.getElementById("settingsModal"),
+      toast: document.getElementById("toast"),
+      toastTitle: document.getElementById("toastTitle"),
+      toastBody: document.getElementById("toastBody"),
+      keyState: document.getElementById("keyState")
+    };
+
+    let activeMode = "data";
+    let running = false;
+    let timer = null;
+    let currentReportText = "";
+    let hasKey = localStorage.getItem("uta.hasKey") !== "false";
+
+    function setStatus(kind, text) {
+      els.statusPill.className = "status-pill " + kind;
+      els.statusText.textContent = text;
+    }
+
+    function updateKeyState() {
+      els.keyState.textContent = hasKey ? "Key 状态：已配置" : "Key 状态：未配置";
+    }
+
+    function showToast(title, body) {
+      els.toastTitle.textContent = title;
+      els.toastBody.textContent = body;
+      els.toast.classList.add("show");
+      window.clearTimeout(showToast.hideTimer);
+      showToast.hideTimer = window.setTimeout(() => els.toast.classList.remove("show"), 2800);
+    }
+
+    function renderPlan() {
+      const def = definitions[activeMode];
+      els.planList.innerHTML = def.steps.map((step, index) => `
+        <button class="step-btn" type="button" data-step="${step.id}">
+          <span class="step-icon">${index + 1}</span>
+          <span><span class="step-title">${step.title}</span><span class="step-detail">${step.detail}</span></span>
+          <span class="tool-chip">${step.tool}</span>
+        </button>
+      `).join("");
+    }
+
+    function addLog(source, message) {
+      const row = document.createElement("div");
+      row.className = "log-line";
+      row.innerHTML = `<strong>[${source}]</strong> ${message}`;
+      els.logPanel.appendChild(row);
+      els.logPanel.scrollTop = els.logPanel.scrollHeight;
+    }
+
+    function resetRunSurface() {
+      renderPlan();
+      els.logPanel.innerHTML = "";
+      els.report.innerHTML = `<div class="empty-state"><div><strong>等待任务运行</strong><p>运行后这里会渲染 Markdown 报告；state.json 会在下方同步更新。</p></div></div>`;
+      els.stateJson.textContent = JSON.stringify({ status: "idle", task_id: null, results: [] }, null, 2);
+      els.copyReport.disabled = true;
+      currentReportText = "";
+    }
+
+    function markStep(stepId, state) {
+      const btn = els.planList.querySelector(`[data-step="${stepId}"]`);
+      if (!btn) return;
+      btn.classList.remove("active", "done");
+      if (state) btn.classList.add(state);
+      const icon = btn.querySelector(".step-icon");
+      icon.textContent = state === "done" ? "✓" : state === "active" ? "…" : icon.textContent;
+    }
+
+    function completeRun() {
+      const def = definitions[activeMode];
+      running = false;
+      els.taskInput.readOnly = false;
+      els.runTask.textContent = "再次运行";
+      setStatus("done", "已完成");
+      els.report.innerHTML = def.report;
+      els.stateJson.textContent = JSON.stringify({
+        task_id: "task_" + new Date().toISOString().replaceAll(/[-:.TZ]/g, "").slice(0, 14),
+        ...def.state
+      }, null, 2);
+      currentReportText = els.report.innerText;
+      els.copyReport.disabled = false;
+      showToast("任务完成", "报告已生成，state.json 可以展开查看。");
+    }
+
+    function runTask() {
+      if (running) {
+        window.clearTimeout(timer);
+        running = false;
+        els.taskInput.readOnly = false;
+        els.runTask.textContent = "运行任务";
+        setStatus("ready", "已停止");
+        addLog("Main", "用户停止了当前原型运行。");
+        return;
+      }
+      if (!hasKey) {
+        setStatus("error", "缺少 Key");
+        showToast("请先配置 API Key", "打开设置并保存本地 Key 后再运行任务。");
+        openSettings();
+        return;
+      }
+      const def = definitions[activeMode];
+      resetRunSurface();
+      running = true;
+      els.taskInput.readOnly = true;
+      els.runTask.textContent = "停止";
+      setStatus("running", "运行中");
+      let index = 0;
+      const advance = () => {
+        if (!running) return;
+        const item = def.logs[index];
+        const [event, source, message] = item;
+        addLog(source, message);
+        if (event.startsWith("step_started:")) markStep(event.split(":")[1], "active");
+        if (event.startsWith("step_done:")) markStep(event.split(":")[1], "done");
+        index += 1;
+        if (index >= def.logs.length) {
+          completeRun();
+          return;
+        }
+        timer = window.setTimeout(advance, index < 3 ? 380 : 560);
+      };
+      advance();
+    }
+
+    function setMode(mode) {
+      activeMode = mode;
+      document.querySelectorAll(".seg-btn").forEach(btn => btn.classList.toggle("active", btn.dataset.mode === mode));
+      els.taskInput.value = definitions[mode].input;
+      setStatus("ready", "就绪");
+      resetRunSurface();
+    }
+
+    function openSettings() {
+      els.modal.classList.add("open");
+      document.getElementById("apiKey").focus();
+    }
+
+    function closeSettings() {
+      els.modal.classList.remove("open");
+    }
+
+    document.querySelectorAll(".seg-btn").forEach(btn => btn.addEventListener("click", () => setMode(btn.dataset.mode)));
+    els.planList.addEventListener("click", (event) => {
+      const btn = event.target.closest(".step-btn");
+      if (btn) btn.classList.toggle("expanded");
+    });
+    els.runTask.addEventListener("click", runTask);
+    els.loadExample.addEventListener("click", () => {
+      els.taskInput.value = definitions[activeMode].input;
+      showToast("示例已载入", activeMode === "data" ? "已载入表格分析任务。" : "已载入文本总结任务。");
+    });
+    els.clearTask.addEventListener("click", () => {
+      els.taskInput.value = "";
+      els.taskInput.focus();
+    });
+    els.clearLogs.addEventListener("click", () => {
+      els.logPanel.innerHTML = "";
+    });
+    els.copyReport.addEventListener("click", async () => {
+      if (!currentReportText) return;
+      try {
+        await navigator.clipboard.writeText(currentReportText);
+        showToast("报告已复制", "Markdown 报告内容已写入剪贴板。");
+      } catch {
+        showToast("复制受限", "当前浏览器不允许写入剪贴板，可直接选择报告文本。");
+      }
+    });
+    document.getElementById("openSettings").addEventListener("click", openSettings);
+    document.getElementById("sidebarSettings").addEventListener("click", openSettings);
+    document.getElementById("closeSettings").addEventListener("click", closeSettings);
+    document.getElementById("settingsModal").addEventListener("click", (event) => {
+      if (event.target.id === "settingsModal") closeSettings();
+    });
+    document.getElementById("settingsForm").addEventListener("submit", (event) => {
+      event.preventDefault();
+      hasKey = true;
+      localStorage.setItem("uta.hasKey", "true");
+      updateKeyState();
+      closeSettings();
+      setStatus("ready", "就绪");
+      showToast("设置已保存", "前端只保留已配置状态，不回显明文 Key。");
+    });
+    document.getElementById("clearKey").addEventListener("click", () => {
+      hasKey = false;
+      localStorage.setItem("uta.hasKey", "false");
+      updateKeyState();
+      setStatus("error", "缺少 Key");
+      showToast("Key 已清除", "再次运行任务会提示先配置 API Key。");
+    });
+    window.addEventListener("keydown", (event) => {
+      if (event.key === "," && event.metaKey) {
+        event.preventDefault();
+        openSettings();
+      }
+    });
+
+    updateKeyState();
+    resetRunSurface();
+  </script>
+</body>
+</html>

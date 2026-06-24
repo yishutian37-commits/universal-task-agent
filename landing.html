@@ -1,0 +1,687 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>UTA Desktop - 桌面端 Agent Loop 原型</title>
+  <style>
+    :root {
+      --bg: #fafafa;
+      --surface: #ffffff;
+      --surface-warm: var(--surface);
+      --fg: #111111;
+      --fg-2: var(--fg);
+      --muted: #6b6b6b;
+      --meta: var(--muted);
+      --border: #e5e5e5;
+      --border-soft: var(--border);
+      --accent: #2f6feb;
+      --accent-on: #ffffff;
+      --accent-hover: color-mix(in oklab, var(--accent), black 8%);
+      --accent-active: color-mix(in oklab, var(--accent), black 14%);
+      --success: #17a34a;
+      --warn: #eab308;
+      --danger: #dc2626;
+      --font-display: "Inter", -apple-system, system-ui, sans-serif;
+      --font-body: "Inter", -apple-system, system-ui, sans-serif;
+      --font-mono: ui-monospace, "JetBrains Mono", monospace;
+      --text-xs: 12px;
+      --text-sm: 14px;
+      --text-base: 16px;
+      --text-lg: 20px;
+      --text-xl: 24px;
+      --text-2xl: 32px;
+      --text-3xl: 48px;
+      --text-4xl: 64px;
+      --leading-body: 1.5;
+      --leading-tight: 1.2;
+      --tracking-display: -0.01em;
+      --space-1: 4px;
+      --space-2: 8px;
+      --space-3: 12px;
+      --space-4: 16px;
+      --space-5: 20px;
+      --space-6: 24px;
+      --space-8: 32px;
+      --space-12: 48px;
+      --space-20: 80px;
+      --section-y-desktop: 80px;
+      --section-y-tablet: 48px;
+      --section-y-phone: 32px;
+      --radius-sm: 8px;
+      --radius-md: 12px;
+      --radius-lg: 16px;
+      --radius-pill: 9999px;
+      --elev-flat: none;
+      --elev-ring: 0 0 0 1px var(--border);
+      --elev-raised: 0 2px 8px color-mix(in oklab, var(--fg), transparent 92%);
+      --focus-ring: 0 0 0 3px color-mix(in oklab, var(--accent), transparent 70%);
+      --motion-fast: 150ms;
+      --motion-base: 200ms;
+      --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+      --container-max: 1200px;
+      --container-gutter-desktop: 24px;
+      --container-gutter-tablet: 16px;
+      --container-gutter-phone: 12px;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; }
+    html { -webkit-text-size-adjust: 100%; scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--fg);
+      font-family: var(--font-body);
+      font-size: var(--text-base);
+      line-height: var(--leading-body);
+      text-rendering: optimizeLegibility;
+      -webkit-font-smoothing: antialiased;
+    }
+    a { color: inherit; text-decoration: none; }
+    a:focus-visible { outline: none; box-shadow: var(--focus-ring); border-radius: var(--radius-sm); }
+    button { font: inherit; }
+    p { text-wrap: pretty; }
+    h1, h2, h3 { font-family: var(--font-display); line-height: var(--leading-tight); text-wrap: balance; margin: 0; }
+    h1 { font-size: clamp(var(--text-3xl), 7vw, var(--text-4xl)); font-weight: 600; max-width: 13ch; }
+    h1, h2 { letter-spacing: var(--tracking-display); }
+    h2 { font-size: clamp(var(--text-2xl), 4vw, var(--text-3xl)); font-weight: 600; }
+    h3 { font-size: var(--text-lg); font-weight: 600; letter-spacing: 0; }
+    .container { max-width: var(--container-max); margin-inline: auto; padding-inline: var(--container-gutter-desktop); }
+    .section { padding-block: var(--section-y-desktop); }
+    .section + .section { border-top: 1px solid var(--border); }
+    .motion-ready [data-motion] {
+      opacity: 0;
+      transform: translateY(18px);
+      transition:
+        opacity 420ms var(--ease-standard),
+        transform 420ms var(--ease-standard);
+      transition-delay: var(--motion-delay, 0ms);
+      will-change: opacity, transform;
+    }
+    .motion-ready [data-motion].is-visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+    .topnav {
+      position: sticky;
+      inset-block-start: 0;
+      z-index: 20;
+      background: color-mix(in oklab, var(--bg), transparent 8%);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+    }
+    .skip-link {
+      position: fixed;
+      inset-block-start: var(--space-3);
+      inset-inline-start: var(--space-3);
+      z-index: 40;
+      background: var(--surface);
+      transform: translateY(-160%);
+    }
+    .skip-link:focus-visible { transform: translateY(0); }
+    .topnav-inner { min-height: 64px; display: flex; align-items: center; justify-content: space-between; gap: var(--space-5); }
+    .logo { font-weight: 600; font-size: var(--text-lg); }
+    .topnav nav { display: flex; align-items: center; gap: var(--space-6); color: var(--muted); font-size: var(--text-sm); }
+    .topnav nav a { min-height: 44px; display: inline-flex; align-items: center; }
+    .topnav nav a:hover { color: var(--fg); }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: var(--space-2);
+      min-height: 44px;
+      padding: 10px 16px;
+      border: 1px solid transparent;
+      border-radius: var(--radius-sm);
+      font-weight: 600;
+      font-size: var(--text-sm);
+      cursor: pointer;
+      transition: background var(--motion-fast) var(--ease-standard), border-color var(--motion-fast) var(--ease-standard), transform var(--motion-fast) var(--ease-standard);
+    }
+    .btn:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+    .btn:active { transform: translateY(1px); }
+    .btn-primary { background: var(--accent); color: var(--accent-on); border-color: var(--accent); }
+    .btn-primary:hover { background: var(--accent-hover); }
+    .btn-secondary { color: var(--fg); background: transparent; border-color: var(--border); }
+    .btn-secondary:hover { border-color: var(--fg); }
+    .product-line {
+      margin: 0 0 var(--space-4);
+      color: var(--muted);
+      font-size: var(--text-sm);
+      font-weight: 600;
+    }
+    .section-note {
+      margin: 0 0 var(--space-4);
+      color: var(--muted);
+      font-size: var(--text-sm);
+      max-width: 54ch;
+    }
+    .lead { color: var(--muted); font-size: clamp(var(--text-lg), 2vw, var(--text-xl)); line-height: 1.45; max-width: 58ch; margin: 0; }
+    .hero-split { display: grid; grid-template-columns: minmax(0, 0.9fr) minmax(460px, 1.1fr); gap: var(--space-12); align-items: center; min-height: 56vh; }
+    .hero-copy { display: flex; flex-direction: column; align-items: flex-start; }
+    .hero-copy .lead { margin-top: var(--space-5); }
+    .hero-cta { display: flex; gap: var(--space-3); flex-wrap: wrap; margin-top: var(--space-8); }
+    .hero-proof { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-3); width: 100%; margin-top: var(--space-6); }
+    .proof {
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      background: var(--surface);
+      padding: var(--space-3);
+    }
+    .proof strong { display: block; font-family: var(--font-mono); font-size: var(--text-lg); line-height: 1; }
+    .proof span { display: block; margin-top: var(--space-2); color: var(--muted); font-size: var(--text-xs); }
+    .product-window {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--elev-raised);
+      overflow: hidden;
+      min-height: 410px;
+      max-width: 100%;
+      min-width: 0;
+      transform-origin: 50% 60%;
+      animation: product-enter 520ms var(--ease-standard) 80ms both;
+    }
+    .window-bar { height: 44px; display: flex; align-items: center; justify-content: space-between; padding-inline: var(--space-4); border-bottom: 1px solid var(--border); }
+    .traffic { display: flex; gap: var(--space-2); }
+    .traffic span { width: 10px; height: 10px; border-radius: var(--radius-pill); background: var(--border); }
+    .traffic span:nth-child(1) { background: var(--danger); }
+    .traffic span:nth-child(2) { background: var(--warn); }
+    .traffic span:nth-child(3) { background: var(--success); }
+    .window-title { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--muted); }
+    .mock-shell { display: grid; grid-template-columns: 190px 1fr; min-height: 366px; }
+    .mock-side { border-right: 1px solid var(--border); padding: var(--space-5); display: flex; flex-direction: column; gap: var(--space-3); }
+    .mock-side .item { height: 34px; border: 1px solid var(--border); border-radius: var(--radius-sm); display: flex; align-items: center; padding-inline: var(--space-3); font-size: var(--text-sm); color: var(--muted); }
+    .mock-side .item.active { color: var(--fg); border-color: var(--accent); background: color-mix(in oklab, var(--accent), transparent 92%); }
+    .mock-main { min-width: 0; padding: var(--space-5); display: grid; grid-template-columns: minmax(0, 1fr) 170px; gap: var(--space-4); align-items: stretch; }
+    .task-card, .result-card, .flow-card {
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      background: var(--surface);
+      padding: var(--space-4);
+      min-width: 0;
+    }
+    .task-card { grid-column: 1 / -1; }
+    .task-card .flow { margin-top: var(--space-3); }
+    .task-line { min-height: 54px; color: var(--muted); font-size: var(--text-sm); border-bottom: 1px solid var(--border); padding-bottom: var(--space-3); }
+    .flow { display: grid; gap: var(--space-2); }
+    .flow-row { display: grid; grid-template-columns: 24px minmax(0, 1fr) auto; gap: var(--space-3); align-items: center; font-size: var(--text-sm); }
+    .product-window .flow-row {
+      opacity: 0;
+      transform: translateX(-10px);
+      animation: flow-confirm 360ms var(--ease-standard) both;
+    }
+    .product-window .flow-row:nth-child(1) { animation-delay: 420ms; }
+    .product-window .flow-row:nth-child(2) { animation-delay: 560ms; }
+    .product-window .flow-row:nth-child(3) { animation-delay: 700ms; }
+    .flow-row span:nth-child(2) { min-width: 0; overflow-wrap: anywhere; }
+    .dot { width: 10px; height: 10px; border-radius: var(--radius-pill); background: var(--border); }
+    .dot.done { background: var(--success); }
+    .dot.live {
+      background: var(--accent);
+      animation: live-pulse 900ms var(--ease-standard) 3;
+    }
+    .result-card { min-height: 160px; }
+    .mini-report { display: grid; gap: var(--space-2); margin-top: var(--space-3); }
+    .mini-report span { display: flex; justify-content: space-between; gap: var(--space-2); font-size: var(--text-xs); color: var(--muted); }
+    .mini-report b { font-weight: 600; color: var(--fg); }
+    .mini-report em { font-style: normal; }
+    .status-card { border: 1px solid var(--border); border-radius: var(--radius-md); padding: var(--space-4); background: color-mix(in oklab, var(--accent), transparent 96%); }
+    .status-card strong { display: block; font-size: var(--text-sm); }
+    .status-card p { margin: var(--space-2) 0 0; color: var(--muted); font-size: var(--text-xs); }
+    .status-chip { display: inline-flex; align-items: center; gap: var(--space-2); margin-top: var(--space-4); font-family: var(--font-mono); font-size: var(--text-xs); color: var(--fg); }
+    .meta { color: var(--muted); font-family: var(--font-mono); font-size: var(--text-xs); }
+    .capability-layout { display: grid; grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr); gap: var(--space-12); align-items: start; }
+    .capability-statement { border-left: 2px solid var(--fg); padding-left: var(--space-5); }
+    .capability-statement .lead { margin-top: var(--space-5); }
+    .capability-list { border-top: 1px solid var(--border); }
+    .feature {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+      gap: var(--space-2);
+      padding-block: var(--space-5);
+      border-bottom: 1px solid var(--border);
+    }
+    .feature p { color: var(--muted); margin: 0; font-size: var(--text-sm); }
+    .section-head { max-width: 620px; margin-bottom: var(--space-8); }
+    .stats { display: grid; grid-template-columns: minmax(220px, 0.8fr) minmax(0, 1.2fr); column-gap: var(--space-8); border-top: 1px solid var(--border); }
+    .stat { padding-block: var(--space-5); border-bottom: 1px solid var(--border); }
+    .stat:first-child { grid-row: 1 / span 2; border-right: 1px solid var(--border); border-bottom: 0; padding-right: var(--space-8); }
+    .stat:nth-child(n + 2) { display: grid; grid-template-columns: 72px minmax(0, 1fr); gap: var(--space-4); align-items: start; }
+    .stat-num { font-family: var(--font-mono); font-size: clamp(var(--text-3xl), 6vw, var(--text-4xl)); font-weight: 600; line-height: 1; color: var(--fg); }
+    .stat p { margin: var(--space-3) 0 0; color: var(--muted); }
+    .split { display: grid; grid-template-columns: 0.9fr 1.1fr; gap: var(--space-12); align-items: start; }
+    .split-copy .lead { margin-top: var(--space-5); }
+    .steps { border-top: 1px solid var(--border); }
+    .step { padding-block: var(--space-5); border-bottom: 1px solid var(--border); }
+    .step p { margin: var(--space-1) 0 0; color: var(--muted); font-size: var(--text-sm); }
+    .report-preview { max-width: 100%; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface); overflow: auto; }
+    .report-preview header { padding: var(--space-4); border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; gap: var(--space-4); }
+    .report-preview table { width: 100%; min-width: 520px; border-collapse: collapse; font-size: var(--text-sm); }
+    .report-preview th, .report-preview td { padding: 12px 14px; text-align: left; border-bottom: 1px solid var(--border); }
+    .report-preview th { color: var(--muted); font-family: var(--font-mono); font-size: var(--text-xs); font-weight: 500; }
+    .ds-table { width: 100%; border-collapse: collapse; font-size: var(--text-sm); }
+    .ds-table th, .ds-table td { padding: 14px 16px; text-align: left; border-bottom: 1px solid var(--border); vertical-align: top; }
+    .ds-table th { color: var(--muted); font-family: var(--font-mono); font-size: var(--text-xs); font-weight: 500; }
+    .acceptance-grid { display: grid; border-top: 1px solid var(--border); }
+    .acceptance-card {
+      display: grid;
+      grid-template-columns: 96px minmax(0, 1fr) auto;
+      gap: var(--space-5);
+      align-items: start;
+      border-bottom: 1px solid var(--border);
+      padding-block: var(--space-5);
+    }
+    .acceptance-card .tag { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--muted); }
+    .acceptance-card p { margin: var(--space-3) 0 0; color: var(--muted); font-size: var(--text-sm); }
+    .acceptance-card .state { color: var(--success); font-family: var(--font-mono); font-size: var(--text-xs); }
+    .state-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-4); }
+    .state-card {
+      min-height: 210px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      background: var(--surface);
+      padding: var(--space-5);
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      gap: var(--space-5);
+    }
+    .state-top { display: flex; justify-content: space-between; gap: var(--space-4); align-items: flex-start; }
+    .state-label { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--muted); }
+    .state-dot {
+      width: 12px;
+      height: 12px;
+      border-radius: var(--radius-pill);
+      border: 1px solid var(--border);
+      background: var(--surface);
+      flex: 0 0 auto;
+    }
+    .state-dot.loading { background: var(--accent); border-color: var(--accent); }
+    .state-dot.error { background: var(--danger); border-color: var(--danger); }
+    .state-card p { margin: var(--space-3) 0 0; color: var(--muted); font-size: var(--text-sm); }
+    .state-action { min-height: 36px; display: inline-flex; width: max-content; align-items: center; color: var(--fg); border-bottom: 1px solid var(--border); font-size: var(--text-sm); font-weight: 600; }
+    .cta-strip { text-align: center; }
+    .cta-strip .container { max-width: 660px; }
+    .cta-strip .lead { margin: var(--space-4) auto var(--space-8); }
+    .pagefoot { padding-block: var(--space-12); color: var(--muted); border-top: 1px solid var(--border); font-size: var(--text-sm); }
+    .foot-inner { display: flex; justify-content: space-between; gap: var(--space-4); flex-wrap: wrap; }
+    @keyframes product-enter {
+      from {
+        opacity: 0;
+        transform: translateY(18px) scale(0.985);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+      }
+    }
+    @keyframes flow-confirm {
+      from {
+        opacity: 0;
+        transform: translateX(-10px);
+      }
+      to {
+        opacity: 1;
+        transform: translateX(0);
+      }
+    }
+    @keyframes live-pulse {
+      0% { transform: scale(1); box-shadow: 0 0 0 0 color-mix(in oklab, var(--accent), transparent 70%); }
+      55% { transform: scale(1.18); box-shadow: 0 0 0 7px color-mix(in oklab, var(--accent), transparent 100%); }
+      100% { transform: scale(1); box-shadow: 0 0 0 0 color-mix(in oklab, var(--accent), transparent 100%); }
+    }
+    @media (max-width: 1024px) {
+      .container { padding-inline: var(--container-gutter-tablet); }
+      .section { padding-block: var(--section-y-tablet); }
+      .hero-split, .split { grid-template-columns: 1fr; }
+      .hero-split { min-height: auto; }
+      .product-window { max-width: 780px; }
+      .acceptance-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+    @media (max-width: 760px) {
+      .topnav nav { display: none; }
+      .container { padding-inline: var(--container-gutter-phone); }
+      .section { padding-block: var(--section-y-phone); }
+      .capability-layout, .stats { grid-template-columns: 1fr; }
+      .capability-statement { border-left: 0; padding-left: 0; }
+      .stat:first-child { grid-row: auto; border-right: 0; border-bottom: 1px solid var(--border); padding-right: 0; }
+      .stat:nth-child(n + 2) { grid-template-columns: 1fr; }
+      .hero-proof, .acceptance-grid, .state-grid { grid-template-columns: 1fr; }
+      .acceptance-card { grid-template-columns: 1fr; gap: var(--space-3); }
+      .mock-shell { grid-template-columns: 1fr; }
+      .mock-side { border-right: 0; border-bottom: 1px solid var(--border); }
+      .mock-main { grid-template-columns: 1fr; }
+      .topnav .btn-secondary { display: none; }
+      h1 { font-size: clamp(var(--text-2xl), 11vw, var(--text-3xl)); max-width: 12ch; }
+      .lead { font-size: var(--text-lg); }
+      .hero-cta .btn { width: 100%; }
+    }
+    @media (max-width: 520px) {
+      .window-title { max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .mock-side { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-2); padding: var(--space-3); }
+      .mock-side .item { min-height: 40px; justify-content: center; text-align: center; padding-inline: var(--space-2); font-size: var(--text-xs); }
+      .mock-main { padding: var(--space-3); }
+      .flow-row { grid-template-columns: 18px minmax(0, 1fr); }
+      .flow-row .meta { grid-column: 2; }
+      .report-preview header { flex-direction: column; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+      .motion-ready [data-motion],
+      .motion-ready [data-motion].is-visible {
+        opacity: 1 !important;
+        transform: none !important;
+        transition: none !important;
+      }
+      .product-window,
+      .product-window .flow-row,
+      .dot.live {
+        opacity: 1 !important;
+        transform: none !important;
+        animation: none !important;
+      }
+      *, *::before, *::after {
+        transition-duration: 1ms !important;
+        animation-duration: 1ms !important;
+        animation-iteration-count: 1 !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <a class="btn btn-secondary skip-link" href="#content">跳到主要内容</a>
+  <header class="topnav" data-od-id="topnav">
+    <div class="container topnav-inner">
+      <a class="logo" href="index.html">UTA Desktop</a>
+      <nav aria-label="主导航">
+        <a href="#product">产品</a>
+        <a href="#loop">Agent Loop</a>
+        <a href="#review">验收</a>
+      </nav>
+      <a class="btn btn-secondary" href="desktop.html">打开控制台</a>
+    </div>
+  </header>
+
+  <main id="content">
+    <section class="section" data-od-id="hero">
+      <div class="container hero-split">
+        <div class="hero-copy">
+          <p class="product-line">桌面 Agent Loop 控制台</p>
+          <h1>本地可审计的 Agent 控制台</h1>
+          <p class="lead">把 Python Agent Loop 打包进一个可双击的桌面窗口：无端口、无浏览器跳转，任务输入、实时事件、Markdown 报告和 state.json 在同一处闭环。</p>
+          <div class="hero-proof" aria-label="核心产品证据">
+            <div class="proof"><strong>0</strong><span>HTTP 端口与外部浏览器依赖</span></div>
+            <div class="proof"><strong>1</strong><span>窗口进程直接持有后端运行时</span></div>
+            <div class="proof"><strong>D1-D10</strong><span>桌面版验收路径可追踪</span></div>
+          </div>
+          <div class="hero-cta">
+            <a class="btn btn-primary" href="desktop.html">查看可点击原型</a>
+            <a class="btn btn-secondary" href="#loop">查看事件流</a>
+          </div>
+        </div>
+        <div class="product-window" aria-label="UTA Desktop 控制台预览">
+          <div class="window-bar">
+            <div class="traffic" aria-hidden="true"><span></span><span></span><span></span></div>
+            <span class="window-title">UTA Desktop.app</span>
+          </div>
+          <div class="mock-shell">
+            <aside class="mock-side">
+              <div class="item active">任务控制台</div>
+              <div class="item">运行记录</div>
+              <div class="item">本地设置</div>
+            </aside>
+            <div class="mock-main">
+              <div class="task-card">
+                <div class="task-line">分析 examples/orders.csv，输出字段、缺失值、异常值和分类汇总。</div>
+                <div class="flow">
+                  <div class="flow-row"><span class="dot done"></span><span>读取表格文件</span><span class="meta">file_tool</span></div>
+                  <div class="flow-row"><span class="dot live"></span><span>分析字段与异常值</span><span class="meta">table_tool</span></div>
+                  <div class="flow-row"><span class="dot"></span><span>生成 Markdown 报告</span><span class="meta">report_tool</span></div>
+                </div>
+              </div>
+              <div class="result-card">
+                <strong>最终报告</strong>
+                <div class="mini-report">
+                  <span><b>字段</b><em>6 列</em></span>
+                  <span><b>缺失</b><em>2 处</em></span>
+                  <span><b>异常</b><em>IQR 检出</em></span>
+                </div>
+              </div>
+              <div class="status-card">
+                <strong>运行中</strong>
+                <p>事件流正在推送 verified，报告生成后可展开 state.json 对照。</p>
+                <span class="status-chip"><span class="dot live"></span>task_20260620</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="product" data-od-id="features">
+      <div class="container" data-motion>
+        <div class="capability-layout">
+          <div class="capability-statement">
+            <p class="section-note">产品范围</p>
+            <h2>评估者先看到能力，再看到实现边界</h2>
+            <p class="lead">这页不把桌面应用伪装成云服务。它明确告诉评估者：任务在哪输入，Loop 如何运行，结果如何被审计。</p>
+          </div>
+          <div class="capability-list" aria-label="核心能力">
+            <article class="feature">
+              <h3>任务输入不离开窗口</h3>
+              <p>文本总结和 CSV/XLSX 表格分析都从同一个输入区启动，示例载入、运行、停止和状态提示保持在顶部。</p>
+            </article>
+            <article class="feature">
+              <h3>Loop 过程逐步展开</h3>
+              <p>Parser、Planner、Router、Executor、Verifier 通过事件流更新步骤图标和日志，学习者可以展开每一步查看工具详情。</p>
+            </article>
+            <article class="feature">
+              <h3>结果和状态并排可审</h3>
+              <p>Markdown 最终报告在右侧渲染，state.json 默认折叠；需要调试时再展开，不打断主要阅读路径。</p>
+            </article>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" data-od-id="stats">
+      <div class="container" data-motion>
+          <p class="section-note">架构承诺</p>
+          <div class="stats">
+            <article class="stat">
+              <div class="stat-num">0</div>
+              <p>端口冲突。前端通过 pywebview 的 JS-Python 桥直调后端。</p>
+            </article>
+            <article class="stat">
+              <div class="stat-num">1</div>
+              <p>进程模型。窗口进程同时持有 core、llm、tools 运行时。</p>
+            </article>
+            <article class="stat">
+              <div class="stat-num">2</div>
+              <p>可审计产物。Markdown 报告与 state.json 同时保留。</p>
+            </article>
+          </div>
+        </div>
+    </section>
+
+    <section class="section" id="loop" data-od-id="data-analysis">
+      <div class="container split" data-motion>
+        <div class="split-copy">
+          <p class="section-note">v0.6 数据分析链路</p>
+          <h2>从表格文件到可校验报告</h2>
+          <p class="lead">桌面端保留学习价值：不仅展示结论，还把字段识别、缺失值、异常值、分类汇总和数字一致性校验显式露出。</p>
+        </div>
+        <div class="steps">
+          <article class="step">
+            <div><h3>FileTool 识别表格路径</h3><p>支持本地 .csv / .xlsx，把 file_kind 标为 table 交给后续工具。</p></div>
+          </article>
+          <article class="step">
+            <div><h3>TableTool 输出结构化统计</h3><p>字段、行列、缺失值、IQR 异常、分类 Top values 保持为可追踪数据。</p></div>
+          </article>
+          <article class="step">
+            <div><h3>ReportTool 生成固定小节</h3><p>字段说明、基础统计、异常数据、分类汇总、业务解释、后续建议全部保留。</p></div>
+          </article>
+          <article class="step">
+            <div><h3>Verifier 做 L1 数字一致性</h3><p>报告中的行数、列数、缺失值、异常值必须与工具结果完全一致。</p></div>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" data-od-id="report-preview">
+      <div class="container split" data-motion>
+        <div class="report-preview" aria-label="表格分析报告预览">
+          <header>
+            <strong>表格分析报告</strong>
+            <span class="meta">examples/orders.csv</span>
+          </header>
+          <table>
+            <thead>
+              <tr><th>字段</th><th>类型</th><th>缺失</th><th>说明</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>warehouse</td><td>object</td><td>0</td><td>分类汇总入口</td></tr>
+              <tr><td>quantity</td><td>number</td><td>1</td><td>IQR 异常检测</td></tr>
+              <tr><td>amount</td><td>number</td><td>1</td><td>数字一致性校验</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="split-copy">
+          <h2>页面讲产品价值，控制台承接真实操作</h2>
+          <p class="lead">落地页只保留评估决策需要的信息；可点击交互放在独立桌面界面里，那里已经预留 run_task、load_example、get_result、save_settings 的桥接边界。</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" data-od-id="state-coverage">
+      <div class="container" data-motion>
+        <div class="section-head">
+          <h2>关键状态有明确反馈，不让用户猜系统在做什么</h2>
+        </div>
+        <div class="state-grid" aria-label="空状态、加载状态和错误状态">
+          <article class="state-card">
+            <div class="state-top">
+              <span class="state-label">空状态</span>
+              <span class="state-dot" aria-hidden="true"></span>
+            </div>
+            <div>
+              <h3>还没有任务时</h3>
+              <p>输入区显示可运行示例，报告区保持空白说明，主动作只有“载入示例”和“运行任务”。</p>
+            </div>
+            <span class="state-action">载入表格分析示例</span>
+          </article>
+          <article class="state-card">
+            <div class="state-top">
+              <span class="state-label">加载中</span>
+              <span class="state-dot loading" aria-hidden="true"></span>
+            </div>
+            <div>
+              <h3>Agent Loop 执行中</h3>
+              <p>步骤栏逐项点亮，日志持续追加，报告区保留上一次结果但标记为“等待新报告”。</p>
+            </div>
+            <span class="state-action">查看实时日志</span>
+          </article>
+          <article class="state-card">
+            <div class="state-top">
+              <span class="state-label">错误</span>
+              <span class="state-dot error" aria-hidden="true"></span>
+            </div>
+            <div>
+              <h3>配置或运行失败</h3>
+              <p>未配置 API Key、工具异常、校验失败都进入可恢复错误态，并给出下一步动作。</p>
+            </div>
+            <span class="state-action">打开本地设置</span>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="review" data-od-id="acceptance">
+      <div class="container" data-motion>
+        <div class="section-head">
+          <h2>前端覆盖桌面版 D 项关键场景</h2>
+        </div>
+        <div class="acceptance-grid">
+          <article class="acceptance-card">
+            <span class="tag">D2 / D3</span>
+            <div>
+              <h3>设置与 Key 边界</h3>
+              <p>设置浮层保存 base_url、model、api_key、ssl_verify；未配置 Key 时阻止运行并提示。</p>
+            </div>
+            <span class="state">已覆盖</span>
+          </article>
+          <article class="acceptance-card">
+            <span class="tag">D4</span>
+            <div>
+              <h3>实时执行过程</h3>
+              <p>左侧计划栏和日志逐步呈现 Parser、Planner、Router、Executor、Verifier 事件。</p>
+            </div>
+            <span class="state">已覆盖</span>
+          </article>
+          <article class="acceptance-card">
+            <span class="tag">D5</span>
+            <div>
+              <h3>报告与 state</h3>
+              <p>右侧渲染 Markdown 最终报告，state.json 默认折叠，需要调试时展开。</p>
+            </div>
+            <span class="state">已覆盖</span>
+          </article>
+          <article class="acceptance-card">
+            <span class="tag">D6 / D7</span>
+            <div>
+              <h3>产物路径隔离</h3>
+              <p>桌面产物落到 ~/.uta/outputs，CLI 路径与桌面路径保持隔离。</p>
+            </div>
+            <span class="state">已覆盖</span>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section cta-strip" data-od-id="cta-strip">
+      <div class="container" data-motion>
+        <h2>打开桌面应用原型，直接跑一遍事件流</h2>
+        <p class="lead">先看表格分析，再切到文本总结；设置、步骤展开、复制报告和 state.json 都可以点击。</p>
+        <a class="btn btn-primary" href="desktop.html">进入 UTA Desktop</a>
+      </div>
+    </section>
+  </main>
+
+  <footer class="pagefoot" data-od-id="footer">
+    <div class="container foot-inner">
+      <span>© 2026 UTA Desktop</span>
+      <span class="meta">pywebview 单进程 / 本地配置 / 可审计 Agent Loop</span>
+    </div>
+  </footer>
+  <script>
+    (() => {
+      const targets = Array.from(document.querySelectorAll("[data-motion]"));
+      const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+      if (reduceMotion || !("IntersectionObserver" in window)) {
+        targets.forEach((target) => target.classList.add("is-visible"));
+        return;
+      }
+
+      document.documentElement.classList.add("motion-ready");
+
+      const observer = new IntersectionObserver((entries) => {
+        entries.forEach((entry) => {
+          if (!entry.isIntersecting) return;
+          entry.target.classList.add("is-visible");
+          observer.unobserve(entry.target);
+        });
+      }, {
+        rootMargin: "0px 0px -8% 0px",
+        threshold: 0.16
+      });
+
+      targets.forEach((target, index) => {
+        target.style.setProperty("--motion-delay", `${Math.min(index % 3, 2) * 60}ms`);
+        observer.observe(target);
+      });
+    })();
+  </script>
+</body>
+</html>

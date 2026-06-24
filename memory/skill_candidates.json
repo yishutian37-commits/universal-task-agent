@@ -3,11 +3,19 @@
   "candidates": [
     {
       "task_type": "data_analysis",
-      "success_count": 1,
-      "latest_task_id": "task_20260621_000524",
+      "success_count": 3,
+      "latest_task_id": "task_20260621_050748",
+      "status": "candidate",
+      "reason": "data_analysis 已成功执行 3 次，可在 v0.8 评估是否沉淀为 Skill。",
+      "updated_at": "2026-06-21 05:07:48"
+    },
+    {
+      "task_type": "summarize",
+      "success_count": 2,
+      "latest_task_id": "task_20260621_055703",
       "status": "tracking",
-      "reason": "data_analysis 已成功执行 1 次，可在 v0.8 评估是否沉淀为 Skill。",
-      "updated_at": "2026-06-21 00:05:24"
+      "reason": "summarize 已成功执行 2 次，可在 v0.8 评估是否沉淀为 Skill。",
+      "updated_at": "2026-06-21 05:57:27"
     }
   ]
 }
