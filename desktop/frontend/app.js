@@ -293,13 +293,15 @@ async function loadKnowledgeDocs() {
       return;
     }
     els.kbDocList.innerHTML = result.docs.map((doc) => `
-      <button class="historyItem" type="button" data-doc-id="${escapeHtml(doc.doc_id)}">
+      <div class="historyItem" data-doc-id="${escapeHtml(doc.doc_id)}">
         <span><strong>${escapeHtml(doc.title || doc.source)}</strong><small>${escapeHtml(doc.type || "?")} · ${doc.chunk_count} 片段</small></span>
         <small>${escapeHtml(doc.source)}</small>
-      </button>
+        <button class="button ghost compact kbDelBtn" type="button" data-doc-id="${escapeHtml(doc.doc_id)}" title="删除此文档" style="margin-top:6px;">删除</button>
+      </div>
     `).join("");
-    els.kbDocList.querySelectorAll(".historyItem").forEach((btn) => {
-      btn.addEventListener("click", async () => {
+    els.kbDocList.querySelectorAll(".kbDelBtn").forEach((btn) => {
+      btn.addEventListener("click", async (e) => {
+        e.stopPropagation();
         const docId = btn.dataset.docId;
         const r = await callApi("rag_delete", docId);
         if (r.ok !== false) {
