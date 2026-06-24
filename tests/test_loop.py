@@ -1,6 +1,7 @@
 from core.loop import run_minimal_loop
 from core.state import AgentState
 from tools.base_tool import BaseTool
+from tools.report_tool import ReportTool
 
 
 class EchoTool(BaseTool):
@@ -12,8 +13,9 @@ class EchoTool(BaseTool):
 
     def run(self, action_name, params):
         return {
-            "message": self.message,
+            "message": self.message if isinstance(self.message, str) else str(self.message),
             "previous_result": params.get("previous_result"),
+            **(self.message if isinstance(self.message, dict) else {}),
         }
 
 
@@ -403,3 +405,37 @@ def test_loop_executes_data_analysis_flow(tmp_path):
     assert "## 字段说明" in updated.final_output
     assert "行数：3" in updated.final_output
     assert "缺失值数量：1" in updated.final_output
+
+
+def test_loop_executes_research_flow():
+    registry = {
+        "search_tool": EchoTool(
+            {
+                "query": "UTA Agent",
+                "search_results": [
+                    {
+                        "title": "UTA 路线",
+                        "url": "https://example.com/uta",
+                        "snippet": "UTA 应先跑通核心 Agent Loop。",
+                        "source": "fixture",
+                    }
+                ],
+                "sources": ["https://example.com/uta"],
+                "provider": "fixture",
+            }
+        ),
+        "report_tool": ReportTool(),
+    }
+    state = AgentState(
+        task_id="task_test",
+        user_input="调研 UTA Agent 框架",
+        task_type="research",
+        intent="research_topic",
+    )
+
+    updated = run_minimal_loop(state, tool_registry=registry)
+
+    assert updated.status == "completed"
+    assert updated.results[0].tool_name == "search_tool"
+    assert updated.results[1].tool_name == "report_tool"
+    assert "## 来源" in updated.final_output

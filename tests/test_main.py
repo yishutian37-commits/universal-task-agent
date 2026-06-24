@@ -406,3 +406,25 @@ workflow:
 
     assert state.matched_skill["id"] == "summarize_article"
     assert [step.goal for step in state.plan.steps] == ["读取输入内容", "提取核心信息", "生成结构化报告"]
+
+
+def test_run_task_outputs_research_report_with_fixture_search(tmp_path, monkeypatch):
+    monkeypatch.setenv("SEARCH_PROVIDER", "fixture")
+
+    state = run_task(
+        "调研 UTA Agent 框架下一步路线",
+        output_root=tmp_path,
+        task_id="task_test",
+        memory_provider=False,
+        skill_loader=False,
+    )
+
+    state_path = tmp_path / "states" / "task_test_state.json"
+    log_path = tmp_path / "logs" / "task_test.log"
+
+    assert state.status == "completed"
+    assert state.task_type == "research"
+    assert "## 结论" in state.final_output
+    assert "## 来源" in state.final_output
+    assert state_path.exists()
+    assert log_path.exists()
