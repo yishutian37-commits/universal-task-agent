@@ -6,6 +6,7 @@
 
 - `v0.1-skeleton`：六层管线骨架（Loader/Chunker/Embedder/VectorStore/Retriever/Generator），全 fake 实现，接口契约确立。
 - `v0.2-mvp`：真实管线（TextLoader/FixedChunker/SqliteStore/VectorRetriever），能摄入 MD 文件、检索、生成答案。embedding/generator 为临时实现，真实版本见 v0.2.5。
+- `v0.2.5`：真实语义检索（bge-small-zh-v1.5）+ 真实 LLM 答案生成（mimo-v2.5-pro），语义检索准确率远超 hash。
 
 ## 架构
 
@@ -48,3 +49,18 @@ print(ans.answer)
 ```
 
 本阶段能真实摄入 MD 文件并检索问答。真实语义 embedding 和 LLM 生成见 v0.2.5。
+
+## v0.2.5 真实模型
+
+真实语义检索（bge-small-zh）和 LLM 问答（mimo）：
+
+```python
+from rag import create_default_kb
+kb = create_default_kb(use_real_models=True)
+kb.ingest_path("notes.md")
+print(kb.ask("问题").answer)
+```
+
+需要：`pip install sentence-transformers`（含 torch），且 `.env` 配置了 `LLM_API_KEY`。
+首次加载 bge 模型自动走 hf-mirror.com 镜像（HuggingFace 直连超时）。
+从临时实现切换时需删 `data/knowledge.db` 重新 ingest（向量语义空间不同）。
