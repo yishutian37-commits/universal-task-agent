@@ -7,11 +7,19 @@ ROOT = Path.cwd()
 FRONTEND = ROOT / "desktop" / "frontend"
 EXAMPLES = ROOT / "examples"
 SKILLS = ROOT / "skills"
+DOCS = ROOT / "docs"
+MEMORY = ROOT / "memory"
+README = ROOT / "README.md"
+CHANGELOG = ROOT / "CHANGELOG.md"
 
 datas = [
     (str(FRONTEND), "frontend"),
     (str(EXAMPLES), "examples"),
     (str(SKILLS), "skills"),
+    (str(DOCS), "docs"),
+    (str(MEMORY), "memory"),
+    (str(README), "."),
+    (str(CHANGELOG), "."),
 ]
 
 a = Analysis(

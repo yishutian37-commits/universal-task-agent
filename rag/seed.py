@@ -12,10 +12,19 @@ RAG 知识库。以后文档更新后重跑此脚本即可（ingest 幂等，按
 from __future__ import annotations
 
 import json
+import os
 import sys
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
+
+def _resource_base() -> Path:
+    """定位文档根目录：打包环境用 _MEIPASS，开发用 PROJECT_ROOT。"""
+    bundled = getattr(sys, "_MEIPASS", None)
+    if bundled is not None:
+        return Path(bundled)
+    return PROJECT_ROOT
 
 # 摄入目标：UTA 的核心知识资产
 SEED_SOURCES = [
@@ -95,7 +104,7 @@ def seed(
     errors = []
 
     for rel_path in SEED_SOURCES:
-        full = PROJECT_ROOT / rel_path
+        full = _resource_base() / rel_path
         if not full.exists():
             skipped += 1
             continue

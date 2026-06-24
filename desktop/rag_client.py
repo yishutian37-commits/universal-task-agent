@@ -35,14 +35,25 @@ class RAGClient:
 
             db_path = str(uta_home() / "rag" / "knowledge.db")
             # 打包环境默认用轻量实现（HashingEmbedder）。
-            # 原因：torch 在 PyInstaller 打包后可能触发 multiprocessing spawn，
-            # 导致应用无限弹窗。开发环境（非 frozen）可设 KB_USE_REAL_MODELS=1
-            # 启用真实 bge 语义检索。
+            # torch 在 PyInstaller 打包后可能触发 multiprocessing spawn 导致弹窗。
+            # 开发环境（非 frozen）可设 KB_USE_REAL_MODELS=1 启用真实 bge。
             use_real = (
                 not getattr(__import__("sys"), "frozen", False)
                 and os.getenv("KB_USE_REAL_MODELS", "0") == "1"
             )
             self._kb = create_default_kb(db_path=db_path, use_real_models=use_real)
+            # 首次使用自动灌入 UTA 知识资产（文档/memory/skills）
+            if self._kb.stats()["chunks"] == 0:
+                try:
+                    from rag.seed import seed
+
+                    seed(db_path=db_path, use_real_models=use_real)
+                    # 重新打开库读取 seed 后的数据
+                    self._kb = create_default_kb(
+                        db_path=db_path, use_real_models=use_real
+                    )
+                except Exception:
+                    pass  # seed 失败不阻塞，用户可手动摄入
         return self._kb
 
     def _http(self, method: str, path: str, data: dict | None = None) -> dict[str, Any]:
