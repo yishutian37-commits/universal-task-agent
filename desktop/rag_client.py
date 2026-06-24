@@ -34,13 +34,15 @@ class RAGClient:
             from rag.defaults import create_default_kb
 
             db_path = str(uta_home() / "rag" / "knowledge.db")
-            # 内嵌模式用真实模型（bge 语义检索 + LLM 答案）。
-            # torch/sentence-transformers 已打进 .app，开箱即用。
-            # 若加载失败（如打包环境无 torch），回退到临时实现。
-            try:
-                self._kb = create_default_kb(db_path=db_path, use_real_models=True)
-            except Exception:
-                self._kb = create_default_kb(db_path=db_path, use_real_models=False)
+            # 打包环境默认用轻量实现（HashingEmbedder）。
+            # 原因：torch 在 PyInstaller 打包后可能触发 multiprocessing spawn，
+            # 导致应用无限弹窗。开发环境（非 frozen）可设 KB_USE_REAL_MODELS=1
+            # 启用真实 bge 语义检索。
+            use_real = (
+                not getattr(__import__("sys"), "frozen", False)
+                and os.getenv("KB_USE_REAL_MODELS", "0") == "1"
+            )
+            self._kb = create_default_kb(db_path=db_path, use_real_models=use_real)
         return self._kb
 
     def _http(self, method: str, path: str, data: dict | None = None) -> dict[str, Any]:
