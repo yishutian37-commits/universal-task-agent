@@ -1,6 +1,6 @@
 # Universal Task Agent
 
-UTA 是一个学习型 Agent 框架。当前核心里程碑是 `v1.0-learning-agent`：支持文本总结和表格分析两类任务，跑通 Task Parser、Planner、Agent Loop、Router、Executor、Verifier、Reflection、Replan、JSON Memory 和 Skill Loader。
+UTA 是一个学习型 Agent 框架。当前主线已经整合 V1.0 学习型 Agent、V1.1 调研搜索/API、V1.2 代码阅读、RAG 知识库和桌面端体验层。
 
 ## 快速开始
 
@@ -10,7 +10,7 @@ python3 -m venv .venv
 .venv/bin/python main.py --task "帮我总结一段文本"
 ```
 
-## V1.0 Demo
+## 常用 Demo
 
 文本总结：
 
@@ -34,6 +34,18 @@ python3 -m venv .venv
 
 ```bash
 .venv/bin/python main.py --task "包头今日天气状况"
+```
+
+代码阅读：
+
+```bash
+.venv/bin/python main.py --task "阅读 UTA 代码，说明一次任务从输入到输出怎么跑"
+```
+
+UTA API：
+
+```bash
+.venv/bin/python -m uvicorn api.server:app --host 127.0.0.1 --port 8000
 ```
 
 ## 短期记忆与长期记忆
@@ -103,6 +115,7 @@ LLM_SSL_VERIFY=0
 - `v0.8-skill-runtime`: 新增 `SkillLoader` 和 `SkillBuilder`，支持本地 Markdown Skill 的加载、候选草稿生成和 Planner workflow 注入。
 - `v1.0-learning-agent`: 新增 A11 replan，单个 step 重试耗尽后可重新规划一次，并从失败 step 继续；完成 README、CHANGELOG 和两类 demo 验收。
 - `research-search`: 当前分支新增 `research` 任务类型、可插拔 Search Provider、`search_tool`、带来源的调研报告和 CLI demo；默认使用 Bing HTML 联网搜索，无需额外 search key。天气类问题会走 Open-Meteo 实时天气接口，避免把普通网页摘要误当成天气结果。
+- `api-code-reading-alignment`: 当前分支已恢复 UTA 根 FastAPI 接口，并合并只读代码阅读任务；桌面端会打包源码快照供 `code_tool` 扫描。
 - `rag-integration`: 当前分支已把 RAG 整合进主项目，提供 CLI、FastAPI、桌面端知识库 Tab 和自动 seed。
 - TAM Memory 不属于 UTA v1.0 核心范围。
 

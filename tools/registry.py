@@ -1,3 +1,4 @@
+from tools.code_tool import CodeTool
 from tools.file_tool import FileTool
 from tools.mock_tool import MockTool
 from tools.report_tool import ReportTool
@@ -9,6 +10,7 @@ from tools.text_tool import TextTool
 def build_tool_registry():
     return {
         "mock_tool": MockTool(),
+        "code_tool": CodeTool(),
         "file_tool": FileTool(),
         "text_tool": TextTool(),
         "table_tool": TableTool(),

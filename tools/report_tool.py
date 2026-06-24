@@ -10,6 +10,13 @@ class ReportTool(BaseTool):
     def run(self, action_name: str, params: dict[str, Any]) -> dict[str, Any]:
         del action_name
         previous = params.get("previous_result")
+        if isinstance(previous, dict) and previous.get("code_analysis") is True:
+            report = self._code_report(previous)
+            return {
+                "message": report,
+                "report_markdown": report,
+                "source_code_analysis": previous,
+            }
         if isinstance(previous, dict) and "weather_result" in previous:
             report = self._weather_report(previous)
             return {
@@ -42,6 +49,104 @@ class ReportTool(BaseTool):
             "message": summary,
             "report_markdown": summary,
         }
+
+    def _code_report(self, analysis: dict[str, Any]) -> str:
+        files = analysis.get("files")
+        if not isinstance(files, list):
+            files = []
+
+        return "\n\n".join(
+            [
+                self._code_task_flow_section(),
+                self._code_key_files_section(files),
+                self._code_module_roles_section(files),
+                self._code_call_order_section(),
+                self._code_state_memory_section(),
+                self._code_desktop_entry_section(files),
+                self._code_risks_section(),
+                self._code_next_steps_section(),
+            ]
+        )
+
+    def _code_task_flow_section(self) -> str:
+        return "\n".join(
+            [
+                "## 任务链路",
+                "一次 UTA 任务先进入 `main.run_task()`，随后经过 TaskParser、SkillLoader、Planner、Agent Loop、Router、Executor、Verifier、Reflection/Replan、Memory 和最终输出。",
+            ]
+        )
+
+    def _code_key_files_section(self, files: list[dict[str, Any]]) -> str:
+        lines = ["## 关键文件"]
+        if not files:
+            lines.append("未扫描到关键文件。")
+            return "\n".join(lines)
+        for item in files:
+            path = str(item.get("path") or "unknown")
+            role = str(item.get("role") or "UTA 代码文件")
+            lines.append(f"- `{path}`：{role}")
+        return "\n".join(lines)
+
+    def _code_module_roles_section(self, files: list[dict[str, Any]]) -> str:
+        lines = ["## 模块职责"]
+        for item in files:
+            path = str(item.get("path") or "unknown")
+            role = str(item.get("role") or "UTA 代码文件")
+            functions = item.get("functions") if isinstance(item.get("functions"), list) else []
+            classes = item.get("classes") if isinstance(item.get("classes"), list) else []
+            symbols = "，".join([str(name) for name in classes + functions]) or "未发现顶层类或函数"
+            lines.append(f"- `{path}`：{role}。主要符号：{symbols}。")
+        return "\n".join(lines)
+
+    def _code_call_order_section(self) -> str:
+        return "\n".join(
+            [
+                "## 调用顺序",
+                "1. `main.py` 创建 AgentState 并调用 TaskParser。",
+                "2. `core/task_parser.py` 识别任务类型和意图。",
+                "3. `core/skill_loader.py` 尝试匹配已有 Skill。",
+                "4. `core/planner.py` 生成只含目标的 PlanStep。",
+                "5. `core/loop.py` 按步骤推进任务，并在失败时触发 Reflection 或 Replan。",
+                "6. `core/router.py` 根据 step goal 选择工具。",
+                "7. `core/executor.py` 执行工具并返回 ToolResult。",
+                "8. `core/verifier.py` 用硬规则判断结果是否合格。",
+                "9. `memory_providers/json_memory_provider.py` 保存任务历史、经验、负向规则和 Skill 候选。",
+            ]
+        )
+
+    def _code_state_memory_section(self) -> str:
+        return "\n".join(
+            [
+                "## 状态与记忆",
+                "`AgentState` 是单次任务内的短期记忆，保存 plan、results、checks、feedbacks、replan_events 和 final_output。任务结束后，state 写入 `outputs/states/`，log 写入 `outputs/logs/`，长期 JSON Memory 写入 `memory/*.json` 或桌面端的 `~/.uta/memory/`。",
+            ]
+        )
+
+    def _code_desktop_entry_section(self, files: list[dict[str, Any]]) -> str:
+        scanned_paths = {str(item.get("path") or "") for item in files}
+        if "desktop/runner.py" in scanned_paths and "desktop/api.py" in scanned_paths:
+            detail = "`desktop.api.DesktopAPI` 接收前端调用，`desktop.runner.TaskRunner` 在后台线程里调用同一条 `main.run_task()` 核心链路。"
+        else:
+            detail = "桌面端通过 `desktop.api.DesktopAPI` 和 `desktop.runner.TaskRunner` 调用核心任务链路。"
+        return "\n".join(["## 桌面端入口", detail])
+
+    def _code_risks_section(self) -> str:
+        return "\n".join(
+            [
+                "## 风险点",
+                "当前版本只扫描当前 UTA 项目的白名单文件，不读取任意外部项目；它提取静态结构，不生成完整语义调用图，也不会自动修改代码。",
+            ]
+        )
+
+    def _code_next_steps_section(self) -> str:
+        return "\n".join(
+            [
+                "## 下一步建议",
+                "- 支持用户显式指定本地项目目录。",
+                "- 为更大的项目增加文件数量上限和路径安全提示。",
+                "- 在代码结构稳定后再考虑模块依赖图或语义检索。",
+            ]
+        )
 
     def _research_report(self, search_payload: dict[str, Any]) -> str:
         query = str(search_payload.get("query") or "调研主题")

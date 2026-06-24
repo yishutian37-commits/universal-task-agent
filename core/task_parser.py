@@ -6,7 +6,7 @@ from core.state import Task
 from llm.llm_client import LLMClient
 
 
-ALLOWED_TASK_TYPES = {"summarize", "data_analysis", "research", "unknown"}
+ALLOWED_TASK_TYPES = {"summarize", "data_analysis", "research", "code_reading", "unknown"}
 
 
 class TaskParser:
@@ -42,7 +42,7 @@ class TaskParser:
     def _system_prompt() -> str:
         return (
             "你是 UTA 的 Task Parser。只返回 JSON，不要输出解释。"
-            "task_type 只能是 summarize、data_analysis、research、unknown。"
+            "task_type 只能是 summarize、data_analysis、research、code_reading、unknown。"
         )
 
     @staticmethod
@@ -107,6 +107,17 @@ class TaskParser:
                 constraints=[],
                 missing_info=[],
             )
+        if guessed_type == "code_reading":
+            return Task(
+                task_id=task_id,
+                user_input=user_input,
+                task_type="code_reading",
+                intent="read_task_flow",
+                input_type="repository",
+                expected_output="code_reading_report",
+                constraints=[],
+                missing_info=[],
+            )
         return Task(
             task_id=task_id,
             user_input=user_input,
@@ -146,4 +157,9 @@ class TaskParser:
             return "research"
         if "总结" in user_input or "摘要" in user_input:
             return "summarize"
+        if any(
+            marker in user_input
+            for marker in ["代码", "源码", "调用链", "任务链路", "阅读项目", "项目结构", "从输入到输出"]
+        ):
+            return "code_reading"
         return "unknown"

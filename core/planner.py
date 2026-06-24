@@ -30,4 +30,6 @@ class Planner:
             return ["读取表格文件", "分析字段、行数、列数和缺失值", "生成表格分析报告"]
         if task_type == "research":
             return ["搜索相关资料", "生成带来源的调研报告"]
+        if task_type == "code_reading":
+            return ["扫描 UTA 任务执行链路代码", "生成代码阅读报告"]
         return ["执行 V0.3 mock 工具"]

@@ -16,6 +16,7 @@ def _generate_task_id() -> str:
 
 
 def build_tool_registry() -> dict[str, Any]:
+    from tools.code_tool import CodeTool
     from tools.file_tool import FileTool
     from tools.mock_tool import MockTool
     from tools.report_tool import ReportTool
@@ -25,6 +26,7 @@ def build_tool_registry() -> dict[str, Any]:
 
     return {
         "mock_tool": MockTool(),
+        "code_tool": CodeTool(resource_path(".")),
         "file_tool": FileTool(),
         "text_tool": TextTool(),
         "table_tool": TableTool(),

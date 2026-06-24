@@ -26,6 +26,44 @@ TABLE_ANALYSIS = {
     ],
 }
 
+CODE_ANALYSIS = {
+    "message": "已完成 UTA 代码链路扫描",
+    "code_analysis": True,
+    "project_root": "/tmp/uta",
+    "focus": "task_flow",
+    "required_files": ["main.py", "core/loop.py", "core/router.py", "core/verifier.py"],
+    "files": [
+        {
+            "path": "main.py",
+            "role": "CLI 入口与任务运行编排",
+            "imports": ["argparse", "core.loop.run_minimal_loop"],
+            "classes": [],
+            "functions": ["run_task", "main"],
+        },
+        {
+            "path": "core/loop.py",
+            "role": "Agent 主循环、重试、反思和 replan 控制",
+            "imports": ["core.executor.Executor"],
+            "classes": [],
+            "functions": ["run_minimal_loop"],
+        },
+        {
+            "path": "core/router.py",
+            "role": "根据步骤目标选择工具",
+            "imports": ["core.state.Action"],
+            "classes": ["Router"],
+            "functions": [],
+        },
+        {
+            "path": "core/verifier.py",
+            "role": "用硬规则校验工具结果和最终报告",
+            "imports": ["re"],
+            "classes": ["Verifier"],
+            "functions": [],
+        },
+    ],
+}
+
 
 def test_report_tool_uses_summary_markdown_as_final_message():
     result = ReportTool().run(
@@ -107,6 +145,21 @@ def test_report_tool_generates_research_report_with_sources():
     assert "## 注意事项" in report
     assert "[UTA 路线](https://example.com/uta)" in report
     assert result["source_search_results"][0]["url"] == "https://example.com/uta"
+
+
+def test_report_tool_generates_code_reading_report():
+    result = ReportTool().run("generate", {"previous_result": CODE_ANALYSIS})
+
+    report = result["report_markdown"]
+
+    assert result["message"] == report
+    assert result["source_code_analysis"] == CODE_ANALYSIS
+    for section in ["任务链路", "关键文件", "模块职责", "调用顺序", "状态与记忆", "桌面端入口", "风险点", "下一步建议"]:
+        assert f"## {section}" in report
+    assert "main.py" in report
+    assert "core/loop.py" in report
+    assert "core/router.py" in report
+    assert "core/verifier.py" in report
 
 
 def test_report_tool_generates_weather_report():

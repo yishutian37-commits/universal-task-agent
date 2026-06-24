@@ -11,6 +11,18 @@ DOCS = ROOT / "docs"
 MEMORY = ROOT / "memory"
 README = ROOT / "README.md"
 CHANGELOG = ROOT / "CHANGELOG.md"
+SOURCE_ITEMS = [
+    ROOT / "main.py",
+    ROOT / "api",
+    ROOT / "core",
+    ROOT / "desktop",
+    ROOT / "llm",
+    ROOT / "memory_providers",
+    ROOT / "rag",
+    ROOT / "search_providers",
+    ROOT / "tools",
+    ROOT / "weather_providers",
+]
 
 datas = [
     (str(FRONTEND), "frontend"),
@@ -21,6 +33,7 @@ datas = [
     (str(README), "."),
     (str(CHANGELOG), "."),
 ]
+datas.extend((str(item), f"source/{item.name}") for item in SOURCE_ITEMS if item.exists())
 
 a = Analysis(
     [str(ROOT / "desktop" / "build" / "uta_app.py")],
@@ -35,6 +48,8 @@ a = Analysis(
         "desktop.runner",
         "desktop.settings_store",
         "desktop.rag_client",
+        "api",
+        "api.server",
         "core.executor",
         "core.loop",
         "core.planner",
@@ -46,6 +61,7 @@ a = Analysis(
         "core.verifier",
         "llm.llm_client",
         "memory_providers.json_memory_provider",
+        "tools.code_tool",
         "tools.file_tool",
         "tools.mock_tool",
         "tools.report_tool",

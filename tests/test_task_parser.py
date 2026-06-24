@@ -140,3 +140,18 @@ def test_task_parser_fallback_detects_weather_research_when_llm_fails():
     assert task.intent == "research_topic"
     assert task.input_type == "text"
     assert task.expected_output == "research_report"
+
+
+def test_task_parser_fallback_detects_code_reading_when_llm_fails():
+    parser = TaskParser(llm_client=FailingLLMClient())
+
+    task = parser.parse("task_test", "阅读 UTA 代码，说明一次任务从输入到输出怎么跑")
+
+    assert task.task_type == "code_reading"
+    assert task.intent == "read_task_flow"
+    assert task.input_type == "repository"
+    assert task.expected_output == "code_reading_report"
+
+
+def test_task_parser_system_prompt_allows_code_reading():
+    assert "code_reading" in TaskParser._system_prompt()

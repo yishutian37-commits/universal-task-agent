@@ -108,3 +108,12 @@ def test_planner_creates_research_plan():
         "搜索相关资料",
         "生成带来源的调研报告",
     ]
+
+
+def test_planner_creates_code_reading_plan():
+    plan = Planner().create_plan(make_task("code_reading"))
+
+    assert [step.goal for step in plan.steps] == [
+        "扫描 UTA 任务执行链路代码",
+        "生成代码阅读报告",
+    ]

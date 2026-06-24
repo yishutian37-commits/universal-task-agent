@@ -324,3 +324,80 @@ def test_verifier_accepts_empty_research_report_when_no_sources_available():
     check = Verifier().check(state, PlanStep(step_id=2, goal="生成带来源的调研报告"), result)
 
     assert check.passed is True
+
+
+def test_verifier_accepts_complete_code_reading_report():
+    state = AgentState(
+        task_id="task_test",
+        user_input="阅读 UTA 代码",
+        task_type="code_reading",
+        intent="read_task_flow",
+    )
+    result = ToolResult(
+        success=True,
+        tool_name="report_tool",
+        action_name="generate",
+        result={
+            "message": (
+                "## 任务链路\n一次任务从 main.run_task 开始。\n\n"
+                "## 关键文件\n- `main.py`\n- `core/loop.py`\n- `core/router.py`\n- `core/verifier.py`\n\n"
+                "## 模块职责\n各模块职责清晰。\n\n"
+                "## 调用顺序\n1. main.py\n2. core/loop.py\n\n"
+                "## 状态与记忆\nAgentState 保存短期状态。\n\n"
+                "## 桌面端入口\ndesktop.api 调用 runner。\n\n"
+                "## 风险点\n只读扫描，不修改代码。\n\n"
+                "## 下一步建议\n增加更丰富的依赖图。"
+            ),
+            "source_code_analysis": {
+                "files": [
+                    {"path": "main.py"},
+                    {"path": "core/loop.py"},
+                    {"path": "core/router.py"},
+                    {"path": "core/verifier.py"},
+                ]
+            },
+        },
+    )
+
+    check = Verifier().check(state, PlanStep(step_id=2, goal="生成代码阅读报告"), result)
+
+    assert check.passed is True
+
+
+def test_verifier_rejects_code_report_missing_required_file():
+    state = AgentState(
+        task_id="task_test",
+        user_input="阅读 UTA 代码",
+        task_type="code_reading",
+        intent="read_task_flow",
+    )
+    result = ToolResult(
+        success=True,
+        tool_name="report_tool",
+        action_name="generate",
+        result={
+            "message": (
+                "## 任务链路\n一次任务从 main.run_task 开始。\n\n"
+                "## 关键文件\n- `main.py`\n- `core/loop.py`\n- `core/router.py`\n\n"
+                "## 模块职责\n各模块职责清晰。\n\n"
+                "## 调用顺序\n1. main.py\n2. core/loop.py\n\n"
+                "## 状态与记忆\nAgentState 保存短期状态。\n\n"
+                "## 桌面端入口\ndesktop.api 调用 runner。\n\n"
+                "## 风险点\n只读扫描，不修改代码。\n\n"
+                "## 下一步建议\n增加更丰富的依赖图。"
+            ),
+            "source_code_analysis": {
+                "files": [
+                    {"path": "main.py"},
+                    {"path": "core/loop.py"},
+                    {"path": "core/router.py"},
+                ]
+            },
+        },
+    )
+
+    check = Verifier().check(state, PlanStep(step_id=2, goal="生成代码阅读报告"), result)
+
+    assert check.passed is False
+    assert "扫描结果缺少关键文件：core/verifier.py" in check.failed_reasons
+    assert "关键文件小节缺少文件：core/verifier.py" in check.failed_reasons

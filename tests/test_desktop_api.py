@@ -106,6 +106,12 @@ def test_desktop_runner_generate_task_id_uses_microseconds_to_avoid_same_second_
     assert second == "task_20260622_010203_123457"
 
 
+def test_desktop_runner_registers_code_tool():
+    registry = runner_module.build_tool_registry()
+
+    assert "code_tool" in registry
+
+
 def test_desktop_api_saves_settings_and_hides_key(tmp_path, monkeypatch):
     monkeypatch.setenv("UTA_HOME", str(tmp_path / "uta"))
     api = DesktopAPI(settings_store=SettingsStore(), runner=FakeRunner())

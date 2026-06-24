@@ -81,3 +81,10 @@ def test_router_routes_weather_goal_to_search_tool():
 
     assert action.tool_name == "search_tool"
     assert action.action_name == "search"
+
+
+def test_router_routes_code_reading_goal_to_code_tool():
+    action = route("扫描 UTA 任务执行链路代码")
+
+    assert action.tool_name == "code_tool"
+    assert action.action_name == "scan"

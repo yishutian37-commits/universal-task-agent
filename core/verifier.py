@@ -6,6 +6,8 @@ from core.state import AgentState, CheckResult, PlanStep, ToolResult
 SUMMARY_REQUIRED_SECTIONS = ["摘要", "核心观点", "风险点"]
 TABLE_REQUIRED_SECTIONS = ["字段说明", "基础统计", "异常数据"]
 RESEARCH_REQUIRED_SECTIONS = ["结论", "关键发现", "来源", "注意事项"]
+CODE_REQUIRED_SECTIONS = ["任务链路", "关键文件", "模块职责", "调用顺序", "状态与记忆", "桌面端入口", "风险点", "下一步建议"]
+CODE_REQUIRED_FILES = ["main.py", "core/loop.py", "core/router.py", "core/verifier.py"]
 
 
 class Verifier:
@@ -29,6 +31,9 @@ class Verifier:
 
         if self._should_check_table_report(state, result):
             return self._check_table_report(result)
+
+        if self._should_check_code_report(state, result):
+            return self._check_code_report(result)
 
         return CheckResult(passed=True, failed_reasons=[], suggested_fix=[])
 
@@ -61,6 +66,13 @@ class Verifier:
             and result.tool_name == "report_tool"
         )
 
+    def _should_check_code_report(self, state: AgentState | None, result: ToolResult) -> bool:
+        return (
+            state is not None
+            and state.task_type == "code_reading"
+            and result.tool_name == "report_tool"
+        )
+
     def _check_research_report(self, result: ToolResult) -> CheckResult:
         report_text = str(result.result.get("message") or result.result.get("report_markdown") or "")
         failed_reasons = []
@@ -87,6 +99,46 @@ class Verifier:
         elif "未找到可用来源" not in report_text:
             failed_reasons.append("无搜索结果时必须写明：未找到可用来源")
             suggested_fix.append("在结论或来源小节写明：未找到可用来源")
+
+        return CheckResult(
+            passed=not failed_reasons,
+            failed_reasons=failed_reasons,
+            suggested_fix=suggested_fix,
+        )
+
+    def _check_code_report(self, result: ToolResult) -> CheckResult:
+        report_text = str(result.result.get("message") or result.result.get("report_markdown") or "")
+        source_analysis = result.result.get("source_code_analysis") or {}
+        source_files = source_analysis.get("files") if isinstance(source_analysis, dict) else []
+        if not isinstance(source_files, list):
+            source_files = []
+
+        failed_reasons = []
+        suggested_fix = []
+
+        for section in CODE_REQUIRED_SECTIONS:
+            content = self._section_content(report_text, section, CODE_REQUIRED_SECTIONS)
+            if content is None:
+                failed_reasons.append(f"缺少必要小节：{section}")
+                suggested_fix.append(f"补齐{section}小节")
+            elif not content.strip():
+                failed_reasons.append(f"小节内容为空：{section}")
+                suggested_fix.append(f"补充{section}小节内容")
+
+        scanned_paths = {
+            str(item.get("path") or "")
+            for item in source_files
+            if isinstance(item, dict)
+        }
+        key_files_section = self._section_content(report_text, "关键文件", CODE_REQUIRED_SECTIONS) or ""
+
+        for path in CODE_REQUIRED_FILES:
+            if path not in scanned_paths:
+                failed_reasons.append(f"扫描结果缺少关键文件：{path}")
+                suggested_fix.append(f"补充扫描关键文件：{path}")
+            if path not in key_files_section:
+                failed_reasons.append(f"关键文件小节缺少文件：{path}")
+                suggested_fix.append(f"在关键文件小节补充：{path}")
 
         return CheckResult(
             passed=not failed_reasons,

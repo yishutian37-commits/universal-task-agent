@@ -2,6 +2,8 @@
 
 桌面版把现有 Python Agent 打包进本地 macOS 窗口：前端是 `desktop/frontend/`，后端是 `desktop.api.DesktopAPI`，任务仍然走 `main.run_task()`。
 
+当前桌面包支持文本总结、表格分析、调研搜索、实时天气、RAG 知识库和只读代码阅读。代码阅读任务扫描打包进 `.app` 的 `source/` 源码快照，不会修改项目文件。
+
 ## 开发运行
 
 ```bash
