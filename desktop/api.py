@@ -5,6 +5,7 @@ from typing import Any
 from desktop.history_store import HistoryStore
 from desktop.memory_store import MemoryStore
 from desktop.paths import resource_path, uta_home
+from desktop.rag_client import RAGClient
 from desktop.runner import TaskRunner
 from desktop.settings_store import SettingsStore
 
@@ -16,11 +17,13 @@ class DesktopAPI:
         runner: TaskRunner | None = None,
         history_store: HistoryStore | None = None,
         memory_store: MemoryStore | None = None,
+        rag_client: RAGClient | None = None,
     ):
         self.settings_store = settings_store if settings_store is not None else SettingsStore()
         self.runner = runner if runner is not None else TaskRunner(settings_store=self.settings_store)
         self.history_store = history_store if history_store is not None else HistoryStore(uta_home() / "outputs")
         self.memory_store = memory_store if memory_store is not None else MemoryStore(uta_home() / "memory")
+        self.rag_client = rag_client if rag_client is not None else RAGClient()
 
     def bind_window(self, window) -> None:
         if hasattr(self.runner, "bind_window"):
@@ -94,3 +97,44 @@ class DesktopAPI:
 
     def cancel_task(self, task_id: str) -> dict[str, Any]:
         return self.runner.cancel(task_id)
+
+    # ---- RAG 知识库 ----
+
+    def rag_stats(self) -> dict[str, Any]:
+        try:
+            stats = self.rag_client.stats()
+            return {"ok": True, "mode": self.rag_client.mode, "stats": stats}
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)}
+
+    def rag_list_docs(self) -> dict[str, Any]:
+        try:
+            docs = self.rag_client.list_docs()
+            return {"ok": True, "docs": docs}
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)}
+
+    def rag_ingest(self, path: str) -> dict[str, Any]:
+        try:
+            result = self.rag_client.ingest(str(path or "").strip())
+            return result
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)}
+
+    def rag_query(self, question: str, top_k: int = 5) -> dict[str, Any]:
+        try:
+            return self.rag_client.query(str(question or "").strip(), top_k=top_k)
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)}
+
+    def rag_ask(self, question: str, top_k: int = 5) -> dict[str, Any]:
+        try:
+            return self.rag_client.ask(str(question or "").strip(), top_k=top_k)
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)}
+
+    def rag_delete(self, target: str) -> dict[str, Any]:
+        try:
+            return self.rag_client.delete(str(target or "").strip())
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)}

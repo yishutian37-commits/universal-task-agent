@@ -1,0 +1,113 @@
+from __future__ import annotations
+
+from pathlib import Path
+from unittest.mock import MagicMock
+
+import pytest
+
+from desktop.api import DesktopAPI
+from desktop.rag_client import RAGClient
+
+
+@pytest.fixture
+def md_file(tmp_path: Path) -> Path:
+    f = tmp_path / "notes.md"
+    f.write_text("# 笔记\nUTA 是学习型 Agent 框架。\n", encoding="utf-8")
+    return f
+
+
+# ---- RAGClient 内嵌模式 ----
+
+
+def test_embedded_mode_default():
+    import os
+
+    client = RAGClient(api_url="")
+    assert client.mode == "embedded"
+
+
+def test_http_mode_when_url_set():
+    client = RAGClient(api_url="http://localhost:8000")
+    assert client.mode == "http"
+
+
+def test_embedded_ingest_and_ask(md_file: Path, tmp_path: Path):
+    client = RAGClient(api_url="")
+    # 用临时目录的 KB
+    from rag.defaults import create_default_kb
+
+    client._kb = create_default_kb(db_path=str(tmp_path / "kb.db"))
+
+    result = client.ingest(str(md_file))
+    assert result["ok"] is True
+    assert result["chunk_count"] >= 1
+
+    answer = client.ask("UTA 是什么")
+    assert answer["ok"] is True
+    assert "UTA" in answer["answer"]
+    assert len(answer["sources"]) >= 1
+
+
+def test_embedded_stats(md_file: Path, tmp_path: Path):
+    client = RAGClient(api_url="")
+    from rag.defaults import create_default_kb
+
+    client._kb = create_default_kb(db_path=str(tmp_path / "kb.db"))
+    client.ingest(str(md_file))
+    stats = client.stats()
+    assert stats["documents"] == 1
+    assert stats["chunks"] >= 1
+
+
+def test_embedded_query_empty_returns_error(tmp_path: Path):
+    client = RAGClient(api_url="")
+    from rag.defaults import create_default_kb
+
+    client._kb = create_default_kb(db_path=str(tmp_path / "kb.db"))
+    result = client.query("问题")
+    assert result["ok"] is False
+
+
+# ---- HTTP 模式（mock）----
+
+
+def test_http_mode_calls_url():
+    client = RAGClient(api_url="http://localhost:8000")
+    client._http = MagicMock(return_value={"documents": 2, "chunks": 5})
+    stats = client.stats()
+    client._http.assert_called_once_with("GET", "/stats")
+    assert stats["documents"] == 2
+
+
+def test_http_mode_ask():
+    client = RAGClient(api_url="http://localhost:8000")
+    client._http = MagicMock(
+        return_value={"answer": "LLM 答案", "sources": [{"score": 0.9, "source": "a.md"}]}
+    )
+    result = client.ask("问题", top_k=3)
+    client._http.assert_called_once_with(
+        "POST", "/ask", {"question": "问题", "top_k": 3}
+    )
+    assert result["answer"] == "LLM 答案"
+
+
+# ---- DesktopAPI 集成 ----
+
+
+def test_desktop_api_rag_methods_exist():
+    api = DesktopAPI()
+    for method in ["rag_stats", "rag_list_docs", "rag_ingest", "rag_query", "rag_ask", "rag_delete"]:
+        assert hasattr(api, method)
+
+
+def test_desktop_api_rag_ask(md_file: Path, tmp_path: Path):
+    rag_client = RAGClient(api_url="")
+    from rag.defaults import create_default_kb
+
+    rag_client._kb = create_default_kb(db_path=str(tmp_path / "kb.db"))
+    api = DesktopAPI(rag_client=rag_client)
+
+    api.rag_ingest(str(md_file))
+    result = api.rag_ask("UTA 是什么")
+    assert result["ok"] is True
+    assert "UTA" in result["answer"]
