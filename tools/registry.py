@@ -6,11 +6,15 @@ from tools.table_tool import TableTool
 from tools.text_tool import TextTool
 
 
-TOOL_REGISTRY = {
-    "mock_tool": MockTool(),
-    "file_tool": FileTool(),
-    "text_tool": TextTool(),
-    "table_tool": TableTool(),
-    "report_tool": ReportTool(),
-    "search_tool": SearchTool(),
-}
+def build_tool_registry():
+    return {
+        "mock_tool": MockTool(),
+        "file_tool": FileTool(),
+        "text_tool": TextTool(),
+        "table_tool": TableTool(),
+        "report_tool": ReportTool(),
+        "search_tool": SearchTool(),
+    }
+
+
+TOOL_REGISTRY = build_tool_registry()

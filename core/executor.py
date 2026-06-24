@@ -1,11 +1,11 @@
-from tools.registry import TOOL_REGISTRY
+from tools.registry import build_tool_registry
 
 from core.state import Action, ToolResult
 
 
 class Executor:
     def __init__(self, tool_registry=None):
-        self.tool_registry = tool_registry if tool_registry is not None else TOOL_REGISTRY
+        self.tool_registry = tool_registry if tool_registry is not None else build_tool_registry()
 
     def run(self, action: Action) -> ToolResult:
         tool = self.tool_registry.get(action.tool_name)
