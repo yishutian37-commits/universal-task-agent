@@ -2,6 +2,8 @@
 
 UTA 是一个学习型 Agent 框架。当前主线已经整合 V1.0 学习型 Agent、V1.1 调研搜索/API、V1.2 代码阅读、RAG 知识库、GEO 分析 Skill 和桌面端体验层。
 
+项目中文简介见：`docs/project-overview.md`
+
 ## 快速开始
 
 ```bash
