@@ -51,22 +51,23 @@ class Planner:
         return ["分析复杂任务目标", "执行主要任务步骤", "汇总复杂任务结果"]
 
     def _numbered_goals(self, user_input: str) -> list[str]:
-        pattern = re.compile(r"(?:\[(\d+)\]|（(\d+)）|\((\d+)\)|(?<!\d)(\d+)[.、])\s*")
-        matches = list(pattern.finditer(user_input))
+        task_text = self._task_list_text(user_input)
+        pattern = re.compile(r"(?:\[(\d+)\]|（(\d+)）|\((\d+)\)|(?<![\d.])(\d{1,2})[.、](?!\d))\s*")
+        matches = list(pattern.finditer(task_text))
         if len(matches) < 2:
             return []
 
         goals = []
         for index, match in enumerate(matches):
             start = match.end()
-            end = matches[index + 1].start() if index + 1 < len(matches) else len(user_input)
-            goal = self._clean_complex_goal(user_input[start:end])
+            end = matches[index + 1].start() if index + 1 < len(matches) else len(task_text)
+            goal = self._clean_complex_goal(task_text[start:end])
             if goal:
                 goals.append(goal)
         return goals
 
     def _connector_goals(self, user_input: str) -> list[str]:
-        text = user_input
+        text = self._task_list_text(user_input)
         if "：" in text:
             text = text.split("：", 1)[1]
         elif ":" in text:
@@ -84,3 +85,19 @@ class Planner:
         cleaned = cleaned.strip(" \t\r\n，,。；;、：:")
         cleaned = re.sub(r"^(请|先|然后|最后|接着|再|并且|同时|第\d+步)\s*", "", cleaned)
         return cleaned.strip(" \t\r\n，,。；;、：:")
+
+    def _task_list_text(self, user_input: str) -> str:
+        cues = [
+            "你可以让 Agent 做这几个任务",
+            "让 Agent 做这几个任务",
+            "做这几个任务",
+            "执行这几个任务",
+            "完成这几个任务",
+            "任务清单",
+            "任务列表",
+        ]
+        for cue in cues:
+            index = user_input.find(cue)
+            if index >= 0:
+                return user_input[index + len(cue) :]
+        return user_input

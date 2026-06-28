@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from core.state import Task
@@ -39,7 +40,7 @@ class TaskParser:
             return self._history_query_task(task_id, user_input)
 
         task_type = self._normalize_task_type(payload.get("task_type"))
-        if self._looks_like_complex_task(user_input) and task_type in {"summarize", "unknown"}:
+        if self._looks_like_complex_task(user_input) and task_type in {"summarize", "code_reading", "unknown"}:
             return self._complex_task(task_id, user_input)
 
         return Task(
@@ -191,13 +192,13 @@ class TaskParser:
             ]
         ):
             return "research"
+        if TaskParser._looks_like_complex_task(user_input):
+            return "complex_task"
         if any(
             marker in user_input
             for marker in ["代码", "源码", "调用链", "任务链路", "阅读项目", "项目结构", "从输入到输出"]
         ):
             return "code_reading"
-        if TaskParser._looks_like_complex_task(user_input):
-            return "complex_task"
         if "总结" in user_input or "摘要" in user_input:
             return "summarize"
         return "unknown"
@@ -255,7 +256,58 @@ class TaskParser:
             ]
         ):
             return True
-        return any(marker in text for marker in ["[1]", "[2]", "[3]"])
+        if any(marker in text for marker in ["[1]", "[2]", "[3]"]):
+            return True
+
+        task_section = TaskParser._task_list_section(user_input)
+        if task_section != user_input and TaskParser._numbered_marker_count(task_section) >= 2:
+            return True
+
+        return (
+            TaskParser._numbered_marker_count(user_input) >= 3
+            and TaskParser._task_action_count(user_input) >= 2
+        )
+
+    @staticmethod
+    def _task_list_section(user_input: str) -> str:
+        cues = [
+            "你可以让 Agent 做这几个任务",
+            "让 Agent 做这几个任务",
+            "做这几个任务",
+            "执行这几个任务",
+            "完成这几个任务",
+            "任务清单",
+            "任务列表",
+        ]
+        for cue in cues:
+            index = user_input.find(cue)
+            if index >= 0:
+                return user_input[index + len(cue) :]
+        return user_input
+
+    @staticmethod
+    def _numbered_marker_count(text: str) -> int:
+        pattern = re.compile(r"(?:\[\d+\]|（\d+）|\(\d+\)|(?<![\d.])\d{1,2}[.、](?!\d))")
+        return len(pattern.findall(text))
+
+    @staticmethod
+    def _task_action_count(user_input: str) -> int:
+        return sum(
+            1
+            for marker in [
+                "总结",
+                "提炼",
+                "提取",
+                "找出",
+                "判断",
+                "压缩",
+                "改写",
+                "分析",
+                "列出",
+                "生成",
+            ]
+            if marker in user_input
+        )
 
     @staticmethod
     def _complex_task(task_id: str, user_input: str) -> Task:

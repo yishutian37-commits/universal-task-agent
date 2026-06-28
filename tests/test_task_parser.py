@@ -249,5 +249,47 @@ def test_task_parser_fallback_detects_complex_task_with_numbered_steps():
     assert task.expected_output == "step_checklist"
 
 
+def test_task_parser_overrides_summary_when_input_contains_agent_task_list():
+    parser = TaskParser(
+        FakeClient(
+            {
+                "task_type": "summarize",
+                "intent": "summarize_article",
+                "input_type": "text",
+                "expected_output": "summary_report",
+            }
+        )
+    )
+
+    task = parser.parse(
+        "task_test",
+        "帮我总结一段文本：这里是一篇文章。\n\n"
+        "你可以让 Agent 做这几个任务：\n"
+        "1. 总结全文核心观点\n"
+        "2. 提炼 5 个关键结论\n"
+        "3. 找出文章的逻辑结构",
+    )
+
+    assert task.task_type == "complex_task"
+    assert task.intent == "execute_complex_task"
+    assert task.expected_output == "step_checklist"
+
+
+def test_task_parser_prefers_agent_task_list_over_article_code_keywords():
+    parser = TaskParser(llm_client=FailingLLMClient())
+
+    task = parser.parse(
+        "task_test",
+        "帮我总结一段文本：文章讨论代码阅读能力、调用链理解能力和 Debug 能力。\n\n"
+        "你可以让 Agent 做这几个任务：\n"
+        "1. 总结全文核心观点\n"
+        "2. 提炼 5 个关键结论\n"
+        "3. 改写成适合小白看的版本",
+    )
+
+    assert task.task_type == "complex_task"
+    assert task.intent == "execute_complex_task"
+
+
 def test_task_parser_system_prompt_allows_complex_task():
     assert "complex_task" in TaskParser._system_prompt()

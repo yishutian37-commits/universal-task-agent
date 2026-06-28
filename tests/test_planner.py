@@ -189,3 +189,36 @@ def test_planner_splits_complex_task_connector_words():
         "列出计划",
         "总结风险",
     ]
+
+
+def test_planner_splits_numbered_agent_task_list_after_article_text():
+    task = Task(
+        task_id="task_test",
+        user_input=(
+            "帮我总结一段文本：文章里可能有 2026.6 这样的数字，也有很多正文。\n\n"
+            "你可以让 Agent 做这几个任务：\n"
+            "1. 总结全文核心观点\n"
+            "2. 提炼 5 个关键结论\n"
+            "3. 找出文章的逻辑结构\n"
+            "4. 判断作者真正想反对什么\n"
+            "5. 用一句话压缩全文\n"
+            "6. 改写成适合小白看的版本\n"
+            "7. 改写成适合发朋友圈/知乎的版本"
+        ),
+        task_type="complex_task",
+        intent="execute_complex_task",
+        input_type="text",
+        expected_output="step_checklist",
+    )
+
+    plan = Planner().create_plan(task)
+
+    assert [step.goal for step in plan.steps] == [
+        "总结全文核心观点",
+        "提炼 5 个关键结论",
+        "找出文章的逻辑结构",
+        "判断作者真正想反对什么",
+        "用一句话压缩全文",
+        "改写成适合小白看的版本",
+        "改写成适合发朋友圈/知乎的版本",
+    ]
