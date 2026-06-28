@@ -40,7 +40,7 @@ class TextTool(BaseTool):
     def _system_prompt() -> str:
         return (
             "你是 UTA 的文本总结工具。只输出中文 Markdown，不要编造原文没有的信息。"
-            "如果某类信息没有出现，写“未提及”。"
+            "如果某类信息没有出现，写：未提及。不要把整段答案包进代码块。"
         )
 
     @staticmethod
@@ -55,7 +55,9 @@ class TextTool(BaseTool):
             return (
                 f"当前步骤目标：{goal.strip()}\n"
                 "请围绕当前步骤目标处理下面文本，输出中文 Markdown。"
-                "如果原文没有足够信息，明确写“原文未提及”。\n\n"
+                "不要使用 ```markdown 或其他代码围栏包裹整段答案。"
+                "不要用中文引号或英文引号当作强调符号；除非是在引用原文。"
+                "如果原文没有足够信息，明确写：原文未提及。\n\n"
                 f"{feedback_text}"
                 f"原文：\n{source_text}"
             )

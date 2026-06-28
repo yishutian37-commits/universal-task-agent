@@ -55,6 +55,17 @@ class StepEchoTool(BaseTool):
         return {"message": f"结果：{goal}", "report_markdown": f"结果：{goal}"}
 
 
+class FencedMarkdownTool(BaseTool):
+    name = "fenced_markdown_tool"
+    description = "returns markdown wrapped in a markdown code fence"
+
+    def run(self, action_name, params):
+        del action_name, params
+        return {
+            "message": "```markdown\n# 文章逻辑结构分析\n\n1. 现象描述\n2. 核心原因\n```"
+        }
+
+
 def make_static_summary_registry(summary=VALID_SUMMARY_REPORT):
     return {
         "file_tool": StaticSummaryTool("file"),
@@ -239,6 +250,28 @@ def test_run_task_outputs_step_results_for_complex_task(tmp_path):
     assert "### 2. 提炼 5 个关键结论" in state.final_output
     assert "结果：提炼 5 个关键结论" in state.final_output
     assert "## 执行结果" not in state.final_output
+
+
+def test_run_task_unwraps_markdown_code_fences_in_complex_step_results(tmp_path):
+    state = run_task(
+        "帮我执行复杂任务：[1]找出文章的逻辑结构",
+        output_root=tmp_path,
+        task_id="task_complex_fence",
+        task_parser=FakeParser(task_type="complex_task", intent="execute_complex_task"),
+        tool_registry={
+            "mock_tool": FencedMarkdownTool(),
+            "text_tool": FencedMarkdownTool(),
+        },
+        memory_provider=False,
+        skill_loader=False,
+    )
+
+    assert state.status == "completed"
+    assert state.final_output is not None
+    assert "```markdown" not in state.final_output
+    assert "```" not in state.final_output
+    assert "# 文章逻辑结构分析" in state.final_output
+    assert "1. 现象描述" in state.final_output
 
 
 def test_run_task_lists_previous_tasks_for_history_query(tmp_path):

@@ -1,4 +1,5 @@
 import json
+import re
 
 from core.executor import Executor
 from core.planner import Planner
@@ -46,11 +47,19 @@ def _result_text(result: ToolResult | None) -> str:
     for key in ("message", "report_markdown", "summary_markdown"):
         value = result.result.get(key)
         if isinstance(value, str) and value.strip():
-            return value.strip()
+            return _unwrap_markdown_fence(value)
 
     if result.result:
         return "```json\n" + json.dumps(result.result, ensure_ascii=False, indent=2) + "\n```"
     return "未生成可展示结果。"
+
+
+def _unwrap_markdown_fence(value: str) -> str:
+    text = value.strip()
+    match = re.fullmatch(r"```(?:markdown|md)?[ \t]*\r?\n(.*?)\r?\n```", text, flags=re.DOTALL | re.IGNORECASE)
+    if match:
+        return match.group(1).strip()
+    return text
 
 
 def _results_by_step(results: list[ToolResult]) -> dict[int, ToolResult]:

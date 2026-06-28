@@ -71,3 +71,5 @@ def test_text_tool_includes_complex_step_goal_in_prompt():
 
     assert "当前步骤目标：改写成适合小白看的版本" in client.calls[0][1]
     assert "请围绕当前步骤目标处理下面文本" in client.calls[0][1]
+    assert "不要使用 ```markdown" in client.calls[0][1]
+    assert "不要用中文引号或英文引号当作强调符号" in client.calls[0][1]
