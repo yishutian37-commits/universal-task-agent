@@ -2,6 +2,22 @@ from core.state import Action, AgentState, PlanStep
 
 
 class Router:
+    COMPLEX_TEXT_KEYWORDS = (
+        "总结",
+        "提炼",
+        "归纳",
+        "改写",
+        "压缩",
+        "一句话",
+        "核心观点",
+        "关键结论",
+        "逻辑结构",
+        "作者",
+        "小白",
+        "朋友圈",
+        "知乎",
+    )
+
     RULES = [
         (("历史任务", "任务历史", "任务记录", "读取历史", "之前任务"), "history_tool", "list"),
         (("GEO 规则包", "生成式引擎优化", "AI可见性", "AI 可见性", "问题矩阵", "内容Brief", "内容 Brief", "平台合规"), "geo_tool", "analyze"),
@@ -19,6 +35,14 @@ class Router:
 
     def choose_tool(self, state: AgentState, step: PlanStep) -> Action:
         goal_lower = step.goal.lower()
+        if state.task_type == "complex_task" and any(keyword in step.goal for keyword in self.COMPLEX_TEXT_KEYWORDS):
+            return self._action(
+                state,
+                step,
+                "text_tool",
+                "process",
+                f"复杂任务文本步骤：{step.goal}",
+            )
         for keywords, tool_name, action_name in self.RULES:
             if any(keyword.lower() in goal_lower for keyword in keywords):
                 return self._action(

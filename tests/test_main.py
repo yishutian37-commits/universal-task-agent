@@ -45,6 +45,16 @@ class StaticSummaryTool(BaseTool):
         return {"message": self.message, "report_markdown": self.message}
 
 
+class StepEchoTool(BaseTool):
+    name = "step_echo_tool"
+    description = "echoes each step goal for complex task tests"
+
+    def run(self, action_name, params):
+        del action_name
+        goal = params.get("goal", "")
+        return {"message": f"结果：{goal}", "report_markdown": f"结果：{goal}"}
+
+
 def make_static_summary_registry(summary=VALID_SUMMARY_REPORT):
     return {
         "file_tool": StaticSummaryTool("file"),
@@ -204,6 +214,30 @@ def test_run_task_outputs_completed_checklist_for_complex_task(tmp_path):
     assert "[x] 2. 列出下一步计划" in state.final_output
     assert "[x] 3. 总结风险点" in state.final_output
     assert "已完成 3/3 个步骤" in state.final_output
+
+
+def test_run_task_outputs_step_results_for_complex_task(tmp_path):
+    state = run_task(
+        "帮我执行复杂任务：[1]总结全文核心观点 [2]提炼 5 个关键结论",
+        output_root=tmp_path,
+        task_id="task_complex_results",
+        task_parser=FakeParser(task_type="complex_task", intent="execute_complex_task"),
+        tool_registry={
+            "mock_tool": StepEchoTool(),
+            "text_tool": StepEchoTool(),
+        },
+        memory_provider=False,
+        skill_loader=False,
+    )
+
+    assert state.status == "completed"
+    assert state.final_output is not None
+    assert "## 分步结果" in state.final_output
+    assert "### 1. 总结全文核心观点" in state.final_output
+    assert "结果：总结全文核心观点" in state.final_output
+    assert "### 2. 提炼 5 个关键结论" in state.final_output
+    assert "结果：提炼 5 个关键结论" in state.final_output
+    assert state.final_output.index("## 分步结果") < state.final_output.index("## 执行结果")
 
 
 def test_run_task_lists_previous_tasks_for_history_query(tmp_path):

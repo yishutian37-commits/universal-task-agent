@@ -16,6 +16,7 @@ class Executor:
                 action_name=action.action_name,
                 result={},
                 error=f"tool_unavailable: {action.tool_name}",
+                step_id=action.step_id,
             )
 
         try:
@@ -27,6 +28,7 @@ class Executor:
                 action_name=action.action_name,
                 result={},
                 error=f"tool_error: {exc}",
+                step_id=action.step_id,
             )
 
         return ToolResult(
@@ -35,4 +37,5 @@ class Executor:
             action_name=action.action_name,
             result=result,
             error=None,
+            step_id=action.step_id,
         )

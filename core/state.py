@@ -66,6 +66,7 @@ class ToolResult:
     action_name: str
     result: dict[str, Any]
     error: str | None = None
+    step_id: int | None = None
 
 
 @dataclass

@@ -1,8 +1,10 @@
+import json
+
 from core.executor import Executor
 from core.planner import Planner
 from core.reflection import Reflection
 from core.router import Router
-from core.state import AgentState, Feedback, Plan, PlanStep, Task
+from core.state import AgentState, Feedback, Plan, PlanStep, Task, ToolResult
 from core.verifier import Verifier
 
 
@@ -45,8 +47,35 @@ def _step_marker(status: str) -> str:
     return "[ ]"
 
 
+def _result_text(result: ToolResult | None) -> str:
+    if result is None:
+        return "未生成可展示结果。"
+    if not result.success:
+        return f"失败：{result.error or 'unknown error'}"
+
+    for key in ("message", "report_markdown", "summary_markdown"):
+        value = result.result.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+
+    if result.result:
+        return "```json\n" + json.dumps(result.result, ensure_ascii=False, indent=2) + "\n```"
+    return "未生成可展示结果。"
+
+
+def _results_by_step(results: list[ToolResult]) -> dict[int, ToolResult]:
+    mapped = {}
+    for result in results:
+        if result.step_id is None:
+            continue
+        if result.success or result.step_id not in mapped:
+            mapped[result.step_id] = result
+    return mapped
+
+
 def _complex_task_output(state: AgentState) -> str:
     steps = state.plan.steps if state.plan is not None else []
+    results_by_step = _results_by_step(state.results)
     completed = sum(1 for step in steps if step.status == "completed")
     failed = sum(1 for step in steps if step.status == "failed")
 
@@ -54,7 +83,13 @@ def _complex_task_output(state: AgentState) -> str:
     for step in steps:
         lines.append(f"{_step_marker(step.status)} {step.step_id}. {step.goal}")
 
-    lines.extend(["", "## 执行结果", "", f"已完成 {completed}/{len(steps)} 个步骤。"])
+    lines.extend(["", "## 分步结果", ""])
+    for step in steps:
+        lines.append(f"### {step.step_id}. {step.goal}")
+        lines.append(_result_text(results_by_step.get(step.step_id)))
+        lines.append("")
+
+    lines.extend(["## 执行结果", "", f"已完成 {completed}/{len(steps)} 个步骤。"])
     if failed:
         reasons = state.checks[-1].failed_reasons if state.checks else []
         lines.append(f"失败 {failed} 个步骤。")

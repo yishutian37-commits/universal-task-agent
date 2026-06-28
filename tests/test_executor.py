@@ -20,6 +20,7 @@ def test_executor_runs_registered_tool():
 
     assert isinstance(result, ToolResult)
     assert result.success is True
+    assert result.step_id == 1
     assert result.tool_name == "mock_tool"
     assert result.result["message"] == "mock result"
     assert result.error is None
