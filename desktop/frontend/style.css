@@ -341,7 +341,7 @@ textarea[readonly] {
 
 .step {
   display: grid;
-  grid-template-columns: 28px minmax(0, 1fr) auto;
+  grid-template-columns: 52px minmax(0, 1fr) auto;
   gap: 10px;
   align-items: start;
   padding: 11px;
@@ -350,12 +350,12 @@ textarea[readonly] {
 }
 
 .stepIcon {
-  width: 24px;
+  width: 44px;
   height: 24px;
   display: grid;
   place-items: center;
   border: 1px solid var(--border);
-  border-radius: 50%;
+  border-radius: 6px;
   color: var(--muted);
   font-family: var(--mono);
   font-size: 12px;

@@ -35,6 +35,34 @@ def _plan_goals(plan: Plan | None) -> list[str]:
     return [step.goal for step in plan.steps]
 
 
+def _step_marker(status: str) -> str:
+    if status == "completed":
+        return "[x]"
+    if status == "failed":
+        return "[!]"
+    if status == "running":
+        return "[...]"
+    return "[ ]"
+
+
+def _complex_task_output(state: AgentState) -> str:
+    steps = state.plan.steps if state.plan is not None else []
+    completed = sum(1 for step in steps if step.status == "completed")
+    failed = sum(1 for step in steps if step.status == "failed")
+
+    lines = ["## 复杂任务执行清单", ""]
+    for step in steps:
+        lines.append(f"{_step_marker(step.status)} {step.step_id}. {step.goal}")
+
+    lines.extend(["", "## 执行结果", "", f"已完成 {completed}/{len(steps)} 个步骤。"])
+    if failed:
+        reasons = state.checks[-1].failed_reasons if state.checks else []
+        lines.append(f"失败 {failed} 个步骤。")
+        if reasons:
+            lines.append("失败原因：" + "；".join(reasons))
+    return "\n".join(lines)
+
+
 def _record_replan(
     state: AgentState,
     failed_step: PlanStep,
@@ -184,7 +212,10 @@ def run_minimal_loop(state: AgentState, tool_registry=None, on_progress=None) ->
                     step.status = "failed"
                     state.plan.status = "failed"
                     state.status = "failed"
-                    state.final_output = "replan 后没有可继续执行的步骤"
+                    if state.task_type == "complex_task":
+                        state.final_output = _complex_task_output(state)
+                    else:
+                        state.final_output = "replan 后没有可继续执行的步骤"
                     state.touch()
                     return state
 
@@ -208,7 +239,10 @@ def run_minimal_loop(state: AgentState, tool_registry=None, on_progress=None) ->
             step.status = "failed"
             state.plan.status = "failed"
             state.status = "failed"
-            state.final_output = "；".join(state.checks[-1].failed_reasons)
+            if state.task_type == "complex_task":
+                state.final_output = _complex_task_output(state)
+            else:
+                state.final_output = "；".join(state.checks[-1].failed_reasons)
             state.touch()
             _emit_progress(
                 on_progress,
@@ -220,7 +254,9 @@ def run_minimal_loop(state: AgentState, tool_registry=None, on_progress=None) ->
 
         step_index += 1
 
-    if state.results:
+    if state.task_type == "complex_task":
+        state.final_output = _complex_task_output(state)
+    elif state.results:
         state.final_output = state.results[-1].result.get("message", "")
 
     if all(step.status == "completed" for step in state.plan.steps):

@@ -13,6 +13,7 @@ ALLOWED_TASK_TYPES = {
     "code_reading",
     "geo_analysis",
     "history_query",
+    "complex_task",
     "unknown",
 }
 
@@ -38,6 +39,9 @@ class TaskParser:
             return self._history_query_task(task_id, user_input)
 
         task_type = self._normalize_task_type(payload.get("task_type"))
+        if self._looks_like_complex_task(user_input) and task_type in {"summarize", "unknown"}:
+            return self._complex_task(task_id, user_input)
+
         return Task(
             task_id=task_id,
             user_input=user_input,
@@ -53,7 +57,7 @@ class TaskParser:
     def _system_prompt() -> str:
         return (
             "你是 UTA 的 Task Parser。只返回 JSON，不要输出解释。"
-            "task_type 只能是 summarize、data_analysis、research、code_reading、geo_analysis、history_query、unknown。"
+            "task_type 只能是 summarize、data_analysis、research、code_reading、geo_analysis、history_query、complex_task、unknown。"
         )
 
     @staticmethod
@@ -142,6 +146,8 @@ class TaskParser:
             )
         if guessed_type == "history_query":
             return TaskParser._history_query_task(task_id, user_input)
+        if guessed_type == "complex_task":
+            return TaskParser._complex_task(task_id, user_input)
         return Task(
             task_id=task_id,
             user_input=user_input,
@@ -185,13 +191,15 @@ class TaskParser:
             ]
         ):
             return "research"
-        if "总结" in user_input or "摘要" in user_input:
-            return "summarize"
         if any(
             marker in user_input
             for marker in ["代码", "源码", "调用链", "任务链路", "阅读项目", "项目结构", "从输入到输出"]
         ):
             return "code_reading"
+        if TaskParser._looks_like_complex_task(user_input):
+            return "complex_task"
+        if "总结" in user_input or "摘要" in user_input:
+            return "summarize"
         return "unknown"
 
     @staticmethod
@@ -224,6 +232,40 @@ class TaskParser:
             intent="list_previous_tasks",
             input_type="memory",
             expected_output="history_task_list",
+            constraints=[],
+            missing_info=[],
+        )
+
+    @staticmethod
+    def _looks_like_complex_task(user_input: str) -> bool:
+        text = user_input.lower()
+        if any(
+            marker in user_input
+            for marker in [
+                "复杂任务",
+                "分步骤",
+                "拆分任务",
+                "拆解任务",
+                "任务拆解",
+                "依次执行",
+                "分步执行",
+                "一步一步",
+                "按步骤",
+                "列出步骤",
+            ]
+        ):
+            return True
+        return any(marker in text for marker in ["[1]", "[2]", "[3]"])
+
+    @staticmethod
+    def _complex_task(task_id: str, user_input: str) -> Task:
+        return Task(
+            task_id=task_id,
+            user_input=user_input,
+            task_type="complex_task",
+            intent="execute_complex_task",
+            input_type="text",
+            expected_output="step_checklist",
             constraints=[],
             missing_info=[],
         )

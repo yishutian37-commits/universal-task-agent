@@ -50,6 +50,19 @@ def test_router_falls_back_to_mock_tool():
     assert action.action_name == "run"
 
 
+def test_router_keeps_generic_complex_risk_step_on_mock_tool():
+    state = AgentState(
+        task_id="task_test",
+        user_input="帮我执行复杂任务：[1]分析 [2]计划 [3]总结风险点",
+        task_type="complex_task",
+    )
+
+    action = Router().choose_tool(state, PlanStep(step_id=3, goal="总结风险点"))
+
+    assert action.tool_name == "mock_tool"
+    assert action.action_name == "run"
+
+
 def test_router_passes_previous_tool_result_to_next_action():
     state = AgentState(task_id="task_test", user_input="测试")
     state.results.append(

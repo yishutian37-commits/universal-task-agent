@@ -593,11 +593,18 @@ async function runTask() {
   }
 }
 
+function stepMarkerFor(kind) {
+  if (kind === "done") return "[x]";
+  if (kind === "failed") return "[!]";
+  if (kind === "active") return "[...]";
+  return "[ ]";
+}
+
 function renderPlan(steps) {
   els.planMeta.textContent = `${steps.length} 步`;
   els.planList.innerHTML = steps.map((step) => `
     <div class="step" data-step-id="${step.step_id}">
-      <span class="stepIcon">${step.step_id}</span>
+      <span class="stepIcon">${stepMarkerFor("pending")}</span>
       <span><strong>${escapeHtml(step.goal)}</strong><small>pending</small></span>
       <small></small>
     </div>
@@ -609,7 +616,7 @@ function markStep(stepId, kind, label, toolName) {
   if (!row) return;
   row.classList.remove("active", "done", "failed");
   if (kind) row.classList.add(kind);
-  row.querySelector(".stepIcon").textContent = kind === "done" ? "✓" : kind === "failed" ? "!" : "…";
+  row.querySelector(".stepIcon").textContent = stepMarkerFor(kind);
   row.querySelector("small").textContent = label;
   const tool = row.querySelector("small:last-child");
   if (toolName) tool.textContent = toolName;

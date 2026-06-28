@@ -225,3 +225,29 @@ def test_task_parser_fallback_detects_history_query_when_llm_fails():
 
 def test_task_parser_system_prompt_allows_history_query():
     assert "history_query" in TaskParser._system_prompt()
+
+
+def test_task_parser_fallback_detects_complex_task_when_user_requests_steps():
+    parser = TaskParser(llm_client=FailingLLMClient())
+
+    task = parser.parse("task_test", "请分步骤执行：先分析项目，然后列出计划，最后总结风险")
+
+    assert task.task_type == "complex_task"
+    assert task.intent == "execute_complex_task"
+    assert task.input_type == "text"
+    assert task.expected_output == "step_checklist"
+
+
+def test_task_parser_fallback_detects_complex_task_with_numbered_steps():
+    parser = TaskParser(llm_client=FailingLLMClient())
+
+    task = parser.parse("task_test", "帮我执行复杂任务：[1]分析项目 [2]列出计划 [3]总结风险")
+
+    assert task.task_type == "complex_task"
+    assert task.intent == "execute_complex_task"
+    assert task.input_type == "text"
+    assert task.expected_output == "step_checklist"
+
+
+def test_task_parser_system_prompt_allows_complex_task():
+    assert "complex_task" in TaskParser._system_prompt()

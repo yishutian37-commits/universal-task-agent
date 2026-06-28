@@ -1,3 +1,4 @@
+import re
 from typing import Any
 
 from core.state import Plan, PlanStep, Task
@@ -5,7 +6,7 @@ from core.state import Plan, PlanStep, Task
 
 class Planner:
     def create_plan(self, task: Task, matched_skill: dict[str, Any] | None = None) -> Plan:
-        goals = self._goals_from_skill(matched_skill) or self._goals_for(task.task_type)
+        goals = self._goals_from_skill(matched_skill) or self._goals_for_task(task)
         return Plan(
             plan_id=f"plan_{task.task_id}",
             task_id=task.task_id,
@@ -23,6 +24,11 @@ class Planner:
             return []
         return [goal for goal in workflow if isinstance(goal, str) and goal.strip()]
 
+    def _goals_for_task(self, task: Task) -> list[str]:
+        if task.task_type == "complex_task":
+            return self._complex_task_goals(task.user_input)
+        return self._goals_for(task.task_type)
+
     def _goals_for(self, task_type: str) -> list[str]:
         if task_type == "summarize":
             return ["读取输入内容", "提取核心信息", "生成结构化报告"]
@@ -37,3 +43,44 @@ class Planner:
         if task_type == "history_query":
             return ["读取历史任务记录"]
         return ["执行 V0.3 mock 工具"]
+
+    def _complex_task_goals(self, user_input: str) -> list[str]:
+        goals = self._numbered_goals(user_input) or self._connector_goals(user_input)
+        if goals:
+            return goals[:8]
+        return ["分析复杂任务目标", "执行主要任务步骤", "汇总复杂任务结果"]
+
+    def _numbered_goals(self, user_input: str) -> list[str]:
+        pattern = re.compile(r"(?:\[(\d+)\]|（(\d+)）|\((\d+)\)|(?<!\d)(\d+)[.、])\s*")
+        matches = list(pattern.finditer(user_input))
+        if len(matches) < 2:
+            return []
+
+        goals = []
+        for index, match in enumerate(matches):
+            start = match.end()
+            end = matches[index + 1].start() if index + 1 < len(matches) else len(user_input)
+            goal = self._clean_complex_goal(user_input[start:end])
+            if goal:
+                goals.append(goal)
+        return goals
+
+    def _connector_goals(self, user_input: str) -> list[str]:
+        text = user_input
+        if "：" in text:
+            text = text.split("：", 1)[1]
+        elif ":" in text:
+            text = text.split(":", 1)[1]
+
+        parts = re.split(r"(?:然后|最后|接着|再|并且|同时)", text)
+        goals = [self._clean_complex_goal(part) for part in parts]
+        goals = [goal for goal in goals if goal]
+        if len(goals) < 2:
+            return []
+        return goals
+
+    def _clean_complex_goal(self, goal: str) -> str:
+        cleaned = goal.strip()
+        cleaned = cleaned.strip(" \t\r\n，,。；;、：:")
+        cleaned = re.sub(r"^(请|先|然后|最后|接着|再|并且|同时|第\d+步)\s*", "", cleaned)
+        return cleaned.strip(" \t\r\n，,。；;、：:")

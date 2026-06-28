@@ -183,6 +183,29 @@ def test_run_task_outputs_real_summary_with_injected_tools(tmp_path):
     assert state.final_output == summary
 
 
+def test_run_task_outputs_completed_checklist_for_complex_task(tmp_path):
+    state = run_task(
+        "帮我执行复杂任务：[1]分析当前项目状态 [2]列出下一步计划 [3]总结风险点",
+        output_root=tmp_path,
+        task_id="task_complex",
+        task_parser=FakeParser(task_type="complex_task", intent="execute_complex_task"),
+        tool_registry={
+            "mock_tool": StaticSummaryTool("done"),
+            "text_tool": StaticSummaryTool(VALID_SUMMARY_REPORT),
+        },
+        memory_provider=False,
+        skill_loader=False,
+    )
+
+    assert state.status == "completed"
+    assert state.final_output is not None
+    assert "## 复杂任务执行清单" in state.final_output
+    assert "[x] 1. 分析当前项目状态" in state.final_output
+    assert "[x] 2. 列出下一步计划" in state.final_output
+    assert "[x] 3. 总结风险点" in state.final_output
+    assert "已完成 3/3 个步骤" in state.final_output
+
+
 def test_run_task_lists_previous_tasks_for_history_query(tmp_path):
     states_dir = tmp_path / "states"
     states_dir.mkdir(parents=True)

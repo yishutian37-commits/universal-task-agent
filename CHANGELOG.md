@@ -16,6 +16,7 @@
 - 桌面端注册 `geo_tool`，并把 GEO vendor 规则包随 `.app` 一起打包。
 - 桌面端新增“技能包”页，可直观看到运行时 Skill、vendor 规则包和 Skill 加载问题。
 - 新增 `history_query` 任务类型和 `history_tool`，修复“我之前让你进行过什么任务”被误判为文本总结的问题。
+- 新增 `complex_task` 任务类型：可识别复杂任务、按用户输入拆成多步计划、逐步执行，并在最终输出和桌面端用 `[ ]/[x]` 展示步骤状态。
 
 ## v1.0-learning-agent
 

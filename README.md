@@ -1,6 +1,6 @@
 # Universal Task Agent
 
-UTA 是一个学习型 Agent 框架。当前主线已经整合 V1.0 学习型 Agent、V1.1 调研搜索/API、V1.2 代码阅读、RAG 知识库、GEO 分析 Skill 和桌面端体验层。
+UTA 是一个学习型 Agent 框架。当前主线已经整合 V1.0 学习型 Agent、V1.1 调研搜索/API、V1.2 代码阅读、RAG 知识库、GEO 分析 Skill、复杂任务拆解执行和桌面端体验层。
 
 项目中文简介见：`docs/project-overview.md`
 
@@ -54,6 +54,12 @@ GEO 分析：
 
 ```bash
 .venv/bin/python main.py --task "我之前让你进行过什么任务，给我列出来"
+```
+
+复杂任务拆解：
+
+```bash
+.venv/bin/python main.py --task "帮我执行复杂任务：[1]分析当前项目状态 [2]列出下一步计划 [3]总结风险点"
 ```
 
 UTA API：
@@ -134,6 +140,7 @@ LLM_SSL_VERIFY=0
 - `rag-integration`: 当前分支已把 RAG 整合进主项目，提供 CLI、FastAPI、桌面端知识库 Tab 和自动 seed。
 - `geo-skill-adapter`: 当前分支嫁接 `geo-agent-marketing-optimized` Skill 包，新增 `geo_analysis` 任务类型、`geo_tool`、GEO 报告生成和硬校验，并会随桌面端一起打包。
 - `history-query`: 当前分支新增 `history_query` 任务类型和 `history_tool`，用户可直接询问“之前让我做过什么任务”，UTA 会从 state 历史和 JSON Memory 中列出历史任务。
+- `complex-task-checklist`: 当前分支新增 `complex_task` 任务类型，支持把复杂任务拆成 `[ ]/[x]` 步骤清单，按步骤执行，并在桌面端实时显示步骤状态。
 - TAM Memory 不属于 UTA v1.0 核心范围。
 
 ## RAG 知识库

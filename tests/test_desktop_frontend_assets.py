@@ -73,6 +73,19 @@ def test_frontend_handles_replanned_progress_event():
     assert "replan" in js.lower()
 
 
+def test_frontend_uses_checklist_markers_for_step_status():
+    js = (FRONTEND_ROOT / "app.js").read_text(encoding="utf-8")
+    css = (FRONTEND_ROOT / "style.css").read_text(encoding="utf-8")
+
+    assert "function stepMarkerFor" in js
+    assert '"[ ]"' in js
+    assert '"[x]"' in js
+    assert '"[...]"' in js
+    assert '"[!]"' in js
+    assert "kind === \"done\" ? \"✓\"" not in js
+    assert "grid-template-columns: 52px minmax(0, 1fr) auto;" in css
+
+
 def test_frontend_preserves_history_log_whitespace():
     css = (FRONTEND_ROOT / "style.css").read_text(encoding="utf-8")
 

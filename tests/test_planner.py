@@ -132,3 +132,60 @@ def test_planner_creates_history_query_plan():
     plan = Planner().create_plan(make_task("history_query"))
 
     assert [step.goal for step in plan.steps] == ["读取历史任务记录"]
+
+
+def test_planner_splits_complex_task_numbered_brackets():
+    task = Task(
+        task_id="task_test",
+        user_input="帮我执行复杂任务：[1]分析当前项目状态 [2]列出下一步计划 [3]总结风险点",
+        task_type="complex_task",
+        intent="execute_complex_task",
+        input_type="text",
+        expected_output="step_checklist",
+    )
+
+    plan = Planner().create_plan(task)
+
+    assert [step.goal for step in plan.steps] == [
+        "分析当前项目状态",
+        "列出下一步计划",
+        "总结风险点",
+    ]
+
+
+def test_planner_splits_complex_task_compact_numbered_brackets():
+    task = Task(
+        task_id="task_test",
+        user_input="帮我执行复杂任务：[1]分析项目[2]列出计划[3]总结风险",
+        task_type="complex_task",
+        intent="execute_complex_task",
+        input_type="text",
+        expected_output="step_checklist",
+    )
+
+    plan = Planner().create_plan(task)
+
+    assert [step.goal for step in plan.steps] == [
+        "分析项目",
+        "列出计划",
+        "总结风险",
+    ]
+
+
+def test_planner_splits_complex_task_connector_words():
+    task = Task(
+        task_id="task_test",
+        user_input="请分步骤执行：先分析项目，然后列出计划，最后总结风险",
+        task_type="complex_task",
+        intent="execute_complex_task",
+        input_type="text",
+        expected_output="step_checklist",
+    )
+
+    plan = Planner().create_plan(task)
+
+    assert [step.goal for step in plan.steps] == [
+        "分析项目",
+        "列出计划",
+        "总结风险",
+    ]
