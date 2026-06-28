@@ -714,26 +714,50 @@ function renderMarkdown(text) {
   if (!text) return "<p>无输出</p>";
   const lines = text.split(/\r?\n/);
   let html = "";
-  let inList = false;
+  let listType = null;
+  const closeList = () => {
+    if (!listType) return;
+    html += `</${listType}>`;
+    listType = null;
+  };
+  const ensureList = (type) => {
+    if (listType === type) return;
+    closeList();
+    html += `<${type}>`;
+    listType = type;
+  };
   for (const line of lines) {
     const trimmed = line.trim();
     if (!trimmed) continue;
-    if (trimmed.startsWith("## ")) {
-      if (inList) { html += "</ul>"; inList = false; }
-      html += `<h2>${escapeHtml(trimmed.slice(3))}</h2>`;
+    const orderedMatch = trimmed.match(/^(\d+)[.、]\s+(.+)$/);
+    if (trimmed.startsWith("# ")) {
+      closeList();
+      html += `<h1>${renderInlineMarkdown(trimmed.slice(2))}</h1>`;
+    } else if (trimmed.startsWith("## ")) {
+      closeList();
+      html += `<h2>${renderInlineMarkdown(trimmed.slice(3))}</h2>`;
     } else if (trimmed.startsWith("### ")) {
-      if (inList) { html += "</ul>"; inList = false; }
-      html += `<h3>${escapeHtml(trimmed.slice(4))}</h3>`;
+      closeList();
+      html += `<h3>${renderInlineMarkdown(trimmed.slice(4))}</h3>`;
     } else if (trimmed.startsWith("- ")) {
-      if (!inList) { html += "<ul>"; inList = true; }
-      html += `<li>${escapeHtml(trimmed.slice(2))}</li>`;
+      ensureList("ul");
+      html += `<li>${renderInlineMarkdown(trimmed.slice(2))}</li>`;
+    } else if (orderedMatch) {
+      ensureList("ol");
+      html += `<li>${renderInlineMarkdown(orderedMatch[2])}</li>`;
     } else {
-      if (inList) { html += "</ul>"; inList = false; }
-      html += `<p>${escapeHtml(trimmed)}</p>`;
+      closeList();
+      html += `<p>${renderInlineMarkdown(trimmed)}</p>`;
     }
   }
-  if (inList) html += "</ul>";
+  closeList();
   return html;
+}
+
+function renderInlineMarkdown(value) {
+  return escapeHtml(value)
+    .replace(/`([^`]+)`/g, "<code>$1</code>")
+    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
 }
 
 function escapeHtml(value) {

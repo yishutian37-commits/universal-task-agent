@@ -193,7 +193,7 @@ def test_run_task_outputs_real_summary_with_injected_tools(tmp_path):
     assert state.final_output == summary
 
 
-def test_run_task_outputs_completed_checklist_for_complex_task(tmp_path):
+def test_run_task_keeps_complex_task_checklist_out_of_final_output(tmp_path):
     state = run_task(
         "帮我执行复杂任务：[1]分析当前项目状态 [2]列出下一步计划 [3]总结风险点",
         output_root=tmp_path,
@@ -209,11 +209,12 @@ def test_run_task_outputs_completed_checklist_for_complex_task(tmp_path):
 
     assert state.status == "completed"
     assert state.final_output is not None
-    assert "## 复杂任务执行清单" in state.final_output
-    assert "[x] 1. 分析当前项目状态" in state.final_output
-    assert "[x] 2. 列出下一步计划" in state.final_output
-    assert "[x] 3. 总结风险点" in state.final_output
-    assert "已完成 3/3 个步骤" in state.final_output
+    assert "## 复杂任务执行清单" not in state.final_output
+    assert "[x] 1. 分析当前项目状态" not in state.final_output
+    assert "[x] 2. 列出下一步计划" not in state.final_output
+    assert "[x] 3. 总结风险点" not in state.final_output
+    assert "已完成 3/3 个步骤" not in state.final_output
+    assert "## 分步结果" in state.final_output
 
 
 def test_run_task_outputs_step_results_for_complex_task(tmp_path):
@@ -237,7 +238,7 @@ def test_run_task_outputs_step_results_for_complex_task(tmp_path):
     assert "结果：总结全文核心观点" in state.final_output
     assert "### 2. 提炼 5 个关键结论" in state.final_output
     assert "结果：提炼 5 个关键结论" in state.final_output
-    assert state.final_output.index("## 分步结果") < state.final_output.index("## 执行结果")
+    assert "## 执行结果" not in state.final_output
 
 
 def test_run_task_lists_previous_tasks_for_history_query(tmp_path):

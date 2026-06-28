@@ -91,3 +91,15 @@ def test_frontend_preserves_history_log_whitespace():
 
     assert ".historyLogsPanel .logs" in css
     assert "white-space: pre-wrap;" in css
+
+
+def test_frontend_markdown_renderer_handles_common_markdown():
+    js = (FRONTEND_ROOT / "app.js").read_text(encoding="utf-8")
+    css = (FRONTEND_ROOT / "style.css").read_text(encoding="utf-8")
+
+    assert 'trimmed.startsWith("# ")' in js
+    assert "function renderInlineMarkdown" in js
+    assert "<strong>" in js
+    assert 'ensureList("ol")' in js
+    assert ".report h1" in css
+    assert ".report ol" in css
