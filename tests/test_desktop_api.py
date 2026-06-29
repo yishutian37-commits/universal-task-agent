@@ -2,6 +2,7 @@ from datetime import datetime
 
 import desktop.runner as runner_module
 from desktop.api import DesktopAPI
+from desktop.conversation_store import ConversationStore
 from desktop.settings_store import SettingsStore
 
 
@@ -287,3 +288,69 @@ def test_desktop_api_exposes_runtime_skills_and_vendor_packs(tmp_path, monkeypat
     assert result["runtime_skills"][0]["enabled"] is True
     assert result["vendor_packs"][0]["name"] == "geo-agent-marketing-optimized"
     assert result["vendor_packs"][0]["has_readme"] is True
+
+
+def test_desktop_api_creates_and_lists_conversations(tmp_path, monkeypatch):
+    monkeypatch.setenv("UTA_HOME", str(tmp_path / "uta"))
+    api = DesktopAPI(
+        settings_store=SettingsStore(),
+        runner=FakeRunner(),
+        conversation_store=ConversationStore(tmp_path / "conversations"),
+    )
+
+    created = api.new_conversation()
+    listed = api.list_conversations()
+
+    assert created["ok"] is True
+    assert listed["ok"] is True
+    assert listed["conversations"][0]["conversation_id"] == created["conversation"]["conversation_id"]
+
+
+def test_desktop_api_run_chat_message_refuses_without_key(tmp_path, monkeypatch):
+    monkeypatch.setenv("UTA_HOME", str(tmp_path / "uta"))
+    runner = FakeRunner()
+    api = DesktopAPI(
+        settings_store=SettingsStore(),
+        runner=runner,
+        conversation_store=ConversationStore(tmp_path / "conversations"),
+    )
+
+    result = api.run_chat_message("", "帮我总结")
+
+    assert result["ok"] is False
+    assert "Key" in result["error"]
+    assert runner.started_inputs == []
+
+
+def test_desktop_api_run_chat_message_starts_runner_and_records_messages(tmp_path, monkeypatch):
+    monkeypatch.setenv("UTA_HOME", str(tmp_path / "uta"))
+    runner = FakeRunner()
+    conversation_store = ConversationStore(tmp_path / "conversations")
+    api = DesktopAPI(settings_store=SettingsStore(), runner=runner, conversation_store=conversation_store)
+    api.save_settings({"llm_api_key": "secret-key"})
+
+    result = api.run_chat_message("", "帮我总结")
+    conversation = conversation_store.get_conversation(result["conversation_id"])["conversation"]
+
+    assert result["ok"] is True
+    assert result["task_id"] == "task_fake"
+    assert runner.started_inputs == ["帮我总结"]
+    assert [message["role"] for message in conversation["messages"]] == ["user", "assistant"]
+    assert conversation["messages"][1]["status"] == "running"
+
+
+def test_desktop_api_sync_chat_result_updates_assistant_message(tmp_path, monkeypatch):
+    monkeypatch.setenv("UTA_HOME", str(tmp_path / "uta"))
+    runner = FakeRunner()
+    conversation_store = ConversationStore(tmp_path / "conversations")
+    api = DesktopAPI(settings_store=SettingsStore(), runner=runner, conversation_store=conversation_store)
+    api.save_settings({"llm_api_key": "secret-key"})
+    started = api.run_chat_message("", "帮我总结")
+
+    synced = api.sync_chat_result(started["conversation_id"], started["task_id"])
+    conversation = conversation_store.get_conversation(started["conversation_id"])["conversation"]
+
+    assert synced["ok"] is True
+    assistant = conversation["messages"][1]
+    assert assistant["content"] == "done"
+    assert assistant["status"] == "completed"
