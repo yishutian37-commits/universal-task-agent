@@ -146,3 +146,12 @@ def test_frontend_task_completed_updates_assistant_message_not_report_panel_only
     assert 'event.type === "task_completed"' in js
     assert "updateAssistantMessage" in js
     assert "renderMarkdown(state.reportText)" in js
+
+
+def test_frontend_can_load_conversation_history():
+    js = (FRONTEND_ROOT / "app.js").read_text(encoding="utf-8")
+
+    assert 'callApi("list_conversations")' in js
+    assert 'callApi("get_conversation", conversationId)' in js
+    assert "function loadConversationHistory" in js
+    assert "function selectConversation" in js

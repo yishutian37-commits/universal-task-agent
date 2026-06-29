@@ -239,7 +239,7 @@ async function showHistoryView() {
   els.knowledgeView.classList.add("hidden");
   els.skillsView.classList.add("hidden");
   setActiveNav(els.openHistory);
-  await loadHistoryRuns();
+  await loadConversationHistory();
 }
 
 async function showMemoryView() {
@@ -334,6 +334,67 @@ function renderEmptyHistoryDetail() {
   els.historyReport.textContent = "暂无运行记录";
   els.historyLogPanel.textContent = "";
   els.historyStateJson.textContent = JSON.stringify({ status: "idle", task_id: null }, null, 2);
+}
+
+async function loadConversationHistory() {
+  try {
+    const result = await callApi("list_conversations");
+    if (!result.ok) {
+      showToast("读取会话失败", result.error || "未知错误");
+      return;
+    }
+    renderConversationList(result.conversations || []);
+    renderEmptyConversationDetail();
+  } catch (error) {
+    showToast("读取会话失败", error.message);
+  }
+}
+
+function renderConversationList(conversations) {
+  if (!conversations.length) {
+    els.historyList.innerHTML = '<div class="emptyState">暂无会话</div>';
+    return;
+  }
+  els.historyList.innerHTML = conversations.map((conversation) => `
+    <button class="historyItem" type="button" data-conversation-id="${escapeHtml(conversation.conversation_id)}">
+      <span><strong>${escapeHtml(conversation.title || "新对话")}</strong><small>${escapeHtml(conversation.updated_at || "")} · ${escapeHtml(conversation.message_count || 0)} 条消息</small></span>
+      <small>${escapeHtml(conversation.preview || "无输出")}</small>
+    </button>
+  `).join("");
+  els.historyList.querySelectorAll(".historyItem").forEach((button) => {
+    button.addEventListener("click", () => selectConversation(button.dataset.conversationId));
+  });
+}
+
+async function selectConversation(conversationId) {
+  try {
+    const result = await callApi("get_conversation", conversationId);
+    if (!result.ok) {
+      showToast("读取会话失败", result.error || "未知错误");
+      return;
+    }
+    const conversation = result.conversation || {};
+    state.conversationId = conversation.conversation_id;
+    state.messages = (conversation.messages || []).map((message) => ({
+      id: `${message.role || "message"}_${message.task_id || ""}_${message.created_at || ""}`,
+      role: message.role || "assistant",
+      content: message.content || "",
+      status: message.status || "completed",
+      taskId: message.task_id || null
+    }));
+    showTaskView();
+    renderChatMessages();
+  } catch (error) {
+    showToast("读取会话失败", error.message);
+  }
+}
+
+function renderEmptyConversationDetail() {
+  els.historyTaskMeta.textContent = "会话历史";
+  els.historyReport.className = "report empty";
+  els.historyReport.textContent = "选择一条会话后会回到对话页";
+  els.historyLogPanel.textContent = "";
+  els.historyStateJson.textContent = JSON.stringify({ status: "conversation_history" }, null, 2);
 }
 
 // ---- 知识库 ----
