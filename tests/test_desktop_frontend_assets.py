@@ -127,3 +127,22 @@ def test_frontend_chat_styles_exist():
     assert ".chatMessage.assistant" in css
     assert ".chatComposer" in css
     assert ".detailColumn" in css
+
+
+def test_frontend_calls_chat_bridge_methods_and_updates_messages():
+    js = (FRONTEND_ROOT / "app.js").read_text(encoding="utf-8")
+
+    assert 'callApi("run_chat_message"' in js
+    assert 'callApi("sync_chat_result"' in js
+    assert "function addChatMessage" in js
+    assert "function updateAssistantMessage" in js
+    assert "function renderChatMessages" in js
+    assert "pendingAssistantId" in js
+
+
+def test_frontend_task_completed_updates_assistant_message_not_report_panel_only():
+    js = (FRONTEND_ROOT / "app.js").read_text(encoding="utf-8")
+
+    assert 'event.type === "task_completed"' in js
+    assert "updateAssistantMessage" in js
+    assert "renderMarkdown(state.reportText)" in js

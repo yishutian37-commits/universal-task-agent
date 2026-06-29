@@ -1,6 +1,8 @@
 const els = {
   bridgeState: document.getElementById("bridgeState"),
   keyState: document.getElementById("keyState"),
+  chatMessages: document.getElementById("chatMessages"),
+  chatDetailPanel: document.getElementById("chatDetailPanel"),
   openTaskView: document.getElementById("openTaskView"),
   openHistory: document.getElementById("openHistory"),
   openMemory: document.getElementById("openMemory"),
@@ -73,6 +75,9 @@ const state = {
   activeExample: "summarize",
   running: false,
   taskId: null,
+  conversationId: null,
+  messages: [],
+  pendingAssistantId: null,
   reportText: "",
   historyRuns: []
 };
@@ -100,6 +105,51 @@ function showToast(title, body) {
   els.toast.classList.add("show");
   clearTimeout(showToast.timer);
   showToast.timer = setTimeout(() => els.toast.classList.remove("show"), 2800);
+}
+
+function addChatMessage(role, content, status = "completed", taskId = null) {
+  const message = {
+    id: `${Date.now()}_${Math.random().toString(16).slice(2)}`,
+    role,
+    content,
+    status,
+    taskId
+  };
+  state.messages.push(message);
+  renderChatMessages();
+  return message;
+}
+
+function updateAssistantMessage(taskId, patch) {
+  const message = [...state.messages].reverse().find((item) => item.role === "assistant" && item.taskId === taskId);
+  if (!message) return;
+  Object.assign(message, patch);
+  renderChatMessages();
+}
+
+function updatePendingAssistant(patch) {
+  const message = state.messages.find((item) => item.id === state.pendingAssistantId);
+  if (!message) return;
+  Object.assign(message, patch);
+  renderChatMessages();
+}
+
+function renderChatMessages() {
+  if (!els.chatMessages) return;
+  if (!state.messages.length) {
+    els.chatMessages.innerHTML = `
+      <article class="chatMessage assistant">
+        <div class="messageBubble">你好，我是 UTA。把任务发给我，我会在右侧展示拆解步骤和执行状态。</div>
+      </article>
+    `;
+    return;
+  }
+  els.chatMessages.innerHTML = state.messages.map((message) => `
+    <article class="chatMessage ${escapeHtml(message.role)} ${escapeHtml(message.status || "")}" data-message-id="${escapeHtml(message.id)}">
+      <div class="messageBubble">${message.role === "assistant" ? renderMarkdown(message.content || "") : escapeHtml(message.content || "")}</div>
+    </article>
+  `).join("");
+  els.chatMessages.scrollTop = els.chatMessages.scrollHeight;
 }
 
 function updateKeyState(settings) {
@@ -553,8 +603,10 @@ function resetRunSurface() {
   els.planList.innerHTML = "";
   els.logPanel.innerHTML = "";
   els.planMeta.textContent = "0 步";
-  els.report.className = "report empty";
-  els.report.textContent = "等待任务运行";
+  if (els.report) {
+    els.report.className = "report empty hidden";
+    els.report.textContent = "等待任务运行";
+  }
   els.stateJson.textContent = JSON.stringify({ status: "idle", task_id: null }, null, 2);
   els.copyReport.disabled = true;
   state.reportText = "";
@@ -566,24 +618,38 @@ async function runTask() {
     return;
   }
 
+  const text = els.taskInput.value.trim();
+  if (!text) {
+    showToast("请输入消息", "消息不能为空");
+    return;
+  }
+
   resetRunSurface();
+  addChatMessage("user", text, "completed");
+  const assistant = addChatMessage("assistant", "正在分析任务...", "running");
+  state.pendingAssistantId = assistant.id;
   setStatus("running", "运行中");
   els.taskInput.readOnly = true;
   els.runTask.disabled = true;
 
   try {
-    const result = await callApi("run_task", els.taskInput.value);
+    const result = await callApi("run_chat_message", state.conversationId || "", text);
     if (!result.ok) {
       setStatus("error", "未运行");
+      updatePendingAssistant({ content: result.error || "未知错误", status: "failed" });
       showToast("无法运行", result.error || "未知错误");
       if ((result.error || "").includes("Key")) openSettings();
       return;
     }
     state.running = true;
+    state.conversationId = result.conversation_id;
     state.taskId = result.task_id;
+    assistant.taskId = result.task_id;
+    renderChatMessages();
     els.taskIdLabel.textContent = result.task_id;
   } catch (error) {
     setStatus("error", "失败");
+    updatePendingAssistant({ content: error.message, status: "failed" });
     showToast("运行失败", error.message);
   } finally {
     if (!state.running) {
@@ -673,7 +739,22 @@ async function handleProgress(event) {
   addLog(sourceFor(event), messageFor(event));
   const data = event.data || {};
 
-  if (event.type === "plan_created") renderPlan(data.steps || []);
+  if (event.task_id && !state.taskId) {
+    state.taskId = event.task_id;
+    const pending = state.messages.find((item) => item.id === state.pendingAssistantId);
+    if (pending) pending.taskId = event.task_id;
+  }
+
+  if (event.type === "parsed") {
+    updateAssistantMessage(state.taskId, { content: "已理解任务，正在制定执行步骤...", status: "running" });
+  }
+  if (event.type === "plan_created") {
+    renderPlan(data.steps || []);
+    updateAssistantMessage(state.taskId, {
+      content: `已拆解为 ${(data.steps || []).length} 个步骤，正在执行...`,
+      status: "running"
+    });
+  }
   if (event.type === "step_started") markStep(data.step_id, "active", "running");
   if (event.type === "tool_selected") markStep(data.step_id, "active", "tool", data.tool_name);
   if (event.type === "replanned") markStep(data.failed_step_id, "active", "重新规划");
@@ -685,9 +766,16 @@ async function handleProgress(event) {
     els.runTask.disabled = false;
     setStatus(data.status === "completed" ? "done" : "error", data.status === "completed" ? "已完成" : "失败");
     state.reportText = data.final_output || "";
-    els.report.className = "report";
-    els.report.innerHTML = renderMarkdown(state.reportText);
+    updateAssistantMessage(state.taskId, {
+      content: state.reportText || "未生成输出",
+      status: data.status === "completed" ? "completed" : "failed"
+    });
+    if (els.report) {
+      els.report.className = "report hidden";
+      els.report.innerHTML = renderMarkdown(state.reportText);
+    }
     els.copyReport.disabled = !state.reportText;
+    await callApi("sync_chat_result", state.conversationId || "", state.taskId || "");
     await refreshResult();
   }
 
@@ -696,6 +784,7 @@ async function handleProgress(event) {
     els.taskInput.readOnly = false;
     els.runTask.disabled = false;
     setStatus("error", "失败");
+    updateAssistantMessage(state.taskId, { content: data.message || "任务失败", status: "failed" });
     await refreshResult();
   }
 }
@@ -799,6 +888,12 @@ function bindEvents() {
     els.logPanel.innerHTML = "";
   });
   els.runTask.addEventListener("click", runTask);
+  els.taskInput.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
+      runTask();
+    }
+  });
   els.copyReport.addEventListener("click", async () => {
     if (!state.reportText) return;
     await navigator.clipboard.writeText(state.reportText);
@@ -815,6 +910,7 @@ function bindEvents() {
 window.onProgress = handleProgress;
 bindEvents();
 resetRunSurface();
+renderChatMessages();
 
 window.addEventListener("pywebviewready", loadSettings);
 setTimeout(() => {
