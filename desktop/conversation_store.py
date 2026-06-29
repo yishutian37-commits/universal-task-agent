@@ -10,7 +10,6 @@ from typing import Any
 class ConversationStore:
     def __init__(self, root: Path | str):
         self.root = Path(root)
-        self.root.mkdir(parents=True, exist_ok=True)
 
     def new_conversation(self, title: str | None = None) -> dict[str, Any]:
         now = _now()
@@ -25,6 +24,9 @@ class ConversationStore:
         return {"ok": True, "conversation": conversation}
 
     def list_conversations(self) -> dict[str, Any]:
+        if not self.root.exists():
+            return {"ok": True, "conversations": []}
+
         items = []
         for path in self.root.glob("conv_*.json"):
             try:
@@ -125,6 +127,7 @@ class ConversationStore:
         path = self._path_for(str(conversation.get("conversation_id") or ""))
         if path is None:
             raise ValueError("会话 ID 无效")
+        self.root.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(conversation, ensure_ascii=False, indent=2), encoding="utf-8")
 
 

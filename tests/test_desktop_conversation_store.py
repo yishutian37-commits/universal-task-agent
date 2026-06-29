@@ -3,6 +3,16 @@ import re
 from desktop.conversation_store import ConversationStore
 
 
+def test_conversation_store_init_has_no_filesystem_side_effect(tmp_path):
+    root = tmp_path / "missing" / "conversations"
+
+    store = ConversationStore(root)
+    listed = store.list_conversations()
+
+    assert root.exists() is False
+    assert listed == {"ok": True, "conversations": []}
+
+
 def test_conversation_store_creates_and_reads_conversation(tmp_path):
     store = ConversationStore(tmp_path)
 
