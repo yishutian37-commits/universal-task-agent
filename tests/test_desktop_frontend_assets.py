@@ -103,3 +103,27 @@ def test_frontend_markdown_renderer_handles_common_markdown():
     assert 'ensureList("ol")' in js
     assert ".report h1" in css
     assert ".report ol" in css
+
+
+def test_frontend_includes_chat_surface_and_detail_panel():
+    html = (FRONTEND_ROOT / "index.html").read_text(encoding="utf-8")
+
+    assert 'id="chatMessages"' in html
+    assert 'id="taskInput"' in html
+    assert 'id="runTask"' in html
+    assert 'id="chatDetailPanel"' in html
+    assert 'id="planList"' in html
+    assert 'id="logPanel"' in html
+    assert 'id="stateJson"' in html
+    assert "执行详情" in html
+
+
+def test_frontend_chat_styles_exist():
+    css = (FRONTEND_ROOT / "style.css").read_text(encoding="utf-8")
+
+    assert ".chatWorkspace" in css
+    assert ".chatMessages" in css
+    assert ".chatMessage.user" in css
+    assert ".chatMessage.assistant" in css
+    assert ".chatComposer" in css
+    assert ".detailColumn" in css

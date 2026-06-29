@@ -43,27 +43,37 @@
           </div>
         </header>
 
-        <section class="workspace" id="taskView">
-          <div class="leftColumn">
-            <section class="panel composer">
+        <section class="workspace chatWorkspace" id="taskView">
+          <div class="chatColumn">
+            <section class="panel chatPanel">
               <div class="panelHead">
-                <h3>任务输入</h3>
+                <h3>对话</h3>
                 <div class="segments">
                   <button class="segment active" type="button" data-example="summarize">文本</button>
                   <button class="segment" type="button" data-example="data">表格</button>
                 </div>
               </div>
-              <textarea id="taskInput" spellcheck="false">帮我总结一段文本：面对庞杂的Agent学习资料，其知识内容并非无序堆砌，而是一种高度结构化、模块化但分布在不同载体中的体系。</textarea>
-              <div class="toolbar">
-                <button class="button secondary" type="button" id="loadExample">载入示例</button>
-                <button class="button secondary" type="button" id="clearTask">清空</button>
-                <button class="button primary" type="button" id="runTask">运行任务</button>
+              <div class="chatMessages" id="chatMessages">
+                <article class="chatMessage assistant">
+                  <div class="messageBubble">你好，我是 UTA。把任务发给我，我会在右侧展示拆解步骤和执行状态。</div>
+                </article>
               </div>
+              <div class="chatComposer">
+                <textarea id="taskInput" spellcheck="false" rows="3">帮我总结一段文本：面对庞杂的Agent学习资料，其知识内容并非无序堆砌，而是一种高度结构化、模块化但分布在不同载体中的体系。</textarea>
+                <div class="toolbar">
+                  <button class="button secondary" type="button" id="loadExample">载入示例</button>
+                  <button class="button secondary" type="button" id="clearTask">清空</button>
+                  <button class="button primary" type="button" id="runTask">发送</button>
+                </div>
+              </div>
+              <article class="report empty hidden" id="report">等待任务运行</article>
             </section>
+          </div>
 
+          <div class="detailColumn" id="chatDetailPanel">
             <section class="panel grow">
               <div class="panelHead">
-                <h3>执行过程</h3>
+                <h3>执行详情</h3>
                 <span id="planMeta">0 步</span>
               </div>
               <div class="steps" id="planList"></div>
@@ -76,19 +86,9 @@
               </div>
               <div class="logs" id="logPanel"></div>
             </section>
-          </div>
-
-          <div class="rightColumn">
-            <section class="panel reportPanel">
-              <div class="panelHead">
-                <h3>最终结果</h3>
-                <button class="button secondary compact" type="button" id="copyReport" disabled>复制</button>
-              </div>
-              <article class="report empty" id="report">等待任务运行</article>
-            </section>
 
             <details class="stateBox">
-              <summary>state.json</summary>
+              <summary>state.json <button class="button secondary compact" type="button" id="copyReport" disabled>复制最新结果</button></summary>
               <pre id="stateJson">{
   "status": "idle",
   "task_id": null

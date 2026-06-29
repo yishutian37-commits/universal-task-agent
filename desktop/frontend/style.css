@@ -706,6 +706,88 @@ pre {
   font-size: 12px;
 }
 
+.chatWorkspace {
+  grid-template-columns: minmax(420px, 1fr) minmax(360px, 0.82fr);
+  align-items: stretch;
+}
+
+.chatColumn,
+.detailColumn {
+  min-height: 0;
+  display: grid;
+  gap: 16px;
+}
+
+.chatPanel {
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  overflow: hidden;
+}
+
+.chatMessages {
+  min-height: 0;
+  overflow: auto;
+  padding: 18px;
+  display: grid;
+  align-content: start;
+  gap: 14px;
+}
+
+.chatMessage {
+  min-width: 0;
+  display: flex;
+}
+
+.chatMessage.user {
+  justify-content: flex-end;
+}
+
+.chatMessage.assistant,
+.chatMessage.system {
+  justify-content: flex-start;
+}
+
+.messageBubble {
+  max-width: min(720px, 88%);
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #f8fafc;
+  overflow-wrap: anywhere;
+}
+
+.chatMessage.user .messageBubble {
+  color: #fff;
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.chatMessage.failed .messageBubble {
+  border-color: var(--danger);
+}
+
+.chatMessage.running .messageBubble::after {
+  content: " 正在执行";
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+.chatComposer {
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.chatComposer textarea {
+  min-height: 92px;
+}
+
+.detailColumn {
+  grid-template-rows: auto minmax(220px, 0.9fr) auto;
+  align-content: stretch;
+}
+
 @media (max-width: 1060px) {
   body {
     overflow: auto;
@@ -718,7 +800,8 @@ pre {
 
   .app,
   .workspace,
-  .memoryWorkspace {
+  .memoryWorkspace,
+  .chatWorkspace {
     grid-template-columns: 1fr;
   }
 
