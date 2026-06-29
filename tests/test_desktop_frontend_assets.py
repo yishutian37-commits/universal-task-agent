@@ -140,6 +140,25 @@ def test_frontend_calls_chat_bridge_methods_and_updates_messages():
     assert "pendingAssistantId" in js
 
 
+def test_frontend_shows_progress_inside_assistant_message():
+    js = (FRONTEND_ROOT / "app.js").read_text(encoding="utf-8")
+    css = (FRONTEND_ROOT / "style.css").read_text(encoding="utf-8")
+
+    assert "function appendAssistantProgress" in js
+    assert "function renderMessageProgress" in js
+    assert 'appendAssistantProgress(state.taskId, "收到任务，正在解析...")' in js
+    assert 'appendAssistantProgress(state.taskId, `开始步骤 ${data.step_id}：${data.goal}`)' in js
+    assert ".messageProgress" in css
+    assert ".progressLine" in css
+
+
+def test_frontend_handles_direct_chat_replies():
+    js = (FRONTEND_ROOT / "app.js").read_text(encoding="utf-8")
+
+    assert "result.direct" in js
+    assert "updatePendingAssistant({ content: result.message" in js
+
+
 def test_frontend_task_completed_updates_assistant_message_not_report_panel_only():
     js = (FRONTEND_ROOT / "app.js").read_text(encoding="utf-8")
 

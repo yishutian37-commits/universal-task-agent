@@ -84,6 +84,15 @@ class FakeMemoryStore:
         }
 
 
+class FakeChatClient:
+    def __init__(self):
+        self.calls = []
+
+    def chat(self, system_prompt, user_prompt):
+        self.calls.append((system_prompt, user_prompt))
+        return "我的建议是先从一个小项目开始。"
+
+
 def test_desktop_runner_generate_task_id_uses_microseconds_to_avoid_same_second_collisions(monkeypatch):
     class FakeDateTime:
         values = iter(
@@ -319,6 +328,69 @@ def test_desktop_api_run_chat_message_refuses_without_key(tmp_path, monkeypatch)
 
     assert result["ok"] is False
     assert "Key" in result["error"]
+    assert runner.started_inputs == []
+
+
+def test_desktop_api_answers_capability_question_without_key_or_runner(tmp_path, monkeypatch):
+    monkeypatch.setenv("UTA_HOME", str(tmp_path / "uta"))
+    runner = FakeRunner()
+    conversation_store = ConversationStore(tmp_path / "conversations")
+    api = DesktopAPI(settings_store=SettingsStore(), runner=runner, conversation_store=conversation_store)
+
+    result = api.run_chat_message("", "你能干什么")
+    conversation = conversation_store.get_conversation(result["conversation_id"])["conversation"]
+
+    assert result["ok"] is True
+    assert result["direct"] is True
+    assert result["task_id"] is None
+    assert "文本总结" in result["message"]
+    assert "复杂任务拆解" in result["message"]
+    assert runner.started_inputs == []
+    assert [message["role"] for message in conversation["messages"]] == ["user", "assistant"]
+    assert conversation["messages"][1]["status"] == "completed"
+
+
+def test_desktop_api_general_chat_uses_llm_without_starting_runner(tmp_path, monkeypatch):
+    monkeypatch.setenv("UTA_HOME", str(tmp_path / "uta"))
+    runner = FakeRunner()
+    chat_client = FakeChatClient()
+    conversation_store = ConversationStore(tmp_path / "conversations")
+    api = DesktopAPI(
+        settings_store=SettingsStore(),
+        runner=runner,
+        conversation_store=conversation_store,
+        chat_client=chat_client,
+    )
+    api.save_settings({"llm_api_key": "secret-key"})
+
+    result = api.run_chat_message("", "我想学习 AI，你建议从哪里开始？")
+    conversation = conversation_store.get_conversation(result["conversation_id"])["conversation"]
+
+    assert result["ok"] is True
+    assert result["direct"] is True
+    assert result["category"] == "general_chat"
+    assert result["task_id"] is None
+    assert result["message"] == "我的建议是先从一个小项目开始。"
+    assert runner.started_inputs == []
+    assert "学习型 Agent" in chat_client.calls[0][0]
+    assert "我想学习 AI" in chat_client.calls[0][1]
+    assert conversation["messages"][1]["content"] == "我的建议是先从一个小项目开始。"
+
+
+def test_desktop_api_general_chat_requires_key_without_starting_runner(tmp_path, monkeypatch):
+    monkeypatch.setenv("UTA_HOME", str(tmp_path / "uta"))
+    runner = FakeRunner()
+    api = DesktopAPI(
+        settings_store=SettingsStore(),
+        runner=runner,
+        conversation_store=ConversationStore(tmp_path / "conversations"),
+        chat_client=FakeChatClient(),
+    )
+
+    result = api.run_chat_message("", "我想学习 AI，你建议从哪里开始？")
+
+    assert result["ok"] is False
+    assert "API Key" in result["error"]
     assert runner.started_inputs == []
 
 

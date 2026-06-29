@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from desktop.chat_router import chat_route_kind, direct_chat_response
 from desktop.conversation_store import ConversationStore
 from desktop.history_store import HistoryStore
 from desktop.memory_store import MemoryStore
@@ -22,6 +23,7 @@ class DesktopAPI:
         rag_client: RAGClient | None = None,
         skill_store: SkillStore | None = None,
         conversation_store: ConversationStore | None = None,
+        chat_client=None,
         skills_root=None,
     ):
         self.settings_store = settings_store if settings_store is not None else SettingsStore()
@@ -33,6 +35,7 @@ class DesktopAPI:
         self.conversation_store = (
             conversation_store if conversation_store is not None else ConversationStore(uta_home() / "conversations")
         )
+        self.chat_client = chat_client
 
     def bind_window(self, window) -> None:
         if hasattr(self.runner, "bind_window"):
@@ -138,18 +141,59 @@ class DesktopAPI:
         if not text:
             return {"ok": False, "error": "请输入消息内容"}
 
+        direct_response = direct_chat_response(text)
+        if direct_response is not None:
+            try:
+                conversation_id = self._ensure_conversation_id(conversation_id)
+                self.conversation_store.append_message(conversation_id, role="user", content=text)
+                self.conversation_store.append_message(
+                    conversation_id,
+                    role="assistant",
+                    content=direct_response.content,
+                    task_id=None,
+                    status="completed",
+                )
+                return {
+                    "ok": True,
+                    "direct": True,
+                    "category": direct_response.category,
+                    "conversation_id": conversation_id,
+                    "task_id": None,
+                    "message": direct_response.content,
+                }
+            except Exception as exc:
+                return {"ok": False, "error": str(exc)}
+
+        if chat_route_kind(text) == "chat":
+            if not self.settings_store.public_settings()["has_api_key"]:
+                return {"ok": False, "error": "普通聊天需要先配置 API Key"}
+            try:
+                conversation_id = self._ensure_conversation_id(conversation_id)
+                answer = self._run_general_chat(text)
+                self.conversation_store.append_message(conversation_id, role="user", content=text)
+                self.conversation_store.append_message(
+                    conversation_id,
+                    role="assistant",
+                    content=answer,
+                    task_id=None,
+                    status="completed",
+                )
+                return {
+                    "ok": True,
+                    "direct": True,
+                    "category": "general_chat",
+                    "conversation_id": conversation_id,
+                    "task_id": None,
+                    "message": answer,
+                }
+            except Exception as exc:
+                return {"ok": False, "error": str(exc)}
+
         if not self.settings_store.public_settings()["has_api_key"]:
             return {"ok": False, "error": "请先配置 API Key"}
 
         try:
-            if conversation_id:
-                loaded = self.conversation_store.get_conversation(str(conversation_id))
-                if not loaded.get("ok"):
-                    created = self.conversation_store.new_conversation()
-                    conversation_id = created["conversation"]["conversation_id"]
-            else:
-                created = self.conversation_store.new_conversation()
-                conversation_id = created["conversation"]["conversation_id"]
+            conversation_id = self._ensure_conversation_id(conversation_id)
 
             task_id = self.runner.start(text)
             self.conversation_store.append_message(conversation_id, role="user", content=text, task_id=task_id)
@@ -163,6 +207,28 @@ class DesktopAPI:
             return {"ok": True, "conversation_id": conversation_id, "task_id": task_id}
         except Exception as exc:
             return {"ok": False, "error": str(exc)}
+
+    def _ensure_conversation_id(self, conversation_id: str) -> str:
+        if conversation_id:
+            loaded = self.conversation_store.get_conversation(str(conversation_id))
+            if loaded.get("ok"):
+                return str(conversation_id)
+        created = self.conversation_store.new_conversation()
+        return str(created["conversation"]["conversation_id"])
+
+    def _run_general_chat(self, text: str) -> str:
+        self.settings_store.apply_to_environment()
+        client = self.chat_client
+        if client is None:
+            from llm.llm_client import LLMClient
+
+            client = LLMClient.from_config()
+        return client.chat(
+            "你是 UTA Desktop 的本地对话助手。"
+            "你服务于一个学习型 Agent 应用，回答要简洁、中文、可执行。"
+            "如果用户提出明确任务，提醒用户可以直接发送任务让 Agent 拆解执行。",
+            text,
+        )
 
     def sync_chat_result(self, conversation_id: str, task_id: str) -> dict[str, Any]:
         try:

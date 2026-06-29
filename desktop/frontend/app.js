@@ -113,7 +113,8 @@ function addChatMessage(role, content, status = "completed", taskId = null) {
     role,
     content,
     status,
-    taskId
+    taskId,
+    progress: []
   };
   state.messages.push(message);
   renderChatMessages();
@@ -134,6 +135,14 @@ function updatePendingAssistant(patch) {
   renderChatMessages();
 }
 
+function appendAssistantProgress(taskId, line) {
+  const message = [...state.messages].reverse().find((item) => item.role === "assistant" && item.taskId === taskId);
+  if (!message || !line) return;
+  if (!Array.isArray(message.progress)) message.progress = [];
+  message.progress.push(line);
+  renderChatMessages();
+}
+
 function renderChatMessages() {
   if (!els.chatMessages) return;
   if (!state.messages.length) {
@@ -146,10 +155,23 @@ function renderChatMessages() {
   }
   els.chatMessages.innerHTML = state.messages.map((message) => `
     <article class="chatMessage ${escapeHtml(message.role)} ${escapeHtml(message.status || "")}" data-message-id="${escapeHtml(message.id)}">
-      <div class="messageBubble">${message.role === "assistant" ? renderMarkdown(message.content || "") : escapeHtml(message.content || "")}</div>
+      <div class="messageBubble">
+        ${message.role === "assistant" ? renderMarkdown(message.content || "") : escapeHtml(message.content || "")}
+        ${message.role === "assistant" ? renderMessageProgress(message) : ""}
+      </div>
     </article>
   `).join("");
   els.chatMessages.scrollTop = els.chatMessages.scrollHeight;
+}
+
+function renderMessageProgress(message) {
+  const progress = Array.isArray(message.progress) ? message.progress : [];
+  if (!progress.length) return "";
+  return `
+    <div class="messageProgress">
+      ${progress.slice(-12).map((line) => `<p class="progressLine">${escapeHtml(line)}</p>`).join("")}
+    </div>
+  `;
 }
 
 function updateKeyState(settings) {
@@ -702,6 +724,12 @@ async function runTask() {
       if ((result.error || "").includes("Key")) openSettings();
       return;
     }
+    if (result.direct) {
+      state.conversationId = result.conversation_id;
+      updatePendingAssistant({ content: result.message || "已回复。", status: "completed" });
+      setStatus("done", "已回复");
+      return;
+    }
     state.running = true;
     state.conversationId = result.conversation_id;
     state.taskId = result.task_id;
@@ -806,20 +834,40 @@ async function handleProgress(event) {
     if (pending) pending.taskId = event.task_id;
   }
 
+  if (event.type === "task_received") {
+    appendAssistantProgress(state.taskId, "收到任务，正在解析...");
+  }
   if (event.type === "parsed") {
+    appendAssistantProgress(state.taskId, `识别任务：${data.task_type || "unknown"}`);
     updateAssistantMessage(state.taskId, { content: "已理解任务，正在制定执行步骤...", status: "running" });
+  }
+  if (event.type === "skill_matched" && data.skill_id) {
+    appendAssistantProgress(state.taskId, `匹配 Skill：${data.skill_id}`);
   }
   if (event.type === "plan_created") {
     renderPlan(data.steps || []);
+    appendAssistantProgress(state.taskId, `生成 ${(data.steps || []).length} 个步骤`);
     updateAssistantMessage(state.taskId, {
       content: `已拆解为 ${(data.steps || []).length} 个步骤，正在执行...`,
       status: "running"
     });
   }
-  if (event.type === "step_started") markStep(data.step_id, "active", "running");
-  if (event.type === "tool_selected") markStep(data.step_id, "active", "tool", data.tool_name);
+  if (event.type === "step_started") {
+    appendAssistantProgress(state.taskId, `开始步骤 ${data.step_id}：${data.goal}`);
+    markStep(data.step_id, "active", "running");
+  }
+  if (event.type === "tool_selected") {
+    appendAssistantProgress(state.taskId, `调用工具：${data.tool_name}`);
+    markStep(data.step_id, "active", "tool", data.tool_name);
+  }
   if (event.type === "replanned") markStep(data.failed_step_id, "active", "重新规划");
-  if (event.type === "step_done") markStep(data.step_id, data.status === "completed" ? "done" : "failed", data.status);
+  if (event.type === "verified") {
+    appendAssistantProgress(state.taskId, `校验${data.passed ? "通过" : "未通过"}：步骤 ${data.step_id}`);
+  }
+  if (event.type === "step_done") {
+    appendAssistantProgress(state.taskId, `步骤 ${data.step_id}：${data.status}`);
+    markStep(data.step_id, data.status === "completed" ? "done" : "failed", data.status);
+  }
 
   if (event.type === "task_completed") {
     state.running = false;

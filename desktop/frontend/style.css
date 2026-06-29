@@ -774,6 +774,21 @@ pre {
   font-size: 12px;
 }
 
+.messageProgress {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(106, 111, 122, 0.22);
+  display: grid;
+  gap: 4px;
+}
+
+.progressLine {
+  margin: 0;
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
 .chatComposer {
   border-top: 1px solid var(--border);
   background: var(--surface);
