@@ -714,6 +714,7 @@ pre {
   grid-template-columns: minmax(420px, 1fr) minmax(360px, 0.82fr);
   align-items: stretch;
   height: 100%;
+  overflow: hidden;
 }
 
 .chatColumn,
