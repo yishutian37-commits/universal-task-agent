@@ -133,9 +133,10 @@ def test_frontend_chat_layout_keeps_messages_above_bottom_composer():
     css = (FRONTEND_ROOT / "style.css").read_text(encoding="utf-8")
     js = (FRONTEND_ROOT / "app.js").read_text(encoding="utf-8")
 
-    assert ".chatPanel {\n  height: 100%;" in css
+    assert ".chatPanel {\n  position: absolute;" in css
+    assert "  inset: 0;" in css
     assert "flex-direction: column;" in css
-    assert ".chatMessages {\n  flex: 1 1 0;" in css
+    assert ".chatMessages {\n  flex: 1 1 auto;" in css
     assert ".chatComposer {\n  border-top: 1px solid var(--border);" in css
     assert "flex-shrink: 0;" in css
     assert 'els.taskInput.value = "";' in js
