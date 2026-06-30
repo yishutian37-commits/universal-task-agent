@@ -137,7 +137,7 @@ def test_frontend_chat_layout_keeps_messages_above_bottom_composer():
     assert "  inset: 0;" in css
     assert "flex-direction: column;" in css
     assert ".chatMessages {\n  flex: 1 1 auto;" in css
-    assert ".chatComposer {\n  border-top: 1px solid var(--border);" in css
+    assert ".chatComposer {\n  border-top: 1px solid var(--border);\n  background: var(--surface);\n  margin-top: auto;" in css
     assert "flex-shrink: 0;" in css
     assert 'els.taskInput.value = "";' in js
 
