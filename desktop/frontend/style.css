@@ -725,7 +725,7 @@ pre {
 }
 
 .chatPanel {
-  height: calc(100vh - 154px);
+  height: 100%;
   min-height: 0;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
@@ -803,10 +803,13 @@ pre {
 .chatComposer {
   border-top: 1px solid var(--border);
   background: var(--surface);
+  flex-shrink: 0;
 }
 
 .chatComposer textarea {
-  min-height: 92px;
+  min-height: 60px;
+  max-height: 140px;
+  resize: vertical;
 }
 
 .detailColumn {
