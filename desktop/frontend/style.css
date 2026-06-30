@@ -72,6 +72,7 @@ button {
 
 .app {
   min-height: 0;
+  height: 100%;
   display: grid;
   grid-template-columns: 230px minmax(0, 1fr);
 }
@@ -131,6 +132,7 @@ button {
 .main {
   min-width: 0;
   min-height: 0;
+  height: 100%;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
 }
@@ -233,6 +235,7 @@ button {
 
 .workspace {
   min-height: 0;
+  height: 100%;
   padding: 18px;
   display: grid;
   grid-template-columns: minmax(360px, 0.95fr) minmax(420px, 1.05fr);
