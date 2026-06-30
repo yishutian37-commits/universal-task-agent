@@ -140,6 +140,14 @@ def test_frontend_chat_layout_keeps_messages_above_bottom_composer():
     assert 'els.taskInput.value = "";' in js
 
 
+def test_frontend_chat_messages_stay_near_composer_while_running():
+    css = (FRONTEND_ROOT / "style.css").read_text(encoding="utf-8")
+
+    assert ".chatMessages {\n  min-height: 0;\n  overflow: auto;\n  padding: 18px;\n  display: flex;" in css
+    assert "  flex-direction: column;" in css
+    assert ".chatMessages > .chatMessage:first-child {\n  margin-top: auto;" in css
+
+
 def test_frontend_calls_chat_bridge_methods_and_updates_messages():
     js = (FRONTEND_ROOT / "app.js").read_text(encoding="utf-8")
 

@@ -736,9 +736,13 @@ pre {
   min-height: 0;
   overflow: auto;
   padding: 18px;
-  display: grid;
-  align-content: start;
+  display: flex;
+  flex-direction: column;
   gap: 14px;
+}
+
+.chatMessages > .chatMessage:first-child {
+  margin-top: auto;
 }
 
 .chatMessage {
