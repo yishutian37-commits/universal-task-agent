@@ -133,19 +133,29 @@ def test_frontend_chat_layout_keeps_messages_above_bottom_composer():
     css = (FRONTEND_ROOT / "style.css").read_text(encoding="utf-8")
     js = (FRONTEND_ROOT / "app.js").read_text(encoding="utf-8")
 
-    assert ".chatPanel {\n  position: absolute;" in css
-    assert "  inset: 0;" in css
-    assert "flex-direction: column;" in css
-    assert ".chatMessages {\n  flex: 1 1 auto;" in css
+    assert ".chatColumn {\n  grid-template-rows: minmax(0, 1fr);\n}" in css
+    assert ".chatPanel {\n  height: 100%;" in css
+    assert "  display: grid;\n  grid-template-rows: auto minmax(0, 1fr) auto;" in css
+    assert ".chatMessages {\n  min-height: 0;" in css
     assert ".chatComposer {\n  border-top: 1px solid var(--border);\n  background: var(--surface);\n  margin-top: auto;" in css
     assert "flex-shrink: 0;" in css
     assert 'els.taskInput.value = "";' in js
 
 
+def test_frontend_single_column_keeps_chat_panel_viewport_bound():
+    css = (FRONTEND_ROOT / "style.css").read_text(encoding="utf-8")
+
+    assert "@media (max-width: 1060px)" in css
+    assert ".chatColumn {\n    height: calc(100vh - 154px);\n    min-height: 640px;\n  }" in css
+    assert ".chatPanel {\n    height: 100%;\n    min-height: 0;\n  }" in css
+    assert ".chatPanel {\n    height: auto;" not in css
+
+
 def test_frontend_chat_messages_stay_near_composer_while_running():
     css = (FRONTEND_ROOT / "style.css").read_text(encoding="utf-8")
 
-    assert "flex-direction: column;" in css
+    assert ".chatMessages {\n  min-height: 0;\n  overflow-y: auto;\n  padding: 18px;\n  display: flex;" in css
+    assert "  flex-direction: column;" in css
     assert ".chatMessages > .chatMessage:first-child {\n  margin-top: auto;" in css
 
 
