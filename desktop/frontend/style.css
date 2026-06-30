@@ -581,7 +581,7 @@ pre {
 }
 
 .hidden {
-  display: none;
+  display: none !important;
 }
 
 .historyWorkspace {
@@ -746,10 +746,6 @@ pre {
   gap: 14px;
 }
 
-.chatMessages > .chatMessage:first-child {
-  margin-top: auto;
-}
-
 .chatMessage {
   min-width: 0;
   display: flex;
@@ -808,7 +804,6 @@ pre {
 .chatComposer {
   border-top: 1px solid var(--border);
   background: var(--surface);
-  margin-top: auto;
   flex-shrink: 0;
 }
 

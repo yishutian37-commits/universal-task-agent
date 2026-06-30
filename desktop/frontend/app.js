@@ -1021,33 +1021,5 @@ window.onProgress = handleProgress;
 bindEvents();
 resetRunSurface();
 renderChatMessages();
-
-// 强制设置对话面板高度——不依赖 CSS 高度继承（pywebview 下不可靠）
-function fixChatLayout() {
-  const chatPanel = document.querySelector(".chatPanel");
-  const chatMessages = document.getElementById("chatMessages");
-  const chatComposer = document.querySelector(".chatComposer");
-  if (!chatPanel || !chatMessages || !chatComposer) return;
-
-  // 计算 chatPanel 应有的高度：窗口高度 - titlebar(42) - mainHead 高度 - padding(36)
-  const titlebar = document.querySelector(".titlebar");
-  const mainHead = document.querySelector(".mainHead");
-  const winH = window.innerHeight;
-  const titleH = titlebar ? titlebar.offsetHeight : 42;
-  const headH = mainHead ? mainHead.offsetHeight : 76;
-  const panelH = winH - titleH - headH - 36; // 36 = workspace padding (18*2)
-
-  chatPanel.style.height = Math.max(panelH, 200) + "px";
-
-  // messages 高度 = panel - panelHead - composer
-  const panelHead = chatPanel.querySelector(".panelHead");
-  const pH = panelHead ? panelHead.offsetHeight : 52;
-  const cH = chatComposer.offsetHeight;
-  const msgH = Math.max(panelH - pH - cH, 120);
-  chatMessages.style.height = msgH + "px";
-}
-
-window.addEventListener("resize", fixChatLayout);
-window.addEventListener("pywebviewready", () => { fixChatLayout(); loadSettings(); });
-setTimeout(() => { fixChatLayout(); if (api()) loadSettings(); }, 500);
-setTimeout(fixChatLayout, 1500); // 确保渲染完成后再次修正
+window.addEventListener("pywebviewready", loadSettings);
+setTimeout(() => { if (api()) loadSettings(); }, 500);

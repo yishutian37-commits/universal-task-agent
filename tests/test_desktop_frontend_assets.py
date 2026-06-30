@@ -137,9 +137,21 @@ def test_frontend_chat_layout_keeps_messages_above_bottom_composer():
     assert ".chatPanel {\n  height: 100%;" in css
     assert "  display: grid;\n  grid-template-rows: auto minmax(0, 1fr) auto;" in css
     assert ".chatMessages {\n  min-height: 0;" in css
-    assert ".chatComposer {\n  border-top: 1px solid var(--border);\n  background: var(--surface);\n  margin-top: auto;" in css
+    assert ".chatComposer {\n  border-top: 1px solid var(--border);\n  background: var(--surface);" in css
+    assert ".chatComposer {\n  border-top: 1px solid var(--border);\n  background: var(--surface);\n  margin-top: auto;" not in css
     assert "flex-shrink: 0;" in css
     assert 'els.taskInput.value = "";' in js
+    assert "chatPanel.style.height" not in js
+    assert "chatMessages.style.height" not in js
+    assert "fixChatLayout" not in js
+
+
+def test_frontend_hidden_report_cannot_create_extra_chat_row():
+    html = (FRONTEND_ROOT / "index.html").read_text(encoding="utf-8")
+    css = (FRONTEND_ROOT / "style.css").read_text(encoding="utf-8")
+
+    assert 'class="report empty hidden" id="report"' in html
+    assert ".hidden {\n  display: none !important;" in css
 
 
 def test_frontend_single_column_keeps_chat_panel_viewport_bound():
@@ -156,7 +168,7 @@ def test_frontend_chat_messages_stay_near_composer_while_running():
 
     assert ".chatMessages {\n  min-height: 0;\n  overflow-y: auto;\n  padding: 18px;\n  display: flex;" in css
     assert "  flex-direction: column;" in css
-    assert ".chatMessages > .chatMessage:first-child {\n  margin-top: auto;" in css
+    assert ".chatMessages > .chatMessage:first-child" not in css
 
 
 def test_frontend_calls_chat_bridge_methods_and_updates_messages():
