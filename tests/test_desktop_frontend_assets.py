@@ -129,6 +129,17 @@ def test_frontend_chat_styles_exist():
     assert ".detailColumn" in css
 
 
+def test_frontend_chat_layout_keeps_messages_above_bottom_composer():
+    css = (FRONTEND_ROOT / "style.css").read_text(encoding="utf-8")
+    js = (FRONTEND_ROOT / "app.js").read_text(encoding="utf-8")
+
+    assert ".chatPanel {\n  height: calc(100vh - 154px);" in css
+    assert ".chatColumn {\n  grid-template-rows: minmax(0, 1fr);" in css
+    assert ".chatMessages {\n  min-height: 0;" in css
+    assert ".chatComposer {\n  border-top: 1px solid var(--border);" in css
+    assert 'els.taskInput.value = "";' in js
+
+
 def test_frontend_calls_chat_bridge_methods_and_updates_messages():
     js = (FRONTEND_ROOT / "app.js").read_text(encoding="utf-8")
 

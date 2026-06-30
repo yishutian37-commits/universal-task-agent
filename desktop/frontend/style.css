@@ -709,16 +709,23 @@ pre {
 .chatWorkspace {
   grid-template-columns: minmax(420px, 1fr) minmax(360px, 0.82fr);
   align-items: stretch;
+  height: 100%;
 }
 
 .chatColumn,
 .detailColumn {
   min-height: 0;
+  height: 100%;
   display: grid;
   gap: 16px;
 }
 
+.chatColumn {
+  grid-template-rows: minmax(0, 1fr);
+}
+
 .chatPanel {
+  height: calc(100vh - 154px);
   min-height: 0;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
@@ -824,5 +831,10 @@ pre {
     min-height: auto;
     border-right: 0;
     border-bottom: 1px solid var(--border);
+  }
+
+  .chatPanel {
+    height: auto;
+    min-height: 640px;
   }
 }

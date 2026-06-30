@@ -724,6 +724,7 @@ async function runTask() {
       if ((result.error || "").includes("Key")) openSettings();
       return;
     }
+    els.taskInput.value = "";
     if (result.direct) {
       state.conversationId = result.conversation_id;
       updatePendingAssistant({ content: result.message || "已回复。", status: "completed" });
