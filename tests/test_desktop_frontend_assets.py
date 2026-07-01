@@ -108,6 +108,14 @@ def test_frontend_long_term_memory_panel_has_room_to_render_groups():
     assert "grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));" in css
 
 
+def test_frontend_memory_view_panels_expand_instead_of_clipping_cards():
+    css = (FRONTEND_ROOT / "style.css").read_text(encoding="utf-8")
+
+    assert "#memoryView {\n  align-items: start;\n  align-content: start;" in css
+    assert "#memoryView .memoryPanel {\n  grid-template-rows: auto auto;\n  overflow: visible;" in css
+    assert "#memoryView .memoryBlock {\n  max-height: none;\n  overflow: visible;" in css
+
+
 def test_frontend_handles_replanned_progress_event():
     js = (FRONTEND_ROOT / "app.js").read_text(encoding="utf-8")
 

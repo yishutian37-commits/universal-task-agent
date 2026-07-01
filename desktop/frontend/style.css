@@ -669,6 +669,11 @@ pre {
   min-height: 0;
 }
 
+#memoryView {
+  align-items: start;
+  align-content: start;
+}
+
 .memoryColumn {
   min-height: 0;
   display: grid;
@@ -691,6 +696,16 @@ pre {
   display: grid;
   align-content: start;
   gap: 10px;
+}
+
+#memoryView .memoryPanel {
+  grid-template-rows: auto auto;
+  overflow: visible;
+}
+
+#memoryView .memoryBlock {
+  max-height: none;
+  overflow: visible;
 }
 
 .longTermMemoryPanel {
