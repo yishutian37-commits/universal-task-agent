@@ -858,6 +858,8 @@ pre {
 #memoryView {
   align-items: start;
   align-content: start;
+  padding-bottom: 72px;
+  scroll-padding-bottom: 72px;
 }
 
 .memoryColumn {
@@ -902,8 +904,9 @@ pre {
 #memoryLongTermGroups {
   max-height: none;
   overflow: visible;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   align-items: start;
+  row-gap: 14px;
 }
 
 .memoryGroup {

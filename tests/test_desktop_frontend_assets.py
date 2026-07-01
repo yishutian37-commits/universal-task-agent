@@ -105,7 +105,15 @@ def test_frontend_long_term_memory_panel_has_room_to_render_groups():
     assert ".longTermMemoryPanel {\n  grid-column: 1 / -1;" in css
     assert ".longTermMemoryPanel {\n  grid-column: 1 / -1;\n  overflow: visible;" in css
     assert "#memoryLongTermGroups {\n  max-height: none;" in css
-    assert "grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));" in css
+    assert "grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));" in css
+
+
+def test_frontend_memory_view_has_bottom_scroll_clearance_for_long_overview():
+    css = (FRONTEND_ROOT / "style.css").read_text(encoding="utf-8")
+
+    assert "#memoryView {\n  align-items: start;\n  align-content: start;\n  padding-bottom: 72px;\n  scroll-padding-bottom: 72px;" in css
+    assert "#memoryLongTermGroups {\n  max-height: none;\n  overflow: visible;\n  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));" in css
+    assert "row-gap: 14px;" in css
 
 
 def test_frontend_memory_view_panels_expand_instead_of_clipping_cards():
