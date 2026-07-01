@@ -15,6 +15,10 @@ DEFAULT_SETTINGS = {
     "llm_model": "mimo-v2.5-pro",
     "llm_api_key": "",
     "llm_ssl_verify": True,
+    "memory_compression_enabled": True,
+    "memory_context_window_tokens": 400_000,
+    "memory_compression_trigger_ratio": 0.7,
+    "memory_compression_cap_tokens": 250_000,
 }
 
 
@@ -39,6 +43,13 @@ class SettingsStore:
             if key in payload:
                 settings[key] = payload[key]
         settings["llm_ssl_verify"] = self._to_bool(settings["llm_ssl_verify"])
+        settings["memory_compression_enabled"] = self._to_bool(settings["memory_compression_enabled"])
+        settings["memory_context_window_tokens"] = self._to_int(settings["memory_context_window_tokens"], 400_000)
+        settings["memory_compression_trigger_ratio"] = self._to_float(
+            settings["memory_compression_trigger_ratio"],
+            0.7,
+        )
+        settings["memory_compression_cap_tokens"] = self._to_int(settings["memory_compression_cap_tokens"], 250_000)
         return settings
 
     def save(self, payload: dict[str, Any]) -> dict[str, Any]:
@@ -59,6 +70,27 @@ class SettingsStore:
         if "llm_ssl_verify" in payload:
             settings["llm_ssl_verify"] = self._to_bool(payload["llm_ssl_verify"])
 
+        if "memory_compression_enabled" in payload:
+            settings["memory_compression_enabled"] = self._to_bool(payload["memory_compression_enabled"])
+
+        if "memory_context_window_tokens" in payload:
+            settings["memory_context_window_tokens"] = self._to_int(
+                payload["memory_context_window_tokens"],
+                settings["memory_context_window_tokens"],
+            )
+
+        if "memory_compression_trigger_ratio" in payload:
+            settings["memory_compression_trigger_ratio"] = self._to_float(
+                payload["memory_compression_trigger_ratio"],
+                settings["memory_compression_trigger_ratio"],
+            )
+
+        if "memory_compression_cap_tokens" in payload:
+            settings["memory_compression_cap_tokens"] = self._to_int(
+                payload["memory_compression_cap_tokens"],
+                settings["memory_compression_cap_tokens"],
+            )
+
         self.config_path.parent.mkdir(parents=True, exist_ok=True)
         self.config_path.write_text(
             json.dumps(settings, ensure_ascii=False, indent=2) + "\n",
@@ -73,6 +105,10 @@ class SettingsStore:
             "llm_model": settings["llm_model"],
             "llm_ssl_verify": settings["llm_ssl_verify"],
             "has_api_key": bool(settings["llm_api_key"]),
+            "memory_compression_enabled": settings["memory_compression_enabled"],
+            "memory_context_window_tokens": settings["memory_context_window_tokens"],
+            "memory_compression_trigger_ratio": settings["memory_compression_trigger_ratio"],
+            "memory_compression_cap_tokens": settings["memory_compression_cap_tokens"],
         }
 
     def apply_to_environment(self) -> None:
@@ -91,3 +127,17 @@ class SettingsStore:
         if isinstance(value, str):
             return value.strip().lower() not in {"0", "false", "no", "off"}
         return bool(value)
+
+    def _to_int(self, value: Any, fallback: int) -> int:
+        try:
+            parsed = int(value)
+        except (TypeError, ValueError):
+            return fallback
+        return parsed if parsed > 0 else fallback
+
+    def _to_float(self, value: Any, fallback: float) -> float:
+        try:
+            parsed = float(value)
+        except (TypeError, ValueError):
+            return fallback
+        return parsed if parsed > 0 else fallback

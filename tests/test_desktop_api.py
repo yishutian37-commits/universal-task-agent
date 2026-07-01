@@ -99,6 +99,8 @@ class FakeChatClient:
 
     def chat(self, system_prompt, user_prompt):
         self.calls.append((system_prompt, user_prompt))
+        if isinstance(self.response, list):
+            return self.response.pop(0)
         return self.response
 
 
@@ -508,3 +510,84 @@ def test_desktop_api_skips_compression_when_no_new_messages(tmp_path, monkeypatc
         "message": "没有新的会话消息需要压缩",
     }
     assert chat_client.calls == []
+
+
+def test_desktop_api_auto_compresses_after_completed_chat_when_threshold_is_reached(tmp_path, monkeypatch):
+    monkeypatch.setenv("UTA_HOME", str(tmp_path / "uta"))
+    conversation_store = ConversationStore(tmp_path / "conversations")
+    memory_store = FakeMemoryStore()
+    chat_client = FakeChatClient(
+        [
+            "普通聊天回复",
+            json.dumps(
+                {
+                    "short_term_summary": "用户正在讨论 AI 应用学习。",
+                    "long_term_candidates": [
+                        {
+                            "kind": "work_habit",
+                            "content": "用户希望先评估方案，再按建议执行。",
+                            "confidence": 0.9,
+                            "source_message_ids": [],
+                        }
+                    ],
+                    "open_questions": [],
+                },
+                ensure_ascii=False,
+            ),
+        ]
+    )
+    api = DesktopAPI(
+        settings_store=SettingsStore(),
+        runner=FakeRunner(),
+        memory_store=memory_store,
+        conversation_store=conversation_store,
+        chat_client=chat_client,
+    )
+    api.save_settings(
+        {
+            "llm_api_key": "secret-key",
+            "memory_context_window_tokens": 20,
+            "memory_compression_trigger_ratio": 0.5,
+        }
+    )
+
+    result = api.run_chat_message("", "我想学习 AI 应用开发，请根据我的情况给一点建议，内容稍微长一点方便触发记忆压缩。")
+    conversation = conversation_store.get_conversation(result["conversation_id"])["conversation"]
+
+    assert result["ok"] is True
+    assert result["message"] == "普通聊天回复"
+    assert result["compression"]["compressed"] is True
+    assert conversation["short_term"]["summary"] == "用户正在讨论 AI 应用学习。"
+    assert conversation["short_term"]["compressed_until_index"] == 2
+    assert memory_store.merged_candidates[0]["kind"] == "work_habit"
+    assert len(chat_client.calls) == 2
+
+
+def test_desktop_api_auto_compression_failure_does_not_fail_chat(tmp_path, monkeypatch):
+    monkeypatch.setenv("UTA_HOME", str(tmp_path / "uta"))
+    conversation_store = ConversationStore(tmp_path / "conversations")
+    chat_client = FakeChatClient(["普通聊天回复", "这不是 JSON"])
+    api = DesktopAPI(
+        settings_store=SettingsStore(),
+        runner=FakeRunner(),
+        memory_store=FakeMemoryStore(),
+        conversation_store=conversation_store,
+        chat_client=chat_client,
+    )
+    api.save_settings(
+        {
+            "llm_api_key": "secret-key",
+            "memory_context_window_tokens": 20,
+            "memory_compression_trigger_ratio": 0.5,
+        }
+    )
+
+    result = api.run_chat_message("", "我想学习 AI 应用开发，请根据我的情况给一点建议，内容稍微长一点方便触发记忆压缩。")
+    conversation = conversation_store.get_conversation(result["conversation_id"])["conversation"]
+
+    assert result["ok"] is True
+    assert result["message"] == "普通聊天回复"
+    assert result["compression"]["ok"] is True
+    assert result["compression"]["compressed"] is False
+    assert "必须是 JSON" in result["compression"]["error"]
+    assert conversation["compression"]["runs"][0]["status"] == "failed"

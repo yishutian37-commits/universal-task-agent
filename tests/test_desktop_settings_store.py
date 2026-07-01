@@ -25,6 +25,10 @@ def test_settings_store_saves_public_settings_without_exposing_key(tmp_path, mon
     assert public["llm_model"] == "mimo-v2.5-pro"
     assert public["llm_ssl_verify"] is False
     assert public["has_api_key"] is True
+    assert public["memory_compression_enabled"] is True
+    assert public["memory_context_window_tokens"] == 400_000
+    assert public["memory_compression_trigger_ratio"] == 0.7
+    assert public["memory_compression_cap_tokens"] == 250_000
     assert "llm_api_key" not in public
 
 
@@ -72,3 +76,24 @@ def test_settings_store_applies_values_to_environment(tmp_path, monkeypatch):
     assert os.environ["LLM_BASE_URL"] == "https://token-plan-cn.xiaomimimo.com/v1/chat/completions"
     assert os.environ["LLM_MODEL"] == "mimo-v2.5-pro"
     assert os.environ["LLM_SSL_VERIFY"] == "0"
+
+
+def test_settings_store_saves_memory_compression_settings(tmp_path, monkeypatch):
+    monkeypatch.setenv("UTA_HOME", str(tmp_path / "uta"))
+    store = SettingsStore()
+
+    store.save(
+        {
+            "memory_compression_enabled": False,
+            "memory_context_window_tokens": 32_000,
+            "memory_compression_trigger_ratio": 0.5,
+            "memory_compression_cap_tokens": 12_000,
+        }
+    )
+
+    settings = store.public_settings()
+
+    assert settings["memory_compression_enabled"] is False
+    assert settings["memory_context_window_tokens"] == 32_000
+    assert settings["memory_compression_trigger_ratio"] == 0.5
+    assert settings["memory_compression_cap_tokens"] == 12_000

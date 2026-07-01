@@ -7,7 +7,7 @@ from typing import Any
 from desktop.chat_router import chat_route_kind, direct_chat_response
 from desktop.conversation_store import ConversationStore
 from desktop.history_store import HistoryStore
-from desktop.memory_compression import estimate_tokens, parse_compression_result
+from desktop.memory_compression import CompressionPolicy, estimate_tokens, parse_compression_result
 from desktop.memory_store import MemoryStore
 from desktop.paths import resource_path, uta_home
 from desktop.rag_client import RAGClient
@@ -248,6 +248,7 @@ class DesktopAPI:
                     task_id=None,
                     status="completed",
                 )
+                compression = self._maybe_auto_compress(conversation_id)
                 return {
                     "ok": True,
                     "direct": True,
@@ -255,6 +256,7 @@ class DesktopAPI:
                     "conversation_id": conversation_id,
                     "task_id": None,
                     "message": direct_response.content,
+                    "compression": compression,
                 }
             except Exception as exc:
                 return {"ok": False, "error": str(exc)}
@@ -273,6 +275,7 @@ class DesktopAPI:
                     task_id=None,
                     status="completed",
                 )
+                compression = self._maybe_auto_compress(conversation_id)
                 return {
                     "ok": True,
                     "direct": True,
@@ -280,6 +283,7 @@ class DesktopAPI:
                     "conversation_id": conversation_id,
                     "task_id": None,
                     "message": answer,
+                    "compression": compression,
                 }
             except Exception as exc:
                 return {"ok": False, "error": str(exc)}
@@ -341,9 +345,83 @@ class DesktopAPI:
             )
             if not updated.get("ok"):
                 return updated
-            return {"ok": True, "status": status, "conversation": updated["conversation"]}
+            compression = self._maybe_auto_compress(str(conversation_id or ""))
+            return {"ok": True, "status": status, "conversation": updated["conversation"], "compression": compression}
         except Exception as exc:
             return {"ok": False, "error": str(exc)}
+
+    def _maybe_auto_compress(self, conversation_id: str) -> dict[str, Any]:
+        settings = self.settings_store.public_settings()
+        if not settings.get("memory_compression_enabled", True):
+            return {"ok": True, "compressed": False, "reason": "disabled"}
+        if not settings.get("has_api_key"):
+            return {"ok": True, "compressed": False, "reason": "no_api_key"}
+
+        loaded = self.conversation_store.get_conversation(str(conversation_id or ""))
+        if not loaded.get("ok"):
+            return loaded
+
+        conversation = loaded["conversation"]
+        messages = conversation.get("messages") if isinstance(conversation.get("messages"), list) else []
+        token_estimate = estimate_tokens("\n".join(str(message.get("content") or "") for message in messages))
+        policy = CompressionPolicy(
+            context_window_tokens=int(settings.get("memory_context_window_tokens") or 400_000),
+            trigger_ratio=float(settings.get("memory_compression_trigger_ratio") or 0.7),
+            trigger_cap_tokens=int(settings.get("memory_compression_cap_tokens") or 250_000),
+        )
+        if not policy.should_compress(token_estimate):
+            return {
+                "ok": True,
+                "compressed": False,
+                "reason": "below_threshold",
+                "token_estimate": token_estimate,
+                "trigger_tokens": policy.trigger_tokens,
+            }
+
+        result = self.compress_conversation(str(conversation_id or ""))
+        if result.get("ok"):
+            return result
+
+        error = str(result.get("error") or "自动压缩失败")
+        self._record_compression_error(str(conversation_id or ""), error, token_estimate)
+        return {
+            "ok": True,
+            "compressed": False,
+            "error": error,
+            "token_estimate": token_estimate,
+            "trigger_tokens": policy.trigger_tokens,
+        }
+
+    def _record_compression_error(self, conversation_id: str, error: str, token_estimate: int) -> None:
+        loaded = self.conversation_store.get_conversation(str(conversation_id or ""))
+        if not loaded.get("ok"):
+            return
+
+        conversation = loaded["conversation"]
+        short_term = dict(conversation.get("short_term") or {})
+        compression = dict(conversation.get("compression") or {})
+        runs = compression.get("runs") if isinstance(compression.get("runs"), list) else []
+        timestamp = datetime.now().isoformat(timespec="microseconds")
+        runs.append(
+            {
+                "compressed_at": timestamp,
+                "status": "failed",
+                "error": error,
+                "token_estimate": token_estimate,
+            }
+        )
+        compression.update(
+            {
+                "last_compressed_at": timestamp,
+                "last_trigger_tokens": token_estimate,
+                "runs": runs,
+            }
+        )
+        self.conversation_store.update_memory_state(
+            str(conversation_id or ""),
+            short_term=short_term,
+            compression=compression,
+        )
 
     # ---- RAG 知识库 ----
 
