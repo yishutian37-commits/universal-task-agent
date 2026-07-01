@@ -693,9 +693,15 @@ pre {
   gap: 10px;
 }
 
+.longTermMemoryPanel {
+  grid-column: 1 / -1;
+  overflow: visible;
+}
+
 #memoryLongTermGroups {
-  max-height: 520px;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  max-height: none;
+  overflow: visible;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
   align-items: start;
 }
 

@@ -54,6 +54,7 @@ def test_frontend_includes_memory_view():
     assert 'id="memoryConversationShortTerm"' in html
     assert 'id="memoryLongTermGroups"' in html
     assert 'id="compressCurrentConversation"' in html
+    assert 'class="panel memoryPanel longTermMemoryPanel"' in html
     assert "短期会话记忆" in html
     assert "长期记忆总览" in html
     assert "压缩当前会话" in html
@@ -96,6 +97,15 @@ def test_frontend_groups_long_term_memory_instead_of_flat_list():
     assert "#memoryLongTermGroups" in css
     assert ".memoryGroup" in css
     assert ".memoryDetails" in css
+
+
+def test_frontend_long_term_memory_panel_has_room_to_render_groups():
+    css = (FRONTEND_ROOT / "style.css").read_text(encoding="utf-8")
+
+    assert ".longTermMemoryPanel {\n  grid-column: 1 / -1;" in css
+    assert ".longTermMemoryPanel {\n  grid-column: 1 / -1;\n  overflow: visible;" in css
+    assert "#memoryLongTermGroups {\n  max-height: none;" in css
+    assert "grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));" in css
 
 
 def test_frontend_handles_replanned_progress_event():
