@@ -169,6 +169,11 @@ button {
   justify-content: space-between;
 }
 
+.panelHead .headActions {
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
 .status {
   display: inline-flex;
   align-items: center;

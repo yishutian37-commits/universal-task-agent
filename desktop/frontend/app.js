@@ -21,7 +21,9 @@ const els = {
   historyReport: document.getElementById("historyReport"),
   historyLogPanel: document.getElementById("historyLogPanel"),
   historyStateJson: document.getElementById("historyStateJson"),
-  memoryShortTerm: document.getElementById("memoryShortTerm"),
+  memoryConversationShortTerm: document.getElementById("memoryConversationShortTerm"),
+  memoryLongTermFacts: document.getElementById("memoryLongTermFacts"),
+  compressCurrentConversation: document.getElementById("compressCurrentConversation"),
   memoryTaskHistory: document.getElementById("memoryTaskHistory"),
   memoryLessons: document.getElementById("memoryLessons"),
   memoryNegativeRules: document.getElementById("memoryNegativeRules"),
@@ -569,30 +571,95 @@ async function loadMemoryOverview() {
       showToast("读取记忆失败", result.error || "未知错误");
       return;
     }
-    renderMemoryOverview(result);
+    let currentConversation = null;
+    if (state.conversationId) {
+      const conversationResult = await callApi("get_conversation", state.conversationId);
+      if (conversationResult.ok) currentConversation = conversationResult.conversation || null;
+    }
+    renderMemoryOverview(result, currentConversation);
   } catch (error) {
     showToast("读取记忆失败", error.message);
   }
 }
 
-function renderMemoryOverview(memory) {
-  els.memoryShortTerm.innerHTML = renderShortTermMemory();
+function renderMemoryOverview(memory, currentConversation = null) {
+  els.memoryConversationShortTerm.innerHTML = renderConversationShortTermMemory(currentConversation);
+  els.memoryLongTermFacts.innerHTML = renderLongTermFacts(memory.long_term_facts || []);
   els.memoryTaskHistory.innerHTML = renderMemoryCards(memory.task_history, "task_id", "暂无任务历史");
   els.memoryLessons.innerHTML = renderMemoryCards(memory.lessons, "lesson_id", "暂无经验");
   els.memoryNegativeRules.innerHTML = renderMemoryCards(memory.negative_rules, "rule_id", "暂无负向规则");
   els.memorySkillCandidates.innerHTML = renderMemoryCards(memory.skill_candidates, "task_type", "暂无 Skill 候选");
 }
 
-function renderShortTermMemory() {
-  if (!state.taskId) {
-    return '<div class="emptyState">当前没有运行中的任务，可从运行记录查看历史 state。</div>';
+function renderConversationShortTermMemory(conversation) {
+  if (!conversation) {
+    return '<div class="emptyState">当前没有选中的会话。先发送消息，或从会话历史中打开一条会话。</div>';
   }
+  const shortTerm = conversation.short_term || {};
+  const summary = shortTerm.summary || "这个会话还没有生成短期摘要。";
   return `
     <article class="memoryCard">
-      <strong>${escapeHtml(state.taskId)}</strong>
-      <small>当前任务 state 会保存在右侧 state.json，并进入运行记录。</small>
+      <strong>${escapeHtml(conversation.title || "新对话")}</strong>
+      <small>会话 ID：${escapeHtml(conversation.conversation_id || "")}</small>
+      <small>短期摘要：${escapeHtml(summary)}</small>
+      <small>已压缩到第 ${escapeHtml(shortTerm.compressed_until_index || 0)} 条消息 · 最近保留 ${escapeHtml(shortTerm.recent_message_limit || 12)} 条 · token 估算 ${escapeHtml(shortTerm.token_estimate || 0)}</small>
+      <small>更新时间：${escapeHtml(shortTerm.updated_at || "尚未压缩")}</small>
     </article>
   `;
+}
+
+function renderLongTermFacts(facts) {
+  if (!facts || !facts.length) {
+    return '<div class="emptyState">暂无长期压缩记忆。可以先压缩当前会话。</div>';
+  }
+  return facts.slice(-30).reverse().map((fact) => {
+    const confidence = Number.isFinite(Number(fact.confidence)) ? `${Math.round(Number(fact.confidence) * 100)}%` : "未知";
+    return `
+      <article class="memoryCard">
+        <strong>${escapeHtml(memoryKindLabel(fact.kind || "unknown"))} · ${escapeHtml(confidence)}</strong>
+        <small>${escapeHtml(fact.content || "")}</small>
+        <small>来源：${escapeHtml(fact.source_conversation_id || "")}</small>
+        <small>首次：${escapeHtml(fact.first_seen_at || "")} · 最近：${escapeHtml(fact.last_seen_at || "")}</small>
+      </article>
+    `;
+  }).join("");
+}
+
+function memoryKindLabel(kind) {
+  const labels = {
+    identity: "用户画像",
+    preference: "偏好",
+    work_habit: "工作习惯",
+    project: "项目事实",
+    constraint: "明确约束",
+    decision: "决策记录",
+    open_question: "待确认问题"
+  };
+  return labels[kind] || kind;
+}
+
+async function compressCurrentConversation() {
+  if (!state.conversationId) {
+    showToast("没有当前会话", "先发送一条消息，或从会话历史中打开一条会话。");
+    return;
+  }
+  const previousText = els.compressCurrentConversation.textContent;
+  els.compressCurrentConversation.disabled = true;
+  els.compressCurrentConversation.textContent = "压缩中";
+  try {
+    const result = await callApi("compress_conversation", state.conversationId);
+    if (!result.ok) {
+      showToast("压缩失败", result.error || "未知错误");
+      return;
+    }
+    showToast(result.compressed ? "压缩完成" : "无需压缩", result.message || `已压缩到第 ${result.compressed_until_index || 0} 条消息`);
+    await loadMemoryOverview();
+  } catch (error) {
+    showToast("压缩失败", error.message);
+  } finally {
+    els.compressCurrentConversation.disabled = false;
+    els.compressCurrentConversation.textContent = previousText;
+  }
 }
 
 function renderMemoryCards(items, titleKey, emptyText) {
@@ -980,6 +1047,7 @@ function bindEvents() {
   els.kbAskBtn.addEventListener("click", askKnowledge);
   els.kbQueryBtn.addEventListener("click", queryKnowledge);
   els.refreshMemory.addEventListener("click", loadMemoryOverview);
+  els.compressCurrentConversation.addEventListener("click", compressCurrentConversation);
   els.refreshSkills.addEventListener("click", loadSkillOverview);
   els.openSettings.addEventListener("click", openSettings);
   els.openSettingsSide.addEventListener("click", openSettings);

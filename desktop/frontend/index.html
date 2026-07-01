@@ -138,10 +138,13 @@
           <div class="memoryColumn">
             <section class="panel memoryPanel">
               <div class="panelHead">
-                <h3>短期记忆</h3>
-                <button class="button secondary compact" type="button" id="refreshMemory">刷新</button>
+                <h3>短期会话记忆</h3>
+                <div class="headActions">
+                  <button class="button secondary compact" type="button" id="compressCurrentConversation">压缩当前会话</button>
+                  <button class="button secondary compact" type="button" id="refreshMemory">刷新</button>
+                </div>
               </div>
-              <div class="memoryBlock" id="memoryShortTerm"></div>
+              <div class="memoryBlock" id="memoryConversationShortTerm"></div>
             </section>
 
             <section class="panel memoryPanel">
@@ -153,6 +156,13 @@
           </div>
 
           <div class="memoryColumn">
+            <section class="panel memoryPanel">
+              <div class="panelHead">
+                <h3>长期压缩记忆</h3>
+              </div>
+              <div class="memoryBlock" id="memoryLongTermFacts"></div>
+            </section>
+
             <section class="panel memoryPanel">
               <div class="panelHead">
                 <h3>经验</h3>
