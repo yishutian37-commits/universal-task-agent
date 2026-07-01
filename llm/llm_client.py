@@ -3,11 +3,11 @@ from __future__ import annotations
 import json
 import re
 import shutil
-import ssl
 import subprocess
 from typing import Any, Callable
-from urllib import request
-from urllib.error import HTTPError, URLError
+
+import certifi
+import httpx
 
 
 class LLMClientError(RuntimeError):
@@ -27,14 +27,18 @@ class LLMClient:
         transport: Transport | None = None,
         fallback_transport: Transport | None = None,
         ssl_verify: bool = True,
+        use_curl_fallback: bool = False,
     ):
         self.api_key = api_key
         self.model = model
         self.endpoint = self._normalize_endpoint(base_url)
         self.timeout = timeout
         self.ssl_verify = ssl_verify
+        self.use_curl_fallback = use_curl_fallback
         self.transport = transport or self._default_transport
-        self.fallback_transport = fallback_transport or self._curl_transport
+        self.fallback_transport = fallback_transport or (
+            self._curl_transport if use_curl_fallback else None
+        )
 
     @classmethod
     def from_config(cls) -> "LLMClient":
@@ -67,7 +71,7 @@ class LLMClient:
         try:
             response = self.transport(self.endpoint, headers, payload, self.timeout)
         except LLMClientError as exc:
-            if not self._should_try_curl_fallback(exc):
+            if self.fallback_transport is None or not self._should_try_curl_fallback(exc):
                 raise
             response = self.fallback_transport(self.endpoint, headers, payload, self.timeout)
 
@@ -115,21 +119,18 @@ class LLMClient:
         payload: dict[str, Any],
         timeout: int,
     ) -> dict[str, Any]:
-        data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-        req = request.Request(endpoint, data=data, headers=headers, method="POST")
-        context = self._ssl_context()
+        verify: str | bool = certifi.where() if self.ssl_verify else False
         try:
-            with request.urlopen(req, timeout=timeout, context=context) as response:
-                body = response.read().decode("utf-8")
-        except HTTPError as exc:
-            detail = exc.read().decode("utf-8", errors="replace")
-            raise LLMClientError(f"LLM HTTP error {exc.code}: {detail}") from exc
-        except URLError as exc:
-            raise LLMClientError(f"LLM network error: {exc.reason}") from exc
+            with httpx.Client(timeout=timeout, verify=verify) as client:
+                response = client.post(endpoint, headers=headers, json=payload)
+        except httpx.HTTPStatusError as exc:
+            raise LLMClientError(f"LLM HTTP error {exc.response.status_code}: {exc.response.text}") from exc
+        except httpx.RequestError as exc:
+            raise LLMClientError(f"LLM network error: {exc}") from exc
 
         try:
-            parsed = json.loads(body)
-        except json.JSONDecodeError as exc:
+            parsed = response.json()
+        except ValueError as exc:
             raise LLMClientError(f"Invalid LLM HTTP JSON: {exc}") from exc
         if not isinstance(parsed, dict):
             raise LLMClientError("Invalid LLM HTTP JSON: expected object")
@@ -223,14 +224,3 @@ class LLMClient:
     def _should_try_curl_fallback(exc: LLMClientError) -> bool:
         message = str(exc)
         return "UNEXPECTED_EOF_WHILE_READING" in message or "EOF occurred in violation" in message
-
-    def _ssl_context(self):
-        if not self.ssl_verify:
-            return ssl._create_unverified_context()
-
-        try:
-            import certifi
-        except ImportError:
-            return None
-
-        return ssl.create_default_context(cafile=certifi.where())
