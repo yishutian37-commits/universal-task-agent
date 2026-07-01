@@ -12,6 +12,7 @@ outputs/
 /dist/
 /build/
 *.spec.log
+.superpowers/
 
 # local db
 *.db
