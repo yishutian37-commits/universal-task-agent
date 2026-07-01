@@ -9,34 +9,11 @@ from typing import Any, Callable
 
 from desktop.paths import resource_path, uta_home
 from desktop.settings_store import SettingsStore
+from tools.registry import build_tool_registry
 
 
 def _generate_task_id() -> str:
     return "task_" + datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-
-
-def build_tool_registry() -> dict[str, Any]:
-    from tools.code_tool import CodeTool
-    from tools.file_tool import FileTool
-    from tools.geo_tool import GeoTool
-    from tools.history_tool import HistoryTool
-    from tools.mock_tool import MockTool
-    from tools.report_tool import ReportTool
-    from tools.search_tool import SearchTool
-    from tools.table_tool import TableTool
-    from tools.text_tool import TextTool
-
-    return {
-        "mock_tool": MockTool(),
-        "code_tool": CodeTool(resource_path(".")),
-        "file_tool": FileTool(),
-        "geo_tool": GeoTool(resource_path("skills/vendor/geo-agent-marketing-optimized")),
-        "history_tool": HistoryTool(output_root=uta_home() / "outputs", memory_root=uta_home() / "memory"),
-        "text_tool": TextTool(),
-        "table_tool": TableTool(),
-        "report_tool": ReportTool(),
-        "search_tool": SearchTool(),
-    }
 
 
 class TaskRunner:
@@ -115,7 +92,12 @@ class TaskRunner:
                 user_input,
                 output_root=self.output_root,
                 task_id=task_id,
-                tool_registry=build_tool_registry(),
+                tool_registry=build_tool_registry(
+                    project_root=resource_path("."),
+                    skills_root=resource_path("skills"),
+                    output_root=self.output_root,
+                    memory_root=self.memory_root,
+                ),
                 memory_provider=JsonMemoryProvider(self.memory_root),
                 skill_loader=SkillLoader(resource_path("skills")),
                 on_progress=self._emit_progress,
