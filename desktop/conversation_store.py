@@ -19,6 +19,8 @@ class ConversationStore:
             "created_at": now,
             "updated_at": now,
             "messages": [],
+            "short_term": _default_short_term(),
+            "compression": _default_compression(),
         }
         self._write(conversation)
         return {"ok": True, "conversation": conversation}
@@ -64,6 +66,8 @@ class ConversationStore:
             return {"ok": False, "error": "会话 JSON 无效"}
         if not isinstance(data, dict):
             return {"ok": False, "error": "会话 JSON 无效"}
+        data.setdefault("short_term", _default_short_term())
+        data.setdefault("compression", _default_compression())
         return {"ok": True, "conversation": data}
 
     def append_message(
@@ -81,6 +85,7 @@ class ConversationStore:
 
         conversation = loaded["conversation"]
         message = {
+            "message_id": _message_id(),
             "role": role,
             "content": content,
             "task_id": task_id,
@@ -137,6 +142,28 @@ def _now() -> str:
 
 def _conversation_id() -> str:
     return "conv_" + datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+
+
+def _message_id() -> str:
+    return "msg_" + datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+
+
+def _default_short_term() -> dict[str, Any]:
+    return {
+        "summary": "",
+        "compressed_until_index": 0,
+        "recent_message_limit": 12,
+        "token_estimate": 0,
+        "updated_at": "",
+    }
+
+
+def _default_compression() -> dict[str, Any]:
+    return {
+        "last_compressed_at": "",
+        "last_trigger_tokens": 0,
+        "runs": [],
+    }
 
 
 def _is_safe_id(value: str) -> bool:

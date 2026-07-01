@@ -1,3 +1,4 @@
+import json
 import re
 
 from desktop.conversation_store import ConversationStore
@@ -27,6 +28,25 @@ def test_conversation_store_creates_and_reads_conversation(tmp_path):
     assert loaded["conversation"]["messages"] == []
 
 
+def test_conversation_store_initializes_short_term_and_compression(tmp_path):
+    store = ConversationStore(tmp_path)
+
+    conversation = store.new_conversation()["conversation"]
+
+    assert conversation["short_term"] == {
+        "summary": "",
+        "compressed_until_index": 0,
+        "recent_message_limit": 12,
+        "token_estimate": 0,
+        "updated_at": "",
+    }
+    assert conversation["compression"] == {
+        "last_compressed_at": "",
+        "last_trigger_tokens": 0,
+        "runs": [],
+    }
+
+
 def test_conversation_store_appends_user_and_assistant_messages(tmp_path):
     store = ConversationStore(tmp_path)
     conversation_id = store.new_conversation()["conversation"]["conversation_id"]
@@ -52,6 +72,41 @@ def test_conversation_store_appends_user_and_assistant_messages(tmp_path):
     assert [message["role"] for message in loaded["conversation"]["messages"]] == ["user", "assistant"]
     assert loaded["conversation"]["messages"][0]["content"] == "帮我总结这篇文章"
     assert loaded["conversation"]["messages"][1]["status"] == "running"
+
+
+def test_conversation_store_appends_stable_message_ids(tmp_path):
+    store = ConversationStore(tmp_path)
+    conversation_id = store.new_conversation()["conversation"]["conversation_id"]
+
+    appended = store.append_message(conversation_id, role="user", content="你好")
+    loaded = store.get_conversation(conversation_id)["conversation"]
+
+    assert appended["message"]["message_id"].startswith("msg_")
+    assert loaded["messages"][0]["message_id"] == appended["message"]["message_id"]
+
+
+def test_conversation_store_adds_memory_defaults_when_reading_old_file(tmp_path):
+    store = ConversationStore(tmp_path)
+    conversation_id = "conv_20260701_120000_000000"
+    (tmp_path / f"{conversation_id}.json").write_text(
+        json.dumps(
+            {
+                "conversation_id": conversation_id,
+                "title": "旧会话",
+                "created_at": "2026-07-01T12:00:00.000000",
+                "updated_at": "2026-07-01T12:00:00.000000",
+                "messages": [],
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    loaded = store.get_conversation(conversation_id)
+
+    assert loaded["ok"] is True
+    assert loaded["conversation"]["short_term"]["recent_message_limit"] == 12
+    assert loaded["conversation"]["compression"]["runs"] == []
 
 
 def test_conversation_store_updates_assistant_message_by_task_id(tmp_path):
