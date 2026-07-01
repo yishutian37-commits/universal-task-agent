@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import json
+from datetime import datetime
 from typing import Any
 
 from desktop.chat_router import chat_route_kind, direct_chat_response
 from desktop.conversation_store import ConversationStore
 from desktop.history_store import HistoryStore
+from desktop.memory_compression import estimate_tokens, parse_compression_result
 from desktop.memory_store import MemoryStore
 from desktop.paths import resource_path, uta_home
 from desktop.rag_client import RAGClient
@@ -133,6 +136,98 @@ class DesktopAPI:
     def get_conversation(self, conversation_id: str) -> dict[str, Any]:
         try:
             return self.conversation_store.get_conversation(str(conversation_id or ""))
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)}
+
+    def compress_conversation(self, conversation_id: str) -> dict[str, Any]:
+        if not self.settings_store.public_settings()["has_api_key"]:
+            return {"ok": False, "error": "请先配置 API Key"}
+
+        try:
+            loaded = self.conversation_store.get_conversation(str(conversation_id or ""))
+            if not loaded.get("ok"):
+                return loaded
+
+            conversation = loaded["conversation"]
+            messages = conversation.get("messages") if isinstance(conversation.get("messages"), list) else []
+            short_term = dict(conversation.get("short_term") or {})
+            compression = dict(conversation.get("compression") or {})
+            start_index = int(short_term.get("compressed_until_index") or 0)
+            pending_messages = messages[start_index:]
+            if not pending_messages:
+                return {
+                    "ok": True,
+                    "compressed": False,
+                    "conversation_id": str(conversation_id or ""),
+                    "message": "没有新的会话消息需要压缩",
+                }
+
+            self.settings_store.apply_to_environment()
+            client = self.chat_client
+            if client is None:
+                from llm.llm_client import LLMClient
+
+                client = LLMClient.from_config()
+
+            raw_result = client.chat(
+                _compression_system_prompt(),
+                _compression_user_prompt(conversation, pending_messages),
+            )
+            parsed = parse_compression_result(raw_result)
+            timestamp = datetime.now().isoformat(timespec="microseconds")
+            token_estimate = estimate_tokens("\n".join(str(message.get("content") or "") for message in messages))
+            candidates = _compression_candidates(parsed, pending_messages)
+            merged = self.memory_store.merge_long_term_candidates(
+                candidates,
+                conversation_id=str(conversation_id or ""),
+                now=timestamp,
+            )
+            if not merged.get("ok"):
+                return merged
+
+            short_term.update(
+                {
+                    "summary": parsed["short_term_summary"],
+                    "compressed_until_index": len(messages),
+                    "recent_message_limit": int(short_term.get("recent_message_limit") or 12),
+                    "token_estimate": token_estimate,
+                    "updated_at": timestamp,
+                }
+            )
+            runs = compression.get("runs") if isinstance(compression.get("runs"), list) else []
+            runs.append(
+                {
+                    "compressed_at": timestamp,
+                    "from_index": start_index,
+                    "to_index": len(messages),
+                    "message_count": len(pending_messages),
+                    "token_estimate": token_estimate,
+                    "long_term_candidates": len(candidates),
+                }
+            )
+            compression.update(
+                {
+                    "last_compressed_at": timestamp,
+                    "last_trigger_tokens": token_estimate,
+                    "runs": runs,
+                }
+            )
+            updated = self.conversation_store.update_memory_state(
+                str(conversation_id or ""),
+                short_term=short_term,
+                compression=compression,
+            )
+            if not updated.get("ok"):
+                return updated
+
+            return {
+                "ok": True,
+                "compressed": True,
+                "conversation_id": str(conversation_id or ""),
+                "compressed_until_index": len(messages),
+                "short_term_summary": parsed["short_term_summary"],
+                "long_term_candidates": len(candidates),
+            }
         except Exception as exc:
             return {"ok": False, "error": str(exc)}
 
@@ -290,3 +385,65 @@ class DesktopAPI:
             return self.rag_client.delete(str(target or "").strip())
         except Exception as exc:
             return {"ok": False, "error": str(exc)}
+
+
+def _compression_system_prompt() -> str:
+    return (
+        "你是 UTA 的会话记忆压缩器。"
+        "请提取当前会话中稳定、长期有用的信息。"
+        "只输出 JSON，不要输出 Markdown、解释、代码块或多余文字。"
+        "JSON 必须包含 short_term_summary、long_term_candidates、open_questions 三个字段。"
+        "long_term_candidates 的 kind 只能是 identity、preference、work_habit、project、constraint、decision、open_question。"
+    )
+
+
+def _compression_user_prompt(conversation: dict[str, Any], pending_messages: list[dict[str, Any]]) -> str:
+    payload = {
+        "conversation_id": conversation.get("conversation_id"),
+        "title": conversation.get("title"),
+        "existing_short_term_summary": (conversation.get("short_term") or {}).get("summary", ""),
+        "messages": [
+            {
+                "message_id": message.get("message_id"),
+                "role": message.get("role"),
+                "content": message.get("content"),
+                "created_at": message.get("created_at"),
+            }
+            for message in pending_messages
+        ],
+        "required_schema": {
+            "short_term_summary": "当前会话摘要",
+            "long_term_candidates": [
+                {
+                    "kind": "preference",
+                    "content": "用户要求使用中文回复。",
+                    "confidence": 0.95,
+                    "source_message_ids": ["msg_1"],
+                }
+            ],
+            "open_questions": ["仍需确认的问题"],
+        },
+    }
+    return json.dumps(payload, ensure_ascii=False, indent=2)
+
+
+def _compression_candidates(
+    parsed: dict[str, Any],
+    pending_messages: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    candidates = list(parsed.get("long_term_candidates") or [])
+    message_ids = [
+        str(message.get("message_id") or "").strip()
+        for message in pending_messages
+        if str(message.get("message_id") or "").strip()
+    ]
+    for question in parsed.get("open_questions") or []:
+        candidates.append(
+            {
+                "kind": "open_question",
+                "content": str(question),
+                "confidence": 0.7,
+                "source_message_ids": message_ids,
+            }
+        )
+    return candidates

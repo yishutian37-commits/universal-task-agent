@@ -1,3 +1,4 @@
+import json
 from datetime import datetime
 
 import desktop.runner as runner_module
@@ -65,6 +66,8 @@ class FakeHistoryStore:
 class FakeMemoryStore:
     def __init__(self):
         self.called = False
+        self.merged_candidates = []
+        self.merge_conversation_id = None
 
     def overview(self):
         self.called = True
@@ -83,14 +86,20 @@ class FakeMemoryStore:
             },
         }
 
+    def merge_long_term_candidates(self, candidates, *, conversation_id, now=None):
+        self.merged_candidates.extend(candidates)
+        self.merge_conversation_id = conversation_id
+        return {"ok": True, "long_term_memory": {"version": 1, "facts": self.merged_candidates}}
+
 
 class FakeChatClient:
-    def __init__(self):
+    def __init__(self, response="我的建议是先从一个小项目开始。"):
         self.calls = []
+        self.response = response
 
     def chat(self, system_prompt, user_prompt):
         self.calls.append((system_prompt, user_prompt))
-        return "我的建议是先从一个小项目开始。"
+        return self.response
 
 
 def test_desktop_runner_generate_task_id_uses_microseconds_to_avoid_same_second_collisions(monkeypatch):
@@ -426,3 +435,76 @@ def test_desktop_api_sync_chat_result_updates_assistant_message(tmp_path, monkey
     assistant = conversation["messages"][1]
     assert assistant["content"] == "done"
     assert assistant["status"] == "completed"
+
+
+def test_desktop_api_compresses_conversation_and_merges_long_term_memory(tmp_path, monkeypatch):
+    monkeypatch.setenv("UTA_HOME", str(tmp_path / "uta"))
+    conversation_store = ConversationStore(tmp_path / "conversations")
+    memory_store = FakeMemoryStore()
+    chat_client = FakeChatClient(
+        json.dumps(
+            {
+                "short_term_summary": "用户正在改造 UTA 的记忆系统。",
+                "long_term_candidates": [
+                    {
+                        "kind": "preference",
+                        "content": "用户明确要求使用中文回复。",
+                        "confidence": 0.95,
+                        "source_message_ids": ["msg_missing"],
+                    }
+                ],
+                "open_questions": ["是否默认开启自动压缩？"],
+            },
+            ensure_ascii=False,
+        )
+    )
+    api = DesktopAPI(
+        settings_store=SettingsStore(),
+        runner=FakeRunner(),
+        memory_store=memory_store,
+        conversation_store=conversation_store,
+        chat_client=chat_client,
+    )
+    api.save_settings({"llm_api_key": "secret-key"})
+    conversation_id = conversation_store.new_conversation()["conversation"]["conversation_id"]
+    conversation_store.append_message(conversation_id, role="user", content="我希望你以后都用中文。")
+    conversation_store.append_message(conversation_id, role="assistant", content="好的。")
+
+    result = api.compress_conversation(conversation_id)
+    conversation = conversation_store.get_conversation(conversation_id)["conversation"]
+
+    assert result["ok"] is True
+    assert result["compressed"] is True
+    assert result["compressed_until_index"] == 2
+    assert conversation["short_term"]["summary"] == "用户正在改造 UTA 的记忆系统。"
+    assert conversation["short_term"]["compressed_until_index"] == 2
+    assert conversation["compression"]["runs"][0]["message_count"] == 2
+    assert memory_store.merge_conversation_id == conversation_id
+    assert memory_store.merged_candidates[0]["content"] == "用户明确要求使用中文回复。"
+    assert memory_store.merged_candidates[1]["kind"] == "open_question"
+    assert "只输出 JSON" in chat_client.calls[0][0]
+
+
+def test_desktop_api_skips_compression_when_no_new_messages(tmp_path, monkeypatch):
+    monkeypatch.setenv("UTA_HOME", str(tmp_path / "uta"))
+    conversation_store = ConversationStore(tmp_path / "conversations")
+    chat_client = FakeChatClient("{}")
+    api = DesktopAPI(
+        settings_store=SettingsStore(),
+        runner=FakeRunner(),
+        memory_store=FakeMemoryStore(),
+        conversation_store=conversation_store,
+        chat_client=chat_client,
+    )
+    api.save_settings({"llm_api_key": "secret-key"})
+    conversation_id = conversation_store.new_conversation()["conversation"]["conversation_id"]
+
+    result = api.compress_conversation(conversation_id)
+
+    assert result == {
+        "ok": True,
+        "compressed": False,
+        "conversation_id": conversation_id,
+        "message": "没有新的会话消息需要压缩",
+    }
+    assert chat_client.calls == []

@@ -123,6 +123,24 @@ class ConversationStore:
                 return {"ok": True, "message": message, "conversation": conversation}
         return {"ok": False, "error": "助手消息不存在"}
 
+    def update_memory_state(
+        self,
+        conversation_id: str,
+        *,
+        short_term: dict[str, Any],
+        compression: dict[str, Any],
+    ) -> dict[str, Any]:
+        loaded = self.get_conversation(conversation_id)
+        if not loaded.get("ok"):
+            return loaded
+
+        conversation = loaded["conversation"]
+        conversation["short_term"] = short_term
+        conversation["compression"] = compression
+        conversation["updated_at"] = _now()
+        self._write(conversation)
+        return {"ok": True, "conversation": conversation}
+
     def _path_for(self, conversation_id: str) -> Path | None:
         if not _is_safe_id(str(conversation_id or "")):
             return None
