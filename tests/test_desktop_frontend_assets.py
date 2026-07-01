@@ -52,10 +52,10 @@ def test_frontend_includes_memory_view():
     assert "记忆" in html
     assert 'id="memoryView"' in html
     assert 'id="memoryConversationShortTerm"' in html
-    assert 'id="memoryLongTermFacts"' in html
+    assert 'id="memoryLongTermGroups"' in html
     assert 'id="compressCurrentConversation"' in html
     assert "短期会话记忆" in html
-    assert "长期压缩记忆" in html
+    assert "长期记忆总览" in html
     assert "压缩当前会话" in html
     assert 'id="memoryTaskHistory"' in html
     assert 'id="memoryLessons"' in html
@@ -71,8 +71,31 @@ def test_frontend_calls_memory_bridge_method():
     assert "function showMemoryView" in js
     assert "function renderMemoryOverview" in js
     assert "function renderConversationShortTermMemory" in js
-    assert "function renderLongTermFacts" in js
+    assert "function renderLongTermMemoryGroups" in js
+    assert "function renderMemoryFact" in js
+    assert "const MEMORY_KIND_GROUPS" in js
+    assert "renderLongTermFacts" not in js
     assert "function compressCurrentConversation" in js
+
+
+def test_frontend_groups_long_term_memory_instead_of_flat_list():
+    js = (FRONTEND_ROOT / "app.js").read_text(encoding="utf-8")
+    css = (FRONTEND_ROOT / "style.css").read_text(encoding="utf-8")
+
+    assert "用户画像" in js
+    assert "偏好" in js
+    assert "工作习惯" in js
+    assert "项目事实" in js
+    assert "明确约束" in js
+    assert "决策记录" in js
+    assert "待确认问题" in js
+    assert 'class="memoryGroup' in js
+    assert 'class="memoryFact"' in js
+    assert 'class="memoryDetails"' in js
+    assert "<summary>来源详情</summary>" in js
+    assert "#memoryLongTermGroups" in css
+    assert ".memoryGroup" in css
+    assert ".memoryDetails" in css
 
 
 def test_frontend_handles_replanned_progress_event():

@@ -22,7 +22,7 @@ const els = {
   historyLogPanel: document.getElementById("historyLogPanel"),
   historyStateJson: document.getElementById("historyStateJson"),
   memoryConversationShortTerm: document.getElementById("memoryConversationShortTerm"),
-  memoryLongTermFacts: document.getElementById("memoryLongTermFacts"),
+  memoryLongTermGroups: document.getElementById("memoryLongTermGroups"),
   compressCurrentConversation: document.getElementById("compressCurrentConversation"),
   memoryTaskHistory: document.getElementById("memoryTaskHistory"),
   memoryLessons: document.getElementById("memoryLessons"),
@@ -83,6 +83,16 @@ const state = {
   reportText: "",
   historyRuns: []
 };
+
+const MEMORY_KIND_GROUPS = [
+  { kind: "identity", title: "用户画像", empty: "还没有形成稳定的用户画像。" },
+  { kind: "preference", title: "偏好", empty: "还没有记录明确偏好。" },
+  { kind: "work_habit", title: "工作习惯", empty: "还没有记录工作习惯。" },
+  { kind: "project", title: "项目事实", empty: "还没有记录项目事实。" },
+  { kind: "constraint", title: "明确约束", empty: "还没有记录明确约束。" },
+  { kind: "decision", title: "决策记录", empty: "还没有记录已做决定。" },
+  { kind: "open_question", title: "待确认问题", empty: "暂时没有待确认问题。" }
+];
 
 function api() {
   return window.pywebview && window.pywebview.api ? window.pywebview.api : null;
@@ -584,7 +594,7 @@ async function loadMemoryOverview() {
 
 function renderMemoryOverview(memory, currentConversation = null) {
   els.memoryConversationShortTerm.innerHTML = renderConversationShortTermMemory(currentConversation);
-  els.memoryLongTermFacts.innerHTML = renderLongTermFacts(memory.long_term_facts || []);
+  els.memoryLongTermGroups.innerHTML = renderLongTermMemoryGroups(memory.long_term_facts || []);
   els.memoryTaskHistory.innerHTML = renderMemoryCards(memory.task_history, "task_id", "暂无任务历史");
   els.memoryLessons.innerHTML = renderMemoryCards(memory.lessons, "lesson_id", "暂无经验");
   els.memoryNegativeRules.innerHTML = renderMemoryCards(memory.negative_rules, "rule_id", "暂无负向规则");
@@ -608,34 +618,45 @@ function renderConversationShortTermMemory(conversation) {
   `;
 }
 
-function renderLongTermFacts(facts) {
-  if (!facts || !facts.length) {
-    return '<div class="emptyState">暂无长期压缩记忆。可以先压缩当前会话。</div>';
-  }
-  return facts.slice(-30).reverse().map((fact) => {
-    const confidence = Number.isFinite(Number(fact.confidence)) ? `${Math.round(Number(fact.confidence) * 100)}%` : "未知";
+function renderLongTermMemoryGroups(facts) {
+  const grouped = {};
+  (facts || []).forEach((fact) => {
+    const kind = fact.kind || "unknown";
+    if (!grouped[kind]) grouped[kind] = [];
+    grouped[kind].push(fact);
+  });
+
+  return MEMORY_KIND_GROUPS.map((group) => {
+    const groupFacts = grouped[group.kind] || [];
+    const body = groupFacts.length
+      ? groupFacts.slice(-8).reverse().map(renderMemoryFact).join("")
+      : `<div class="emptyState compact">${escapeHtml(group.empty)}</div>`;
     return `
-      <article class="memoryCard">
-        <strong>${escapeHtml(memoryKindLabel(fact.kind || "unknown"))} · ${escapeHtml(confidence)}</strong>
-        <small>${escapeHtml(fact.content || "")}</small>
-        <small>来源：${escapeHtml(fact.source_conversation_id || "")}</small>
-        <small>首次：${escapeHtml(fact.first_seen_at || "")} · 最近：${escapeHtml(fact.last_seen_at || "")}</small>
-      </article>
+      <section class="memoryGroup ${groupFacts.length ? "" : "empty"}">
+        <header class="memoryGroupHead">
+          <strong>${escapeHtml(group.title)}</strong>
+          <small>${groupFacts.length} 条</small>
+        </header>
+        <div class="memoryGroupBody">${body}</div>
+      </section>
     `;
   }).join("");
 }
 
-function memoryKindLabel(kind) {
-  const labels = {
-    identity: "用户画像",
-    preference: "偏好",
-    work_habit: "工作习惯",
-    project: "项目事实",
-    constraint: "明确约束",
-    decision: "决策记录",
-    open_question: "待确认问题"
-  };
-  return labels[kind] || kind;
+function renderMemoryFact(fact) {
+  const confidence = Number.isFinite(Number(fact.confidence)) ? `${Math.round(Number(fact.confidence) * 100)}%` : "未知";
+  return `
+    <article class="memoryFact">
+      <p>${escapeHtml(fact.content || "")}</p>
+      <details class="memoryDetails">
+        <summary>来源详情</summary>
+        <small>置信度：${escapeHtml(confidence)}</small>
+        <small>来源会话：${escapeHtml(fact.source_conversation_id || "")}</small>
+        <small>首次出现：${escapeHtml(fact.first_seen_at || "")}</small>
+        <small>最近出现：${escapeHtml(fact.last_seen_at || "")}</small>
+      </details>
+    </article>
+  `;
 }
 
 async function compressCurrentConversation() {

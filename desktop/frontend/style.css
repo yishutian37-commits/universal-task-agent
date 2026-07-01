@@ -693,6 +693,93 @@ pre {
   gap: 10px;
 }
 
+#memoryLongTermGroups {
+  max-height: 520px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  align-items: start;
+}
+
+.memoryGroup {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.memoryGroup.empty {
+  background: #f8fafc;
+}
+
+.memoryGroupHead {
+  min-width: 0;
+  min-height: 42px;
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border-bottom: 1px solid var(--border);
+  background: #f8fafc;
+}
+
+.memoryGroupHead strong,
+.memoryGroupHead small {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.memoryGroupHead small {
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+.memoryGroupBody {
+  min-width: 0;
+  display: grid;
+}
+
+.memoryFact {
+  min-width: 0;
+  padding: 10px 12px;
+  display: grid;
+  gap: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.memoryFact:first-child {
+  border-top: 0;
+}
+
+.memoryFact p {
+  margin: 0;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+.memoryDetails {
+  min-width: 0;
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+.memoryDetails summary {
+  cursor: pointer;
+}
+
+.memoryDetails small {
+  display: block;
+  margin-top: 5px;
+  overflow-wrap: anywhere;
+}
+
+.emptyState.compact {
+  padding: 14px 12px;
+  text-align: left;
+}
+
 .memoryCard {
   min-width: 0;
   padding: 11px;
