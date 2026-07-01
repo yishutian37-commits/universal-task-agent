@@ -259,6 +259,60 @@ def test_frontend_task_completed_updates_assistant_message_not_report_panel_only
     assert "renderMarkdown(state.reportText)" in js
 
 
+def test_frontend_uses_dark_command_deck_theme_without_remote_fonts():
+    html = (FRONTEND_ROOT / "index.html").read_text(encoding="utf-8")
+    css = (FRONTEND_ROOT / "style.css").read_text(encoding="utf-8")
+
+    assert "fonts.googleapis.com" not in html
+    assert "fonts.gstatic.com" not in html
+    assert "--surface-0: #0e0e18;" in css
+    assert "--surface-1: #14141f;" in css
+    assert "--surface-2: #1a1a28;" in css
+    assert "--accent-glow: rgba(116, 123, 255, 0.12);" in css
+    assert "background: var(--bg);" in css
+    assert "--sans: -apple-system, BlinkMacSystemFont" in css
+
+
+def test_frontend_sidebar_nav_has_icons_without_breaking_ids():
+    html = (FRONTEND_ROOT / "index.html").read_text(encoding="utf-8")
+    css = (FRONTEND_ROOT / "style.css").read_text(encoding="utf-8")
+
+    for nav_id in [
+        "openTaskView",
+        "openHistory",
+        "openMemory",
+        "openKnowledge",
+        "openSkills",
+        "openSettingsSide",
+    ]:
+        assert f'id="{nav_id}"' in html
+    assert html.count("<svg") >= 6
+    assert ".nav svg" in css
+    assert ".nav.active::before" in css
+
+
+def test_frontend_preserves_current_memory_nodes_during_redesign():
+    html = (FRONTEND_ROOT / "index.html").read_text(encoding="utf-8")
+
+    assert 'id="memoryLongTermGroups"' in html
+    assert 'id="memoryConversationShortTerm"' in html
+    assert 'id="compressCurrentConversation"' in html
+    assert "长期记忆总览" in html
+    assert "短期会话记忆" in html
+    assert "压缩当前会话" in html
+
+
+def test_frontend_dark_memory_cards_do_not_clip_titles():
+    css = (FRONTEND_ROOT / "style.css").read_text(encoding="utf-8")
+
+    assert ".memoryCard {" in css
+    assert "overflow-wrap: anywhere;" in css
+    assert "#memoryView .memoryPanel {\n  grid-template-rows: auto auto;\n  overflow: visible;" in css
+    assert "#memoryView .memoryBlock {\n  max-height: none;\n  overflow: visible;" in css
+    assert ".memoryGroupHead" in css
+    assert "min-width: 0;" in css
+
+
 def test_frontend_can_load_conversation_history():
     js = (FRONTEND_ROOT / "app.js").read_text(encoding="utf-8")
 
