@@ -3,7 +3,9 @@ import pytest
 from desktop.memory_compression import (
     CompressionFormatError,
     CompressionPolicy,
+    default_long_term_memory,
     estimate_tokens,
+    merge_long_term_memory,
     parse_compression_result,
 )
 
@@ -81,3 +83,66 @@ def test_parse_compression_result_rejects_unknown_memory_kind():
 def test_parse_compression_result_rejects_non_json_text():
     with pytest.raises(CompressionFormatError, match="必须是 JSON"):
         parse_compression_result("我觉得用户比较喜欢中文。")
+
+
+def test_merge_long_term_memory_adds_new_candidate():
+    merged = merge_long_term_memory(
+        default_long_term_memory(),
+        [
+            {
+                "kind": "preference",
+                "content": "用户明确要求使用中文回复。",
+                "confidence": 0.95,
+                "source_message_ids": ["msg_1"],
+            }
+        ],
+        conversation_id="conv_20260701_120000_000000",
+        now="2026-07-01T12:00:00.000000",
+    )
+
+    assert merged["version"] == 1
+    assert merged["profile"]["preferences"] == ["用户明确要求使用中文回复。"]
+    assert len(merged["facts"]) == 1
+    assert merged["facts"][0]["kind"] == "preference"
+    assert merged["facts"][0]["content"] == "用户明确要求使用中文回复。"
+    assert merged["facts"][0]["source_conversation_id"] == "conv_20260701_120000_000000"
+    assert merged["facts"][0]["source_message_ids"] == ["msg_1"]
+    assert merged["facts"][0]["first_seen_at"] == "2026-07-01T12:00:00.000000"
+    assert merged["facts"][0]["last_seen_at"] == "2026-07-01T12:00:00.000000"
+
+
+def test_merge_long_term_memory_updates_existing_candidate_without_duplicate():
+    memory = default_long_term_memory()
+    memory["facts"].append(
+        {
+            "memory_id": "mem_existing",
+            "kind": "preference",
+            "content": "用户明确要求使用中文回复。",
+            "source_conversation_id": "conv_old",
+            "source_message_ids": ["msg_1"],
+            "confidence": 0.7,
+            "first_seen_at": "2026-06-30T12:00:00.000000",
+            "last_seen_at": "2026-06-30T12:00:00.000000",
+        }
+    )
+
+    merged = merge_long_term_memory(
+        memory,
+        [
+            {
+                "kind": "preference",
+                "content": "用户明确要求使用中文回复。",
+                "confidence": 0.95,
+                "source_message_ids": ["msg_2"],
+            }
+        ],
+        conversation_id="conv_20260701_120000_000000",
+        now="2026-07-01T12:00:00.000000",
+    )
+
+    assert len(merged["facts"]) == 1
+    assert merged["facts"][0]["memory_id"] == "mem_existing"
+    assert merged["facts"][0]["confidence"] == 0.95
+    assert merged["facts"][0]["first_seen_at"] == "2026-06-30T12:00:00.000000"
+    assert merged["facts"][0]["last_seen_at"] == "2026-07-01T12:00:00.000000"
+    assert merged["facts"][0]["source_message_ids"] == ["msg_1", "msg_2"]
