@@ -18,7 +18,6 @@ from tools.text_tool import TextTool
 def build_tool_registry(
     project_root: Path | str | None = None,
     skills_root: Path | str | None = None,
-    output_root: Path | str | None = None,
     memory_root: Path | str | None = None,
 ) -> dict[str, BaseTool]:
     """构造工具注册表。
@@ -35,11 +34,6 @@ def build_tool_registry(
     else:
         skills_root = project_root / "skills"
 
-    if output_root is not None:
-        output_root = Path(output_root)
-    else:
-        output_root = uta_home() / "outputs"
-
     if memory_root is not None:
         memory_root = Path(memory_root)
     else:
@@ -52,7 +46,7 @@ def build_tool_registry(
         "code_tool": CodeTool(project_root=project_root),
         "file_tool": FileTool(),
         "geo_tool": GeoTool(geo_vendor_root),
-        "history_tool": HistoryTool(output_root=output_root, memory_root=memory_root),
+        "history_tool": HistoryTool(memory_root=memory_root),
         "text_tool": TextTool(),
         "table_tool": TableTool(),
         "report_tool": ReportTool(),

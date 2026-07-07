@@ -126,7 +126,7 @@ def run_minimal_loop(state, tool_registry=None, on_progress=None) -> AgentState:
 { "type": "...", "task_id": "...", "data": {...} }
 ```
 
-事件类型与现有 `build_log_lines` 的日志节点一一对应，把人类可读日志升级成机器可消费的事件流：
+事件类型与早期 CLI 日志节点（task_received / parsed / plan_created / step_started / tool_selected / tool_executed / verified / step_done / task_completed）一一对应，把人类可读日志升级成机器可消费的事件流：
 
 | type | data | 触发时机 |
 |---|---|---|
@@ -170,9 +170,9 @@ def run_minimal_loop(state, tool_registry=None, on_progress=None) -> AgentState:
 │ │ 1 读取文本   ✓    │ │ │ (Markdown 渲染)                   │ │
 │ │ 2 生成摘要   ⏳   │ │ │                                  │ │
 │ │ 3 输出报告   …    │ │ │                                  │ │
-│ ├──────────────────┤ │ ├──────────────────────────────────┤ │
-│ │ 实时日志          │ │ │ state.json (可折叠)              │ │
-│ │ [Main] received   │ │ │ { task_id, status, results... }  │ │
+│ ├──────────────────┤ │ │                                  │ │
+│ │ 实时日志          │ │ │                                  │ │
+│ │ [Main] received   │ │ │                                  │ │
 │ │ [Planner] 3 steps │ │ │                                  │ │
 │ │ [Verifier] passed │ │ │                                  │ │
 │ └──────────────────┘ │ └──────────────────────────────────┘ │
@@ -191,11 +191,10 @@ def run_minimal_loop(state, tool_registry=None, on_progress=None) -> AgentState:
 分上下两栏：
 
 - **计划栏**：收到 `plan_created` 事件后画出步骤列表，每步一个图标 + goal 文本。图标随事件流转：`…`(pending) → `⏳`(step_started) → `✓`(step_done, status=completed) / `✗`(failed)。点某步可展开看它对应的 tool_selected / tool_executed / verified 事件详情。
-- **日志栏**：一条滚动文本流，每收一个事件追加一行（格式沿用现有 `build_log_lines` 的人类可读风格，逐行实时出现而不是最后一次性打印）。
+- **日志栏**：一条滚动文本流，每收一个事件追加一行（逐行实时出现而不是最后一次性打印）。日志内容由进度事件直接渲染，不再依赖落盘的 `.log` 文件。
 
 **③ 右侧结果区**
-- **最终报告**：收到 `task_completed` 后，用 Markdown 渲染 `final_output`（v0.4 的 `report_tool` 输出本来就是 Markdown，天然适配）。
-- **state.json**：可折叠的原始状态展示，调 `get_result(task_id)` 拿完整 state，`JSON.stringify(..., null, 2)` 展示。折叠默认收起，给想看细节的学习者展开。
+- **最终报告**：收到 `task_completed` 后，用 Markdown 渲染 `final_output`（`report_tool` 输出本来就是 Markdown，天然适配）。报告占据整个右侧区域，给足阅读空间。
 
 ### 3.3 关键交互细节
 
@@ -278,10 +277,9 @@ app = BUNDLE(exe, name='UTA Desktop.app',
 | 文件 | 落地位置 | 作用 |
 |---|---|---|
 | LLM 配置 | `~/.uta/config.json` | base_url / model / api_key / ssl_verify |
-| 任务产物 | `~/.uta/outputs/states/` | 每次 task 的 state.json（替代现有 `outputs/`） |
-| 运行日志 | `~/.uta/outputs/logs/` | 每次 task 的 .log |
+| 任务历史 | `~/.uta/memory/task_history.json` | 每次任务的摘要与完整 final_output（由 JsonMemoryProvider 写入，历史功能读这里） |
 
-**这意味着桌面版运行时要把 state/log 写到 `~/.uta/outputs/`**——但不改 `run_task` 函数的默认值（那会影响 CLI）：`desktop/runner.py` 调 `run_task` 时显式传 `output_root=Path.home()/".uta"/"outputs"`，CLI 路径继续用 `outputs/`。`run_task` 已支持 `output_root` 参数，所以**对 main.py / run_task 零改动**。
+> **不再有 `outputs/states/*.json` 与 `outputs/logs/*.log` 落盘。** 早期版本为"学习看 State 序列化、看日志留痕"而落盘，现已移除：左侧执行过程的实时事件流已覆盖"看 Agent Loop 怎么转"的学习价值，跨任务历史统一收口到 `~/.uta/memory/`（JsonMemoryProvider 的正牌持久层）。`run_task` 不再接收 `output_root` 参数。
 
 ### 4.5 `~/.uta/config.json` 的结构
 

@@ -239,7 +239,7 @@ class ReportTool(BaseTool):
         return "\n".join(
             [
                 "## 状态与记忆",
-                "`AgentState` 是单次任务内的短期记忆，保存 plan、results、checks、feedbacks、replan_events 和 final_output。任务结束后，state 写入 `outputs/states/`，log 写入 `outputs/logs/`，长期 JSON Memory 写入 `memory/*.json` 或桌面端的 `~/.uta/memory/`。",
+                "`AgentState` 是单次任务内的短期记忆，保存 plan、results、checks、feedbacks、replan_events 和 final_output。任务结束后，摘要与最终输出写入长期 JSON Memory（`memory/task_history.json` 或桌面端的 `~/.uta/memory/`），供历史功能读取。",
             ]
         )
 

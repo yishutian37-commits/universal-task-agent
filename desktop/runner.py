@@ -20,14 +20,12 @@ class TaskRunner:
     def __init__(
         self,
         window=None,
-        output_root: Path | str | None = None,
         memory_root: Path | str | None = None,
         settings_store: SettingsStore | None = None,
         run_task_func: Callable[..., Any] | None = None,
     ):
         home = uta_home()
         self.window = window
-        self.output_root = Path(output_root) if output_root is not None else home / "outputs"
         self.memory_root = Path(memory_root) if memory_root is not None else home / "memory"
         self.settings_store = settings_store if settings_store is not None else SettingsStore()
         self.run_task_func = run_task_func
@@ -90,12 +88,10 @@ class TaskRunner:
             run_task_func = self.run_task_func if self.run_task_func is not None else run_task
             state = run_task_func(
                 user_input,
-                output_root=self.output_root,
                 task_id=task_id,
                 tool_registry=build_tool_registry(
                     project_root=resource_path("."),
                     skills_root=resource_path("skills"),
-                    output_root=self.output_root,
                     memory_root=self.memory_root,
                 ),
                 memory_provider=JsonMemoryProvider(self.memory_root),

@@ -57,7 +57,6 @@ class FakeHistoryStore:
                 "ok": True,
                 "task_id": task_id,
                 "state": {"task_id": task_id, "status": "completed"},
-                "log": "[Main] task received\n",
                 "final_output": "done",
             }
         return {"ok": False, "error": "任务不存在"}
@@ -239,7 +238,6 @@ def test_desktop_api_gets_history_run_detail(tmp_path, monkeypatch):
 
     assert result["ok"] is True
     assert result["final_output"] == "done"
-    assert result["log"] == "[Main] task received\n"
     assert history_store.requested_task_ids == ["task_fake"]
 
 
@@ -388,6 +386,58 @@ def test_desktop_api_general_chat_uses_llm_without_starting_runner(tmp_path, mon
     assert conversation["messages"][1]["content"] == "我的建议是先从一个小项目开始。"
 
 
+def test_desktop_api_general_chat_includes_same_conversation_context(tmp_path, monkeypatch):
+    monkeypatch.setenv("UTA_HOME", str(tmp_path / "uta"))
+    runner = FakeRunner()
+    chat_client = FakeChatClient("你刚才说你叫天甲树，正在做 UTA 桌面端。")
+    conversation_store = ConversationStore(tmp_path / "conversations")
+    api = DesktopAPI(
+        settings_store=SettingsStore(),
+        runner=runner,
+        conversation_store=conversation_store,
+        chat_client=chat_client,
+    )
+    api.save_settings({"llm_api_key": "secret-key"})
+    conversation_id = conversation_store.new_conversation()["conversation"]["conversation_id"]
+    conversation_store.append_message(conversation_id, role="user", content="我叫天甲树，正在做 UTA 桌面端。")
+    conversation_store.append_message(conversation_id, role="assistant", content="记住了。")
+
+    result = api.run_chat_message(conversation_id, "我刚才说我叫什么？")
+
+    assert result["ok"] is True
+    assert runner.started_inputs == []
+    assert "同一对话前文" in chat_client.calls[0][1]
+    assert "我叫天甲树，正在做 UTA 桌面端。" in chat_client.calls[0][1]
+    assert "记住了。" in chat_client.calls[0][1]
+    assert "我刚才说我叫什么？" in chat_client.calls[0][1]
+
+
+def test_desktop_api_contextual_greeting_uses_llm_with_same_conversation_context(tmp_path, monkeypatch):
+    monkeypatch.setenv("UTA_HOME", str(tmp_path / "uta"))
+    runner = FakeRunner()
+    chat_client = FakeChatClient("你刚才说你叫天甲树。")
+    conversation_store = ConversationStore(tmp_path / "conversations")
+    api = DesktopAPI(
+        settings_store=SettingsStore(),
+        runner=runner,
+        conversation_store=conversation_store,
+        chat_client=chat_client,
+    )
+    api.save_settings({"llm_api_key": "secret-key"})
+    conversation_id = conversation_store.new_conversation()["conversation"]["conversation_id"]
+    conversation_store.append_message(conversation_id, role="user", content="我叫天甲树。")
+    conversation_store.append_message(conversation_id, role="assistant", content="好的，我记住了。")
+
+    result = api.run_chat_message(conversation_id, "你好，你记得我刚才说我叫什么吗？")
+
+    assert result["ok"] is True
+    assert result["category"] == "general_chat"
+    assert result["message"] == "你刚才说你叫天甲树。"
+    assert runner.started_inputs == []
+    assert "同一对话前文" in chat_client.calls[0][1]
+    assert "我叫天甲树。" in chat_client.calls[0][1]
+
+
 def test_desktop_api_general_chat_requires_key_without_starting_runner(tmp_path, monkeypatch):
     monkeypatch.setenv("UTA_HOME", str(tmp_path / "uta"))
     runner = FakeRunner()
@@ -420,6 +470,28 @@ def test_desktop_api_run_chat_message_starts_runner_and_records_messages(tmp_pat
     assert runner.started_inputs == ["帮我总结"]
     assert [message["role"] for message in conversation["messages"]] == ["user", "assistant"]
     assert conversation["messages"][1]["status"] == "running"
+
+
+def test_desktop_api_task_includes_same_conversation_context_without_polluting_saved_message(tmp_path, monkeypatch):
+    monkeypatch.setenv("UTA_HOME", str(tmp_path / "uta"))
+    runner = FakeRunner()
+    conversation_store = ConversationStore(tmp_path / "conversations")
+    api = DesktopAPI(settings_store=SettingsStore(), runner=runner, conversation_store=conversation_store)
+    api.save_settings({"llm_api_key": "secret-key"})
+    conversation_id = conversation_store.new_conversation()["conversation"]["conversation_id"]
+    conversation_store.append_message(conversation_id, role="user", content="这次项目叫 UTA 桌面端记忆修复。")
+    conversation_store.append_message(conversation_id, role="assistant", content="我会围绕这个项目继续。")
+
+    result = api.run_chat_message(conversation_id, "帮我总结刚才提到的项目")
+    conversation = conversation_store.get_conversation(conversation_id)["conversation"]
+
+    assert result["ok"] is True
+    assert len(runner.started_inputs) == 1
+    assert "同一对话前文" in runner.started_inputs[0]
+    assert "这次项目叫 UTA 桌面端记忆修复。" in runner.started_inputs[0]
+    assert "帮我总结刚才提到的项目" in runner.started_inputs[0]
+    assert conversation["messages"][-2]["role"] == "user"
+    assert conversation["messages"][-2]["content"] == "帮我总结刚才提到的项目"
 
 
 def test_desktop_api_sync_chat_result_updates_assistant_message(tmp_path, monkeypatch):

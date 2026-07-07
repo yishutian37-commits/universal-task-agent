@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import argparse
 from datetime import datetime
-from pathlib import Path
 
 from core.loop import run_minimal_loop
 from core.skill_loader import SkillLoader
@@ -30,56 +29,6 @@ def apply_task_to_state(state: AgentState, task) -> None:
     state.touch()
 
 
-def build_log_lines(state: AgentState) -> list[str]:
-    result = state.results[-1] if state.results else None
-    lines = [
-        "[Main] task received",
-        f"[TaskParser] task_type = {state.task_type}",
-        f"[TaskParser] intent = {state.intent}",
-    ]
-    matched_skill_id = state.matched_skill.get("id") if state.matched_skill else "none"
-    lines.append(f"[SkillLoader] matched_skill = {matched_skill_id}")
-
-    if state.plan is not None:
-        lines.append(f"[Planner] created {len(state.plan.steps)} steps")
-        for index, step in enumerate(state.plan.steps):
-            lines.append(f"[Loop] step {step.step_id} started: {step.goal}")
-            if index < len(state.results):
-                step_result = state.results[index]
-                lines.append(f"[Router] selected tool = {step_result.tool_name}")
-                lines.append(f"[Executor] tool = {step_result.tool_name}")
-            if index < len(state.checks):
-                lines.append(f"[Verifier] passed = {state.checks[index].passed}")
-
-    for feedback in state.feedbacks:
-        lines.append(f"[Reflection] failure_type = {feedback.failure_type}")
-        lines.append(f"[Reflection] repair_strategy = {feedback.repair_strategy}")
-
-    lines.append(f"[Replan] count = {state.replan_count}")
-    for event in state.replan_events:
-        lines.append(
-            "[Replan] failed_step = "
-            f"{event.get('failed_step_id')}, resume_step = {event.get('resume_step_id')}"
-        )
-
-    lines.append(f"[Memory] saved = {str(state.memory_saved).lower()}")
-
-    lines.extend(
-        [
-            f"[Result] success = {result.success if result else False}",
-            f"[State] status = {state.status}",
-        ]
-    )
-    return lines
-
-
-def save_log(state: AgentState, log_dir: Path) -> Path:
-    log_dir.mkdir(parents=True, exist_ok=True)
-    log_path = log_dir / f"{state.task_id}.log"
-    log_path.write_text("\n".join(build_log_lines(state)) + "\n", encoding="utf-8")
-    return log_path
-
-
 def emit_progress(on_progress, event_type: str, state: AgentState, data: dict) -> None:
     if on_progress is None:
         return
@@ -94,7 +43,6 @@ def emit_progress(on_progress, event_type: str, state: AgentState, data: dict) -
 
 def run_task(
     task: str,
-    output_root: Path | str = "outputs",
     task_id: str | None = None,
     task_parser=None,
     tool_registry=None,
@@ -102,7 +50,6 @@ def run_task(
     skill_loader=None,
     on_progress=None,
 ) -> AgentState:
-    root = Path(output_root)
     state = create_initial_state(task_id or generate_task_id(), task)
     emit_progress(
         on_progress,
@@ -143,8 +90,6 @@ def run_task(
         state,
         {"saved": state.memory_saved},
     )
-    state.save_json(root / "states")
-    save_log(state, root / "logs")
     emit_progress(
         on_progress,
         "task_completed",
@@ -157,13 +102,12 @@ def run_task(
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Universal Task Agent local learning agent")
     parser.add_argument("--task", required=True, help="要执行的任务")
-    parser.add_argument("--output-root", default="outputs", help="运行产物输出目录")
     return parser.parse_args()
 
 
 def main() -> None:
     args = parse_args()
-    state = run_task(args.task, output_root=args.output_root)
+    state = run_task(args.task)
     if state.status == "completed":
         print(f"任务已完成：{state.final_output}")
     else:

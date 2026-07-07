@@ -54,6 +54,7 @@ class JsonMemoryProvider(BaseMemoryProvider):
             "task_type": state.task_type,
             "intent": state.intent,
             "status": state.status,
+            "final_output": state.final_output or "",
             "final_output_preview": self._preview(state.final_output),
             "result_count": len(state.results),
             "check_count": len(state.checks),

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from fastapi import FastAPI
 from pydantic import BaseModel
 
@@ -13,7 +15,6 @@ app = FastAPI(title="UTA API", version="1.2")
 class RunTaskRequest(BaseModel):
     task: str
     task_id: str | None = None
-    output_root: str = "outputs"
 
 
 @app.get("/health")
@@ -26,7 +27,6 @@ def run_task_endpoint(payload: RunTaskRequest) -> dict:
     try:
         state = run_task(
             payload.task,
-            output_root=payload.output_root,
             task_id=payload.task_id,
             memory_provider=False,
         )
@@ -51,10 +51,10 @@ def run_task_endpoint(payload: RunTaskRequest) -> dict:
 
 
 @app.get("/v1/runs")
-def list_runs(output_root: str = "outputs") -> dict:
-    return HistoryStore(output_root).list_runs()
+def list_runs(memory_root: str = "memory") -> dict:
+    return HistoryStore(memory_root).list_runs()
 
 
 @app.get("/v1/runs/{task_id}")
-def get_run(task_id: str, output_root: str = "outputs") -> dict:
-    return HistoryStore(output_root).get_run(task_id)
+def get_run(task_id: str, memory_root: str = "memory") -> dict:
+    return HistoryStore(memory_root).get_run(task_id)

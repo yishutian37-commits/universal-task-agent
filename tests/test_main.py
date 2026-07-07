@@ -2,8 +2,8 @@ import json
 from datetime import datetime
 
 import main
-from core.state import Feedback, Task
-from main import build_log_lines, create_initial_state, run_task
+from core.state import Task
+from main import create_initial_state, run_task
 from tools.base_tool import BaseTool
 from tools.history_tool import HistoryTool
 
@@ -126,10 +126,9 @@ def test_create_initial_state_starts_unknown_before_parser():
     assert state.intent == ""
 
 
-def test_run_task_writes_state_and_log(tmp_path):
+def test_run_task_completes_with_summary():
     state = run_task(
         "帮我总结一段文本",
-        output_root=tmp_path,
         task_id="task_test",
         task_parser=FakeParser(),
         tool_registry=make_static_summary_registry(),
@@ -137,32 +136,18 @@ def test_run_task_writes_state_and_log(tmp_path):
         skill_loader=False,
     )
 
-    state_path = tmp_path / "states" / "task_test_state.json"
-    log_path = tmp_path / "logs" / "task_test.log"
-
     assert state.status == "completed"
     assert state.final_output == VALID_SUMMARY_REPORT
-    assert state_path.exists()
-    assert log_path.exists()
-
-    saved = json.loads(state_path.read_text(encoding="utf-8"))
-    assert saved["status"] == "completed"
-    assert saved["final_output"] == VALID_SUMMARY_REPORT
-    assert saved["task_type"] == "summarize"
-    assert saved["intent"] == "summarize_article"
-    assert len(saved["plan"]["steps"]) == 3
-
-    log_text = log_path.read_text(encoding="utf-8")
-    assert "[Planner] created 3 steps" in log_text
-    assert "[Router] selected tool = file_tool" in log_text
+    assert state.task_type == "summarize"
+    assert state.intent == "summarize_article"
+    assert len(state.plan.steps) == 3
 
 
-def test_run_task_emits_progress_events(tmp_path):
+def test_run_task_emits_progress_events():
     events = []
 
     state = run_task(
         "帮我总结一段文本",
-        output_root=tmp_path,
         task_id="task_test",
         task_parser=FakeParser(),
         tool_registry=make_static_summary_registry(),
@@ -187,12 +172,11 @@ def test_run_task_emits_progress_events(tmp_path):
     assert completed["data"]["final_output"] == VALID_SUMMARY_REPORT
 
 
-def test_run_task_outputs_real_summary_with_injected_tools(tmp_path):
+def test_run_task_outputs_real_summary_with_injected_tools():
     summary = VALID_SUMMARY_REPORT
 
     state = run_task(
         "帮我总结一段文本",
-        output_root=tmp_path,
         task_id="task_test",
         task_parser=FakeParser(),
         tool_registry=make_static_summary_registry(summary),
@@ -204,10 +188,9 @@ def test_run_task_outputs_real_summary_with_injected_tools(tmp_path):
     assert state.final_output == summary
 
 
-def test_run_task_keeps_complex_task_checklist_out_of_final_output(tmp_path):
+def test_run_task_keeps_complex_task_checklist_out_of_final_output():
     state = run_task(
         "帮我执行复杂任务：[1]分析当前项目状态 [2]列出下一步计划 [3]总结风险点",
-        output_root=tmp_path,
         task_id="task_complex",
         task_parser=FakeParser(task_type="complex_task", intent="execute_complex_task"),
         tool_registry={
@@ -228,10 +211,9 @@ def test_run_task_keeps_complex_task_checklist_out_of_final_output(tmp_path):
     assert "## 分步结果" in state.final_output
 
 
-def test_run_task_outputs_step_results_for_complex_task(tmp_path):
+def test_run_task_outputs_step_results_for_complex_task():
     state = run_task(
         "帮我执行复杂任务：[1]总结全文核心观点 [2]提炼 5 个关键结论",
-        output_root=tmp_path,
         task_id="task_complex_results",
         task_parser=FakeParser(task_type="complex_task", intent="execute_complex_task"),
         tool_registry={
@@ -252,10 +234,9 @@ def test_run_task_outputs_step_results_for_complex_task(tmp_path):
     assert "## 执行结果" not in state.final_output
 
 
-def test_run_task_unwraps_markdown_code_fences_in_complex_step_results(tmp_path):
+def test_run_task_unwraps_markdown_code_fences_in_complex_step_results():
     state = run_task(
         "帮我执行复杂任务：[1]找出文章的逻辑结构",
-        output_root=tmp_path,
         task_id="task_complex_fence",
         task_parser=FakeParser(task_type="complex_task", intent="execute_complex_task"),
         tool_registry={
@@ -275,17 +256,24 @@ def test_run_task_unwraps_markdown_code_fences_in_complex_step_results(tmp_path)
 
 
 def test_run_task_lists_previous_tasks_for_history_query(tmp_path):
-    states_dir = tmp_path / "states"
-    states_dir.mkdir(parents=True)
-    (states_dir / "task_old_state.json").write_text(
+    memory_root = tmp_path / "memory"
+    memory_root.mkdir(parents=True)
+    (memory_root / "task_history.json").write_text(
         json.dumps(
             {
-                "task_id": "task_old",
-                "user_input": "帮我做 GEO 分析",
-                "task_type": "geo_analysis",
-                "intent": "geo_analysis",
-                "status": "completed",
-                "final_output": "done",
+                "version": 1,
+                "tasks": [
+                    {
+                        "task_id": "task_old",
+                        "user_input": "帮我做 GEO 分析",
+                        "task_type": "geo_analysis",
+                        "intent": "geo_analysis",
+                        "status": "completed",
+                        "final_output": "done",
+                        "final_output_preview": "done",
+                        "updated_at": "2026-06-25 08:00:00",
+                    }
+                ],
             },
             ensure_ascii=False,
         ),
@@ -294,11 +282,10 @@ def test_run_task_lists_previous_tasks_for_history_query(tmp_path):
 
     state = run_task(
         "我之前让你进行过什么任务，给我列出来",
-        output_root=tmp_path,
         task_id="task_history",
         task_parser=FakeParser(task_type="history_query", intent="list_previous_tasks"),
         tool_registry={
-            "history_tool": HistoryTool(output_root=tmp_path, memory_root=tmp_path / "memory"),
+            "history_tool": HistoryTool(memory_root=memory_root),
         },
         memory_provider=False,
         skill_loader=False,
@@ -311,29 +298,17 @@ def test_run_task_lists_previous_tasks_for_history_query(tmp_path):
     assert "## 摘要" not in state.final_output
 
 
-def test_run_task_writes_parser_result_to_state_and_log(tmp_path):
+def test_run_task_carries_parser_result_into_state():
     state = run_task(
         "帮我分析 CSV",
-        output_root=tmp_path,
         task_id="task_test",
         task_parser=FakeParser(task_type="data_analysis", intent="analyze_csv"),
         memory_provider=False,
         skill_loader=False,
     )
 
-    state_path = tmp_path / "states" / "task_test_state.json"
-    log_path = tmp_path / "logs" / "task_test.log"
-
     assert state.task_type == "data_analysis"
     assert state.intent == "analyze_csv"
-
-    saved = json.loads(state_path.read_text(encoding="utf-8"))
-    assert saved["task_type"] == "data_analysis"
-    assert saved["intent"] == "analyze_csv"
-
-    log_text = log_path.read_text(encoding="utf-8")
-    assert "[TaskParser] task_type = data_analysis" in log_text
-    assert "[TaskParser] intent = analyze_csv" in log_text
 
 
 def test_run_task_outputs_data_analysis_report(tmp_path):
@@ -348,7 +323,6 @@ def test_run_task_outputs_data_analysis_report(tmp_path):
 
     state = run_task(
         f"分析 {csv_path}",
-        output_root=tmp_path,
         task_id="task_test",
         task_parser=FakeParser(task_type="data_analysis", intent="analyze_table"),
         memory_provider=False,
@@ -358,15 +332,13 @@ def test_run_task_outputs_data_analysis_report(tmp_path):
     assert state.status == "completed"
     assert "## 字段说明" in state.final_output
     assert "行数：3" in state.final_output
-    assert (tmp_path / "states" / "task_test_state.json").exists()
 
 
-def test_run_task_saves_memory_with_injected_provider(tmp_path):
+def test_run_task_saves_memory_with_injected_provider():
     memory_provider = FakeMemoryProvider()
 
     state = run_task(
         "帮我总结一段文本",
-        output_root=tmp_path,
         task_id="task_test",
         task_parser=FakeParser(),
         tool_registry=make_static_summary_registry(),
@@ -374,19 +346,13 @@ def test_run_task_saves_memory_with_injected_provider(tmp_path):
         skill_loader=False,
     )
 
-    saved = json.loads((tmp_path / "states" / "task_test_state.json").read_text(encoding="utf-8"))
-    log_text = (tmp_path / "logs" / "task_test.log").read_text(encoding="utf-8")
-
     assert state.memory_saved is True
     assert memory_provider.saved_task_ids == ["task_test"]
-    assert saved["memory_saved"] is True
-    assert "[Memory] saved = true" in log_text
 
 
-def test_run_task_can_disable_memory(tmp_path):
+def test_run_task_can_disable_memory():
     state = run_task(
         "帮我总结一段文本",
-        output_root=tmp_path,
         task_id="task_test",
         task_parser=FakeParser(),
         tool_registry=make_static_summary_registry(),
@@ -394,10 +360,7 @@ def test_run_task_can_disable_memory(tmp_path):
         skill_loader=False,
     )
 
-    log_text = (tmp_path / "logs" / "task_test.log").read_text(encoding="utf-8")
-
     assert state.memory_saved is False
-    assert "[Memory] saved = false" in log_text
 
 
 def test_run_task_uses_default_json_memory_provider(tmp_path, monkeypatch):
@@ -405,7 +368,6 @@ def test_run_task_uses_default_json_memory_provider(tmp_path, monkeypatch):
 
     state = run_task(
         "帮我总结一段文本",
-        output_root=tmp_path / "outputs",
         task_id="task_test",
         task_parser=FakeParser(),
         tool_registry=make_static_summary_registry(),
@@ -418,42 +380,25 @@ def test_run_task_uses_default_json_memory_provider(tmp_path, monkeypatch):
     assert history["tasks"][0]["task_id"] == "task_test"
 
 
-def test_log_lines_include_reflection_feedback():
-    state = create_initial_state("task_test", "帮我总结")
-    state.feedbacks.append(
-        Feedback(
-            failure_type="incomplete_output",
-            root_cause="缺少必要小节：风险点",
-            repair_strategy="补齐风险点小节",
-        )
+def test_default_memory_stores_full_final_output(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+
+    state = run_task(
+        "帮我总结一段文本",
+        task_id="task_test",
+        task_parser=FakeParser(),
+        tool_registry=make_static_summary_registry(),
+        skill_loader=False,
     )
 
-    log_text = "\n".join(build_log_lines(state))
+    history = json.loads((tmp_path / "memory" / "task_history.json").read_text(encoding="utf-8"))
+    record = history["tasks"][0]
 
-    assert "[Reflection] failure_type = incomplete_output" in log_text
-    assert "[Reflection] repair_strategy = 补齐风险点小节" in log_text
-
-
-def test_build_log_lines_includes_replan_events():
-    state = create_initial_state("task_test", "测试")
-    state.task_type = "summarize"
-    state.replan_count = 1
-    state.replan_events.append(
-        {
-            "failed_step_id": 2,
-            "failed_goal": "提取核心信息",
-            "resume_step_id": 2,
-            "root_cause": "缺少必要小节：风险点",
-        }
-    )
-
-    lines = build_log_lines(state)
-
-    assert "[Replan] count = 1" in lines
-    assert "[Replan] failed_step = 2, resume_step = 2" in lines
+    assert record["final_output"] == state.final_output
+    assert record["final_output_preview"]
 
 
-def test_run_task_saves_matched_skill_with_injected_loader(tmp_path):
+def test_run_task_saves_matched_skill_with_injected_loader():
     skill = {
         "id": "summarize_article",
         "name": "文本总结 Skill",
@@ -465,7 +410,6 @@ def test_run_task_saves_matched_skill_with_injected_loader(tmp_path):
 
     state = run_task(
         "帮我总结一段文本",
-        output_root=tmp_path,
         task_id="task_test",
         task_parser=FakeParser(),
         tool_registry=make_static_summary_registry(),
@@ -473,19 +417,13 @@ def test_run_task_saves_matched_skill_with_injected_loader(tmp_path):
         skill_loader=skill_loader,
     )
 
-    saved = json.loads((tmp_path / "states" / "task_test_state.json").read_text(encoding="utf-8"))
-    log_text = (tmp_path / "logs" / "task_test.log").read_text(encoding="utf-8")
-
     assert skill_loader.seen_task_types == ["summarize"]
     assert state.matched_skill["id"] == "summarize_article"
-    assert saved["matched_skill"]["id"] == "summarize_article"
-    assert "[SkillLoader] matched_skill = summarize_article" in log_text
 
 
-def test_run_task_can_disable_skill_loader(tmp_path):
+def test_run_task_can_disable_skill_loader():
     state = run_task(
         "帮我总结一段文本",
-        output_root=tmp_path,
         task_id="task_test",
         task_parser=FakeParser(),
         tool_registry=make_static_summary_registry(),
@@ -493,10 +431,7 @@ def test_run_task_can_disable_skill_loader(tmp_path):
         skill_loader=False,
     )
 
-    log_text = (tmp_path / "logs" / "task_test.log").read_text(encoding="utf-8")
-
     assert state.matched_skill is None
-    assert "[SkillLoader] matched_skill = none" in log_text
 
 
 def test_run_task_uses_default_skill_loader_from_cwd(tmp_path, monkeypatch):
@@ -526,7 +461,6 @@ workflow:
 
     state = run_task(
         "帮我总结一段文本",
-        output_root=tmp_path / "outputs",
         task_id="task_test",
         task_parser=FakeParser(),
         tool_registry=make_static_summary_registry(),
@@ -539,21 +473,16 @@ workflow:
 
 def test_run_task_outputs_research_report_with_fixture_search(tmp_path, monkeypatch):
     monkeypatch.setenv("SEARCH_PROVIDER", "fixture")
+    monkeypatch.chdir(tmp_path)
 
     state = run_task(
         "调研 UTA Agent 框架下一步路线",
-        output_root=tmp_path,
         task_id="task_test",
         memory_provider=False,
         skill_loader=False,
     )
 
-    state_path = tmp_path / "states" / "task_test_state.json"
-    log_path = tmp_path / "logs" / "task_test.log"
-
     assert state.status == "completed"
     assert state.task_type == "research"
     assert "## 结论" in state.final_output
     assert "## 来源" in state.final_output
-    assert state_path.exists()
-    assert log_path.exists()
