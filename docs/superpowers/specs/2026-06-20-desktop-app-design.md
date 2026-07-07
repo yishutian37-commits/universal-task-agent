@@ -1,6 +1,6 @@
 # UTA 桌面端应用 · 架构基线
 
-> 文档版本：**Baseline v1.0**（原 v1.0 前瞻设计改写）
+> 文档版本：**Baseline v1.1**（含包体积优化 + 任务取消完成记录）
 > 对应 PRD：UTA PRD v6.1（Final Start Version）
 > 对应实现：`desktop/`（tag `v1.2-rag-desktop-integrated` 起）
 > 记录日期：2026-07-08
@@ -182,16 +182,20 @@ bash desktop/build/build_macos.sh
 
 ## 6. 演进 Backlog
 
-尚未覆盖、可后续增强的项：
-
-| 项 | 说明 | 优先级 |
+| 项 | 说明 | 状态 |
 |---|---|---|
+| ~~包体积优化~~ | ~~595M→109M~~：spec excludes 排除 torch/transformers/scipy/sklearn 等打包后不用的 ML 重库 | ✅ 已完成（2026-07-08） |
+| ~~任务取消~~ | ~~cancel 占位~~：基于 on_progress 检查点的软取消，TaskCancelledError 在 LLM 调用间隙中断 loop | ✅ 已完成（2026-07-08） |
+| 分发包签名 | 当前 **ad-hoc 签名**（PyInstaller 自动，`codesign --verify` 通过），本机无 Apple Developer 证书；真签名需购买 Developer ID（$99/年）并配置 notarization | ⏸ 保持现状 |
 | api_key 加密存储 | 当前 `~/.uta/config.json` 明文存 key；可升级 macOS Keychain | 低 |
-| 任务取消 | `cancel_task` 当前返回"不支持"；TaskRunner 线程不可中断 | 中 |
 | 多任务并发 | 当前单任务（运行中再点运行被禁用） | 低 |
 | 应用图标 | `uta_app.spec` 中 `icon=None`，用系统默认 | 低 |
-| 分发包签名 | 当前未做 codesign（`codesign_identity=None`），用户首次打开需手动允许 | 中 |
-| 包体积优化 | 当前 214MB（含 RAG/torch 等重库），可考虑拆分或懒加载 | 中 |
+
+### 已完成项的设计要点
+
+**包体积优化**：`desktop/build/uta_app.spec` 的 `excludes` 排除 torch/transformers/sentence_transformers/scipy/sklearn 及传递依赖。依据：`desktop/rag_client.py:40-43` 在 `sys.frozen=True` 时强制 `use_real=False`，这些库运行时永不加载。保留 pandas（table_tool）、cryptography（pywebview 依赖）、lxml（docx/pptx 依赖）。
+
+**任务取消**：`desktop/runner.py` 的 `TaskRunner` 维护 `threading.Event`。`cancel(task_id)` set 标志；`_emit_progress` 入口检查标志，set 则抛 `TaskCancelledError(Exception)`；异常沿 loop→run_task 冒泡（两者均无 try/except）回到 `_run`，由 `except TaskCancelledError` 分支记 `status=cancelled`。设计边界：LLM 调用本身不可中断（同步 httpx），取消延迟最长约一个 timeout；取消粒度是步骤间。不改 `core/loop.py`，检查点全在 runner 层。
 
 ---
 
