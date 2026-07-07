@@ -105,7 +105,24 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[],
+    excludes=[
+        # RAG 真实模型路径的 ML 重库。
+        # 打包环境 sys.frozen=True 时 rag_client 强制 use_real=False，
+        # 走 HashingEmbedder（纯标准库），这些库运行时永不加载。
+        # 仅因 local_embedder.py 方法体内的 import 被 PyInstaller 静态拖入。
+        "torch",
+        "transformers",
+        "sentence_transformers",
+        "scipy",
+        "sklearn",
+        "scikit_learn",
+        # 上述库的传递依赖，一并清理
+        "networkx",
+        "joblib",
+        "threadpoolctl",
+        "sympy",
+        "mpmath",
+    ],
     noarchive=False,
     optimize=0,
 )
