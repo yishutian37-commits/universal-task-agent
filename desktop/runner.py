@@ -16,6 +16,18 @@ def _generate_task_id() -> str:
     return "task_" + datetime.now().strftime("%Y%m%d_%H%M%S_%f")
 
 
+class TaskCancelledError(Exception):
+    """用户取消任务时，在 on_progress 检查点抛出。
+
+    继承 Exception（非 BaseException），确保被 _run 的异常处理覆盖。
+    从 _emit_progress 抛出 → 沿 loop/run_task 冒泡（两者均无 try/except）→ 回到 _run。
+    """
+
+    def __init__(self, task_id: str = "") -> None:
+        super().__init__(f"task cancelled: {task_id}" if task_id else "task cancelled")
+        self.task_id = task_id
+
+
 class TaskRunner:
     def __init__(
         self,
@@ -32,6 +44,7 @@ class TaskRunner:
         self._lock = threading.Lock()
         self._thread: threading.Thread | None = None
         self._running_task_id: str | None = None
+        self._cancel_event = threading.Event()
         self._results: dict[str, dict[str, Any]] = {}
 
     def bind_window(self, window) -> None:
@@ -43,6 +56,7 @@ class TaskRunner:
                 raise RuntimeError("已有任务正在运行")
             task_id = _generate_task_id()
             self._running_task_id = task_id
+            self._cancel_event.clear()
             self._results[task_id] = {
                 "task_id": task_id,
                 "status": "running",
@@ -70,7 +84,11 @@ class TaskRunner:
             return dict(result)
 
     def cancel(self, task_id: str) -> dict[str, Any]:
-        return {"ok": False, "task_id": task_id, "error": "当前版本暂不支持取消"}
+        with self._lock:
+            if self._running_task_id != task_id:
+                return {"ok": False, "error": "任务不在运行中"}
+            self._cancel_event.set()
+        return {"ok": True, "task_id": task_id, "status": "cancelling"}
 
     def wait_for_task(self, task_id: str, timeout: float | None = None) -> dict[str, Any]:
         thread = self._thread
@@ -106,6 +124,17 @@ class TaskRunner:
                         "state": state.to_dict(),
                     }
                 )
+        except TaskCancelledError:
+            with self._lock:
+                self._results[task_id].update(
+                    {
+                        "status": "cancelled",
+                        "final_output": None,
+                    }
+                )
+            self._emit_progress_safely(
+                {"type": "cancelled", "task_id": task_id, "data": {}}
+            )
         except Exception as exc:
             event = {
                 "type": "error",
@@ -127,6 +156,15 @@ class TaskRunner:
                     self._running_task_id = None
 
     def _emit_progress(self, event: dict[str, Any]) -> None:
+        # 取消检查点：loop 在每次 LLM 调用前后都会调 on_progress（即此方法），
+        # 在此检查取消标志能在两次 LLM 调用之间及时中断。
+        if self._cancel_event.is_set():
+            raise TaskCancelledError(task_id=str(event.get("task_id", "")))
+
+        self._emit_progress_safely(event)
+
+    def _emit_progress_safely(self, event: dict[str, Any]) -> None:
+        """推送事件但不检查取消标志（用于 cancelled/error 事件自身）。"""
         task_id = str(event.get("task_id", ""))
         with self._lock:
             if task_id in self._results:
