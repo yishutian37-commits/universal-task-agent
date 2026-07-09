@@ -22,29 +22,6 @@ def test_frontend_keeps_plan_and_logs_in_separate_scroll_regions():
     assert ".logs {\n  min-height: 0;\n  height: auto;" in css
 
 
-def test_frontend_includes_run_history_view():
-    html = (FRONTEND_ROOT / "index.html").read_text(encoding="utf-8")
-
-    assert 'id="openHistory"' in html
-    assert "运行记录" in html
-    assert 'id="taskView"' in html
-    assert 'id="historyView"' in html
-    assert 'id="historyList"' in html
-    assert 'id="historyReport"' in html
-    assert 'id="historyLogPanel"' in html
-    assert 'id="historyStateJson"' in html
-
-
-def test_frontend_calls_history_bridge_methods():
-    js = (FRONTEND_ROOT / "app.js").read_text(encoding="utf-8")
-
-    assert 'callApi("list_runs")' in js
-    assert 'callApi("get_run", taskId)' in js
-    assert "function showHistoryView" in js
-    assert "function renderHistoryList" in js
-    assert "function selectHistoryRun" in js
-
-
 def test_frontend_includes_memory_view():
     html = (FRONTEND_ROOT / "index.html").read_text(encoding="utf-8")
 
@@ -69,7 +46,7 @@ def test_frontend_calls_memory_bridge_method():
 
     assert 'callApi("get_memory_overview")' in js
     assert 'callApi("compress_conversation"' in js
-    assert "function showMemoryView" in js
+    assert "function showCapabilityPage" in js
     assert "function renderMemoryOverview" in js
     assert "function renderConversationShortTermMemory" in js
     assert "function renderLongTermMemoryGroups" in js
@@ -305,16 +282,14 @@ def test_frontend_sidebar_nav_has_icons_without_breaking_ids():
     css = (FRONTEND_ROOT / "style.css").read_text(encoding="utf-8")
 
     for nav_id in [
-        "openTaskView",
-        "openHistory",
+        "newConversation",
         "openMemory",
         "openKnowledge",
         "openSkills",
         "openSettingsSide",
     ]:
         assert f'id="{nav_id}"' in html
-    assert html.count("<svg") >= 6
-    assert ".nav svg" in css
+    assert html.count('class="navIcon"') >= 4
     assert ".nav.active::before" in css
 
 
@@ -340,10 +315,21 @@ def test_frontend_dark_memory_cards_do_not_clip_titles():
     assert "min-width: 0;" in css
 
 
-def test_frontend_can_load_conversation_history():
+def test_frontend_sidebar_keeps_conversations_and_capability_entries():
+    html = (FRONTEND_ROOT / "index.html").read_text(encoding="utf-8")
+
+    for element_id in ["newConversation", "conversationList", "openKnowledge", "openMemory", "openSkills", "openSettingsSide"]:
+        assert f'id="{element_id}"' in html
+    assert "知识库" in html
+    assert "记忆中心" in html
+    assert "技能与工具" in html
+
+
+def test_frontend_can_load_conversations_into_sidebar():
     js = (FRONTEND_ROOT / "app.js").read_text(encoding="utf-8")
 
     assert 'callApi("list_conversations")' in js
     assert 'callApi("get_conversation", conversationId)' in js
-    assert "function loadConversationHistory" in js
-    assert "function selectConversation" in js
+    assert "function loadConversationSidebar" in js
+    assert "function renderConversationSidebar" in js
+    assert "function openConversation" in js

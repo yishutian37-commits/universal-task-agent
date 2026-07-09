@@ -8,25 +8,30 @@
 </head>
 <body>
   <div class="window">
-    <header class="titlebar">
-      <strong>UTA Desktop</strong>
-      <span id="bridgeState">初始化</span>
-    </header>
-
     <div class="app">
-      <aside class="sidebar">
-        <div class="brand">
-          <h1>UTA</h1>
-          <span>本地 Agent 控制台</span>
+      <aside class="sidebar" id="conversationSidebar">
+        <div class="brandRow">
+          <strong>UTA</strong>
+          <span id="bridgeState">初始化</span>
         </div>
-        <button class="nav active" type="button" id="openTaskView"><svg aria-hidden="true" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg><span>任务</span></button>
-        <button class="nav" type="button" id="openHistory"><svg aria-hidden="true" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg><span>会话历史</span></button>
-        <button class="nav" type="button" id="openMemory"><svg aria-hidden="true" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a7 7 0 0 1 7 7c0 2.38-1.19 4.47-3 5.74V17a1 1 0 0 1-1 1H9a1 1 0 0 1-1-1v-2.26C6.19 13.47 5 11.38 5 9a7 7 0 0 1 7-7z"/><line x1="9" y1="21" x2="15" y2="21"/></svg><span>记忆</span></button>
-        <button class="nav" type="button" id="openKnowledge"><svg aria-hidden="true" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg><span>知识库</span></button>
-        <button class="nav" type="button" id="openSkills"><svg aria-hidden="true" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg><span>技能包</span></button>
-        <button class="nav" type="button" id="openSettingsSide"><svg aria-hidden="true" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 1v2m0 18v2M4.22 4.22l1.42 1.42m12.72 12.72l1.42 1.42M1 12h2m18 0h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg><span>设置</span></button>
+        <button class="newConversationButton" type="button" id="newConversation">
+          <span aria-hidden="true">＋</span><span>新任务</span>
+        </button>
+        <label class="conversationSearch">
+          <span class="srOnly">搜索会话</span>
+          <input id="conversationSearch" type="search" placeholder="搜索会话" autocomplete="off" />
+        </label>
+        <div class="conversationList" id="conversationList">
+          <div class="emptyState">暂无会话</div>
+        </div>
+        <nav class="capabilityNav" aria-label="能力页面">
+          <button class="nav" type="button" id="openKnowledge" data-page-target="knowledge"><span class="navIcon" aria-hidden="true">▤</span><span>知识库</span></button>
+          <button class="nav" type="button" id="openMemory" data-page-target="memory"><span class="navIcon" aria-hidden="true">◇</span><span>记忆中心</span></button>
+          <button class="nav" type="button" id="openSkills" data-page-target="capabilities"><span class="navIcon" aria-hidden="true">⚡</span><span>技能与工具</span></button>
+        </nav>
         <div class="sidebarFooter">
-          <span>记忆：~/.uta/memory</span>
+          <button class="nav" type="button" id="openSettingsSide"><span class="navIcon" aria-hidden="true">⚙</span><span>设置与授权</span></button>
+          <button class="authStatus" type="button" id="dangerousToolsStatus">工具授权：关闭</button>
           <span id="keyState">Key：未配置</span>
         </div>
       </aside>
@@ -34,7 +39,7 @@
       <main class="main">
         <header class="mainHead">
           <div>
-            <h2>任务控制台</h2>
+            <h2 id="conversationTitle">新任务</h2>
             <span id="taskIdLabel">未运行</span>
           </div>
           <div class="headActions">
@@ -45,7 +50,7 @@
           </div>
         </header>
 
-        <section class="workspace chatWorkspace" id="taskView">
+        <section class="workspace chatWorkspace" id="taskView" data-page="conversation">
           <div class="chatColumn">
             <section class="panel chatPanel">
               <div class="panelHead">
@@ -99,44 +104,7 @@
           </div>
         </section>
 
-        <section class="workspace historyWorkspace hidden" id="historyView">
-          <div class="historyListColumn">
-            <section class="panel historyPanel">
-              <div class="panelHead">
-                <h3>会话历史</h3>
-                <button class="button secondary compact" type="button" id="refreshHistory">刷新</button>
-              </div>
-              <div class="historyList" id="historyList"></div>
-            </section>
-          </div>
-
-          <div class="historyDetailColumn">
-            <section class="panel reportPanel">
-              <div class="panelHead">
-                <h3>历史消息</h3>
-                <span id="historyTaskMeta">未选择</span>
-              </div>
-              <article class="report empty" id="historyReport">选择一条运行记录</article>
-            </section>
-
-            <section class="panel logsPanel historyLogsPanel">
-              <div class="panelHead">
-                <h3>历史日志</h3>
-              </div>
-              <div class="logs" id="historyLogPanel"></div>
-            </section>
-
-            <details class="stateBox">
-              <summary>历史 state.json</summary>
-              <pre id="historyStateJson">{
-  "status": "idle",
-  "task_id": null
-}</pre>
-            </details>
-          </div>
-        </section>
-
-        <section class="workspace memoryWorkspace hidden" id="memoryView">
+        <section class="workspace memoryWorkspace hidden" id="memoryView" data-page="memory">
           <section class="panel memoryPanel longTermMemoryPanel">
             <div class="panelHead">
               <h3>长期记忆总览</h3>
@@ -188,7 +156,7 @@
           </div>
         </section>
 
-        <section class="workspace memoryWorkspace hidden" id="knowledgeView">
+        <section class="workspace memoryWorkspace hidden" id="knowledgeView" data-page="knowledge">
           <div class="memoryColumn">
             <section class="panel memoryPanel">
               <div class="panelHead">
@@ -234,7 +202,7 @@
           </div>
         </section>
 
-        <section class="workspace memoryWorkspace hidden" id="skillsView">
+        <section class="workspace memoryWorkspace hidden" id="skillsView" data-page="capabilities">
           <div class="memoryColumn">
             <section class="panel memoryPanel">
               <div class="panelHead">

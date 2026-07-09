@@ -3,24 +3,19 @@ const els = {
   keyState: document.getElementById("keyState"),
   chatMessages: document.getElementById("chatMessages"),
   chatDetailPanel: document.getElementById("chatDetailPanel"),
-  openTaskView: document.getElementById("openTaskView"),
-  openHistory: document.getElementById("openHistory"),
+  newConversation: document.getElementById("newConversation"),
+  conversationSearch: document.getElementById("conversationSearch"),
+  conversationList: document.getElementById("conversationList"),
+  conversationTitle: document.getElementById("conversationTitle"),
   openMemory: document.getElementById("openMemory"),
   openKnowledge: document.getElementById("openKnowledge"),
   openSkills: document.getElementById("openSkills"),
   taskView: document.getElementById("taskView"),
-  historyView: document.getElementById("historyView"),
   memoryView: document.getElementById("memoryView"),
   knowledgeView: document.getElementById("knowledgeView"),
   skillsView: document.getElementById("skillsView"),
-  refreshHistory: document.getElementById("refreshHistory"),
   refreshMemory: document.getElementById("refreshMemory"),
   refreshSkills: document.getElementById("refreshSkills"),
-  historyList: document.getElementById("historyList"),
-  historyTaskMeta: document.getElementById("historyTaskMeta"),
-  historyReport: document.getElementById("historyReport"),
-  historyLogPanel: document.getElementById("historyLogPanel"),
-  historyStateJson: document.getElementById("historyStateJson"),
   memoryConversationShortTerm: document.getElementById("memoryConversationShortTerm"),
   memoryLongTermGroups: document.getElementById("memoryLongTermGroups"),
   compressCurrentConversation: document.getElementById("compressCurrentConversation"),
@@ -90,7 +85,10 @@ const state = {
   pendingAssistantId: null,
   pendingAuthorization: null,
   reportText: "",
-  historyRuns: []
+  conversations: [],
+  activePage: "conversation",
+  taskPanelOpen: false,
+  taskPanelTab: "progress"
 };
 
 const MEMORY_KIND_GROUPS = [
@@ -323,184 +321,96 @@ async function loadExample() {
   showToast("示例已载入", result.title);
 }
 
-function setActiveNav(button) {
-  document.querySelectorAll(".nav").forEach((item) => {
-    item.classList.toggle("active", item === button);
-  });
-}
-
-function showTaskView() {
-  els.taskView.classList.remove("hidden");
-  els.historyView.classList.add("hidden");
-  els.memoryView.classList.add("hidden");
-  els.knowledgeView.classList.add("hidden");
-  els.skillsView.classList.add("hidden");
-  setActiveNav(els.openTaskView);
-}
-
-async function showHistoryView() {
-  els.taskView.classList.add("hidden");
-  els.historyView.classList.remove("hidden");
-  els.memoryView.classList.add("hidden");
-  els.knowledgeView.classList.add("hidden");
-  els.skillsView.classList.add("hidden");
-  setActiveNav(els.openHistory);
-  await loadConversationHistory();
-}
-
-async function showMemoryView() {
-  els.taskView.classList.add("hidden");
-  els.historyView.classList.add("hidden");
-  els.memoryView.classList.remove("hidden");
-  els.knowledgeView.classList.add("hidden");
-  els.skillsView.classList.add("hidden");
-  setActiveNav(els.openMemory);
-  await loadMemoryOverview();
-}
-
-async function showKnowledgeView() {
-  els.taskView.classList.add("hidden");
-  els.historyView.classList.add("hidden");
-  els.memoryView.classList.add("hidden");
-  els.knowledgeView.classList.remove("hidden");
-  els.skillsView.classList.add("hidden");
-  setActiveNav(els.openKnowledge);
-  await loadKnowledgeBase();
-}
-
-async function showSkillsView() {
-  els.taskView.classList.add("hidden");
-  els.historyView.classList.add("hidden");
-  els.memoryView.classList.add("hidden");
-  els.knowledgeView.classList.add("hidden");
-  els.skillsView.classList.remove("hidden");
-  setActiveNav(els.openSkills);
-  await loadSkillOverview();
-}
-
-async function loadHistoryRuns() {
-  try {
-    const result = await callApi("list_runs");
-    if (!result.ok) {
-      showToast("读取运行记录失败", result.error || "未知错误");
-      return;
-    }
-    state.historyRuns = result.runs || [];
-    renderHistoryList(state.historyRuns);
-    if (state.historyRuns.length > 0) {
-      await selectHistoryRun(state.historyRuns[0].task_id);
-    } else {
-      renderEmptyHistoryDetail();
-    }
-  } catch (error) {
-    showToast("读取运行记录失败", error.message);
-  }
-}
-
-function renderHistoryList(runs) {
-  if (!runs.length) {
-    els.historyList.innerHTML = '<div class="emptyState">暂无运行记录</div>';
-    return;
-  }
-  els.historyList.innerHTML = runs.map((run) => `
-    <button class="historyItem" type="button" data-task-id="${escapeHtml(run.task_id)}">
-      <span><strong>${escapeHtml(run.task_id)}</strong><small>${escapeHtml(run.task_type || "unknown")} · ${escapeHtml(run.status || "unknown")}</small></span>
-      <small>${escapeHtml(run.preview || run.intent || "无输出")}</small>
-    </button>
-  `).join("");
-  els.historyList.querySelectorAll(".historyItem").forEach((button) => {
-    button.addEventListener("click", () => selectHistoryRun(button.dataset.taskId));
-  });
-}
-
-async function selectHistoryRun(taskId) {
-  try {
-    const result = await callApi("get_run", taskId);
-    if (!result.ok) {
-      showToast("读取详情失败", result.error || "未知错误");
-      return;
-    }
-    els.historyList.querySelectorAll(".historyItem").forEach((item) => {
-      item.classList.toggle("active", item.dataset.taskId === taskId);
-    });
-    const runState = result.state || {};
-    els.historyTaskMeta.textContent = `${runState.status || "unknown"} · ${runState.task_type || "unknown"}`;
-    els.historyReport.className = "report";
-    els.historyReport.innerHTML = renderMarkdown(result.final_output || "");
-    els.historyLogPanel.textContent = result.log || "";
-    els.historyStateJson.textContent = JSON.stringify(runState, null, 2);
-  } catch (error) {
-    showToast("读取详情失败", error.message);
-  }
-}
-
-function renderEmptyHistoryDetail() {
-  els.historyTaskMeta.textContent = "未选择";
-  els.historyReport.className = "report empty";
-  els.historyReport.textContent = "暂无运行记录";
-  els.historyLogPanel.textContent = "";
-  els.historyStateJson.textContent = JSON.stringify({ status: "idle", task_id: null }, null, 2);
-}
-
-async function loadConversationHistory() {
+async function loadConversationSidebar() {
   try {
     const result = await callApi("list_conversations");
-    if (!result.ok) {
-      showToast("读取会话失败", result.error || "未知错误");
-      return;
-    }
-    renderConversationList(result.conversations || []);
-    renderEmptyConversationDetail();
+    if (!result.ok) throw new Error(result.error || "读取会话失败");
+    state.conversations = result.conversations || [];
+    renderConversationSidebar(state.conversations);
   } catch (error) {
     showToast("读取会话失败", error.message);
   }
 }
 
-function renderConversationList(conversations) {
-  if (!conversations.length) {
-    els.historyList.innerHTML = '<div class="emptyState">暂无会话</div>';
-    return;
-  }
-  els.historyList.innerHTML = conversations.map((conversation) => `
-    <button class="historyItem" type="button" data-conversation-id="${escapeHtml(conversation.conversation_id)}">
-      <span><strong>${escapeHtml(conversation.title || "新对话")}</strong><small>${escapeHtml(conversation.updated_at || "")} · ${escapeHtml(conversation.message_count || 0)} 条消息</small></span>
-      <small>${escapeHtml(conversation.preview || "无输出")}</small>
-    </button>
-  `).join("");
-  els.historyList.querySelectorAll(".historyItem").forEach((button) => {
-    button.addEventListener("click", () => selectConversation(button.dataset.conversationId));
+function showConversationView() {
+  state.activePage = window.UTAShell.activatePage("conversation");
+}
+
+async function showCapabilityPage(pageName) {
+  state.activePage = window.UTAShell.activatePage(pageName);
+  if (pageName === "knowledge") await loadKnowledgeBase();
+  if (pageName === "memory") await loadMemoryOverview();
+  if (pageName === "capabilities") await loadSkillOverview();
+}
+
+function renderConversationSidebar(conversations) {
+  const query = (els.conversationSearch.value || "").trim().toLowerCase();
+  const visible = conversations.filter((conversation) => {
+    const text = `${conversation.title || ""} ${conversation.preview || ""}`.toLowerCase();
+    return !query || text.includes(query);
+  });
+  const groups = window.UTAShell.groupConversations(visible);
+  const html = Object.entries(groups).map(([label, items]) => {
+    if (!items.length) return "";
+    const rows = items.map((conversation) => `
+      <button class="conversationItem" type="button" data-conversation-id="${escapeHtml(conversation.conversation_id)}">
+        <strong>${escapeHtml(conversation.title || "新对话")}</strong>
+        <small>${escapeHtml(conversation.preview || "暂无消息")}</small>
+      </button>
+    `).join("");
+    return `<section class="conversationGroup"><h2>${label}</h2>${rows}</section>`;
+  }).join("");
+  els.conversationList.innerHTML = html || '<div class="emptyState">暂无匹配会话</div>';
+  els.conversationList.querySelectorAll("[data-conversation-id]").forEach((button) => {
+    button.addEventListener("click", () => openConversation(button.dataset.conversationId));
   });
 }
 
-async function selectConversation(conversationId) {
-  try {
-    const result = await callApi("get_conversation", conversationId);
-    if (!result.ok) {
-      showToast("读取会话失败", result.error || "未知错误");
-      return;
-    }
-    const conversation = result.conversation || {};
-    state.conversationId = conversation.conversation_id;
-    state.messages = (conversation.messages || []).map((message) => ({
-      id: `${message.role || "message"}_${message.task_id || ""}_${message.created_at || ""}`,
-      role: message.role || "assistant",
-      content: message.content || "",
-      status: message.status || "completed",
-      taskId: message.task_id || null
-    }));
-    showTaskView();
-    renderChatMessages();
-  } catch (error) {
-    showToast("读取会话失败", error.message);
+async function startNewConversation() {
+  if (state.running) {
+    showToast("任务运行中", "请先停止当前任务");
+    return;
   }
+  const result = await callApi("new_conversation");
+  if (!result.ok) {
+    showToast("新建失败", result.error || "未知错误");
+    return;
+  }
+  state.conversationId = result.conversation.conversation_id;
+  state.messages = [];
+  state.pendingAssistantId = null;
+  els.conversationTitle.textContent = "新任务";
+  resetRunSurface();
+  showConversationView();
+  renderChatMessages();
+  await loadConversationSidebar();
+  els.taskInput.focus();
 }
 
-function renderEmptyConversationDetail() {
-  els.historyTaskMeta.textContent = "会话历史";
-  els.historyReport.className = "report empty";
-  els.historyReport.textContent = "选择一条会话后会回到对话页";
-  els.historyLogPanel.textContent = "";
-  els.historyStateJson.textContent = JSON.stringify({ status: "conversation_history" }, null, 2);
+async function openConversation(conversationId) {
+  if (state.running) {
+    showToast("任务运行中", "请先停止当前任务");
+    return;
+  }
+  const result = await callApi("get_conversation", conversationId);
+  if (!result.ok) {
+    showToast("读取会话失败", result.error || "未知错误");
+    return;
+  }
+  const conversation = result.conversation || {};
+  state.conversationId = conversation.conversation_id;
+  state.messages = (conversation.messages || []).map((message) => ({
+    id: message.message_id || `${message.role}_${message.created_at || ""}`,
+    role: message.role || "assistant",
+    content: message.content || "",
+    status: message.status || "completed",
+    taskId: message.task_id || null,
+    progress: []
+  }));
+  els.conversationTitle.textContent = conversation.title || "新对话";
+  showConversationView();
+  renderChatMessages();
+  renderConversationSidebar(state.conversations);
 }
 
 // ---- 知识库 ----
@@ -1195,12 +1105,11 @@ function escapeHtml(value) {
 }
 
 function bindEvents() {
-  els.openTaskView.addEventListener("click", showTaskView);
-  els.openHistory.addEventListener("click", showHistoryView);
-  els.openMemory.addEventListener("click", showMemoryView);
-  els.openKnowledge.addEventListener("click", showKnowledgeView);
-  els.openSkills.addEventListener("click", showSkillsView);
-  els.refreshHistory.addEventListener("click", loadHistoryRuns);
+  els.newConversation.addEventListener("click", startNewConversation);
+  els.conversationSearch.addEventListener("input", () => renderConversationSidebar(state.conversations));
+  els.openKnowledge.addEventListener("click", () => showCapabilityPage("knowledge"));
+  els.openMemory.addEventListener("click", () => showCapabilityPage("memory"));
+  els.openSkills.addEventListener("click", () => showCapabilityPage("capabilities"));
   els.kbIngestBtn.addEventListener("click", ingestKnowledge);
   els.kbRefreshBtn.addEventListener("click", loadKnowledgeBase);
   els.kbAskBtn.addEventListener("click", askKnowledge);
@@ -1252,5 +1161,11 @@ window.onProgress = handleProgress;
 bindEvents();
 resetRunSurface();
 renderChatMessages();
-window.addEventListener("pywebviewready", loadSettings);
-setTimeout(() => { if (api()) loadSettings(); }, 500);
+
+async function initializeDesktop() {
+  await loadSettings();
+  await loadConversationSidebar();
+}
+
+window.addEventListener("pywebviewready", initializeDesktop);
+setTimeout(() => { if (api()) initializeDesktop(); }, 500);
