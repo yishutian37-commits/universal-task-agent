@@ -130,6 +130,47 @@ def test_frontend_marks_terminal_sync_only_after_a_non_running_success():
     assert "state.syncingTaskIds.delete(taskId);" in helper
 
 
+def test_frontend_guards_late_run_results_after_conversation_switch():
+    js = (FRONTEND_ROOT / "app.js").read_text(encoding="utf-8")
+
+    assert "conversationRevision: 0" in js
+    assert "function advanceConversationRevision" in js
+    start_new = js.index("async function startNewConversation")
+    open_start = js.index("async function openConversation")
+    run_start = js.index("async function runTask")
+    return_start = js.index('const result = await callApi("run_chat_message"', run_start)
+    task_mapping = js.index("state.taskConversationIds.set(result.task_id, result.conversation_id);", return_start)
+    error_branch = js.index("if (!result.ok)", return_start)
+    catch_start = js.index("} catch (error)", return_start)
+    finally_start = js.index("} finally", catch_start)
+
+    assert "advanceConversationRevision();" in js[start_new:open_start]
+    assert "advanceConversationRevision();" in js[open_start:run_start]
+    revision_start = js.index("function advanceConversationRevision")
+    revision_end = start_new
+    assert "state.messages = [];" in js[revision_start:revision_end]
+    assert "state.pendingAssistantId = null;" in js[revision_start:revision_end]
+    assert "setStatus(\"ready\", \"就绪\");" in js[revision_start:revision_end]
+    assert "terminalSyncTimers" not in js[js.index("function advanceConversationRevision"):js.index("async function startNewConversation")]
+
+    assert "const requestRevision = state.conversationRevision;" in js[return_start - 500:return_start]
+    assert "const requestAssistant = assistant;" in js[return_start - 500:return_start]
+    revision_guard = js.index("state.conversationRevision !== requestRevision", task_mapping)
+    stale_direct_start = js.index("if (result.direct)", revision_guard)
+    current_direct_start = js.index("if (result.direct)", stale_direct_start + 1)
+    assert task_mapping < revision_guard
+    assert revision_guard < stale_direct_start < current_direct_start
+    assert "await loadConversationSidebar();" in js[revision_guard:current_direct_start]
+    assert "await syncTerminalTask(result.task_id);" in js[task_mapping:revision_guard + 300]
+    stale_error_end = js.index('setStatus("error", "未运行")', error_branch)
+    assert "await loadConversationSidebar();" in js[error_branch:stale_error_end]
+    assert "showToast" not in js[error_branch:stale_error_end]
+    assert "els.taskInput.value = \"\";" in js[stale_direct_start:current_direct_start]
+    assert js.index('els.taskInput.value = "";', revision_guard) < current_direct_start
+    assert "state.conversationRevision !== requestRevision" in js[catch_start:finally_start]
+    assert "state.conversationRevision === requestRevision" in js[finally_start:js.index("async function resumeTask", finally_start)]
+
+
 def test_frontend_retries_terminal_sync_with_bounded_deduplicated_backoff():
     js = (FRONTEND_ROOT / "app.js").read_text(encoding="utf-8")
 
@@ -379,7 +420,8 @@ def test_frontend_handles_direct_chat_replies():
     js = (FRONTEND_ROOT / "app.js").read_text(encoding="utf-8")
 
     assert "result.direct" in js
-    assert "updatePendingAssistant({ content: result.message" in js
+    assert "requestAssistant" in js
+    assert "content: result.message || \"已回复。\"" in js
 
 
 def test_frontend_refreshes_sidebar_after_chat_conversation_writes():

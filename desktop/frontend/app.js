@@ -92,6 +92,7 @@ const state = {
   activePage: "conversation",
   taskPanelOpen: false,
   taskPanelTab: "progress",
+  conversationRevision: 0,
   terminalTaskIds: new Set(),
   syncedTaskIds: new Set(),
   syncingTaskIds: new Set(),
@@ -199,6 +200,14 @@ async function callApi(method, ...args) {
 function setStatus(kind, text) {
   els.statusPill.className = `status ${kind}`;
   els.statusText.textContent = text;
+}
+
+function advanceConversationRevision() {
+  state.conversationRevision += 1;
+  state.messages = [];
+  state.pendingAssistantId = null;
+  resetRunSurface();
+  setStatus("ready", "就绪");
 }
 
 function showToast(title, body) {
@@ -445,10 +454,8 @@ async function startNewConversation() {
     return;
   }
   state.conversationId = result.conversation.conversation_id;
-  state.messages = [];
-  state.pendingAssistantId = null;
+  advanceConversationRevision();
   els.conversationTitle.textContent = "新任务";
-  resetRunSurface();
   showConversationView();
   renderChatMessages();
   await loadConversationSidebar();
@@ -467,6 +474,7 @@ async function openConversation(conversationId) {
   }
   const conversation = result.conversation || {};
   state.conversationId = conversation.conversation_id;
+  advanceConversationRevision();
   state.messages = (conversation.messages || []).map((message) => ({
     id: message.message_id || `${message.role}_${message.created_at || ""}`,
     role: message.role || "assistant",
@@ -823,6 +831,9 @@ function renderSkillErrors(errors) {
 function resetRunSurface() {
   setTaskPanelOpen(false);
   setStopTaskVisible(false);
+  els.taskInput.readOnly = false;
+  els.runTask.disabled = false;
+  els.resumeTask.disabled = false;
   state.taskId = null;
   els.planList.innerHTML = "";
   els.logPanel.innerHTML = "";
@@ -851,9 +862,12 @@ async function runTask() {
     return;
   }
 
+  const requestRevision = state.conversationRevision;
+  const requestConversationId = state.conversationId;
   resetRunSurface();
   addChatMessage("user", text, "completed");
   const assistant = addChatMessage("assistant", "正在分析任务...", "running");
+  const requestAssistant = assistant;
   state.pendingAssistantId = assistant.id;
   setStatus("running", "运行中");
   els.taskInput.readOnly = true;
@@ -861,12 +875,28 @@ async function runTask() {
   els.resumeTask.disabled = true;
 
   try {
-    const result = await callApi("run_chat_message", state.conversationId || "", text);
+    const result = await callApi("run_chat_message", requestConversationId || "", text);
     if (!result.ok) {
+      if (state.conversationRevision !== requestRevision) {
+        await loadConversationSidebar();
+        return;
+      }
       setStatus("error", "未运行");
-      updatePendingAssistant({ content: result.error || "未知错误", status: "failed" });
+      Object.assign(requestAssistant, { content: result.error || "未知错误", status: "failed" });
+      renderChatMessages();
       showToast("无法运行", result.error || "未知错误");
       if ((result.error || "").includes("Key") || result.open_settings) openSettings();
+      return;
+    }
+    if (result.task_id && result.conversation_id) {
+      state.taskConversationIds.set(result.task_id, result.conversation_id);
+    }
+    if (state.conversationRevision !== requestRevision) {
+      if (result.direct) {
+        await loadConversationSidebar();
+      } else if (result.task_id && state.terminalTaskIds.has(result.task_id)) {
+        await syncTerminalTask(result.task_id);
+      }
       return;
     }
     els.taskInput.value = "";
@@ -874,15 +904,15 @@ async function runTask() {
       setTaskPanelOpen(false);
       setStopTaskVisible(false);
       state.conversationId = result.conversation_id;
-      updatePendingAssistant({ content: result.message || "已回复。", status: "completed" });
+      Object.assign(requestAssistant, { content: result.message || "已回复。", status: "completed" });
+      renderChatMessages();
       setStatus("done", "已回复");
       await loadConversationSidebar();
       return;
     }
     state.conversationId = result.conversation_id;
-    state.taskConversationIds.set(result.task_id, result.conversation_id);
     state.taskId = result.task_id;
-    assistant.taskId = result.task_id;
+    requestAssistant.taskId = result.task_id;
     renderChatMessages();
     els.taskIdLabel.textContent = result.task_id;
     renderTaskPanelEmptyStates();
@@ -895,11 +925,16 @@ async function runTask() {
     setTaskPanelOpen(true);
     setStopTaskVisible(true);
   } catch (error) {
+    if (state.conversationRevision !== requestRevision) {
+      await loadConversationSidebar();
+      return;
+    }
     setStatus("error", "失败");
-    updatePendingAssistant({ content: error.message, status: "failed" });
+    Object.assign(requestAssistant, { content: error.message, status: "failed" });
+    renderChatMessages();
     showToast("运行失败", error.message);
   } finally {
-    if (!state.running) {
+    if (state.conversationRevision === requestRevision && !state.running) {
       els.taskInput.readOnly = false;
       els.runTask.disabled = false;
       els.resumeTask.disabled = false;
