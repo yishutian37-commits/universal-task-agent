@@ -75,21 +75,21 @@
               </div>
             </header>
             <div class="taskTabs" role="tablist" aria-label="任务详情">
-              <button class="active" type="button" data-task-tab="progress" role="tab">进度</button>
-              <button type="button" data-task-tab="files" role="tab">文件</button>
-              <button type="button" data-task-tab="changes" role="tab">变更</button>
-              <button type="button" data-task-tab="artifacts" role="tab">产物</button>
-              <button type="button" data-task-tab="diagnostics" role="tab">诊断</button>
+              <button class="active" type="button" id="taskTab-progress" role="tab" aria-selected="true" aria-controls="taskPanel-progress" data-task-tab="progress">进度</button>
+              <button type="button" id="taskTab-files" role="tab" aria-selected="false" aria-controls="taskPanel-files" data-task-tab="files">文件</button>
+              <button type="button" id="taskTab-changes" role="tab" aria-selected="false" aria-controls="taskPanel-changes" data-task-tab="changes">变更</button>
+              <button type="button" id="taskTab-artifacts" role="tab" aria-selected="false" aria-controls="taskPanel-artifacts" data-task-tab="artifacts">产物</button>
+              <button type="button" id="taskTab-diagnostics" role="tab" aria-selected="false" aria-controls="taskPanel-diagnostics" data-task-tab="diagnostics">诊断</button>
             </div>
-            <section class="taskPanelBody" data-task-panel="progress">
+            <section class="taskPanelBody" id="taskPanel-progress" role="tabpanel" aria-labelledby="taskTab-progress" aria-hidden="false" data-task-panel="progress">
               <div class="taskPanelMeta"><strong>执行进度</strong><span id="planMeta">0 步</span></div>
               <p class="taskActivity" id="taskActivity">尚未开始</p>
               <div class="steps" id="planList"></div>
             </section>
-            <section class="taskPanelBody hidden" data-task-panel="files"><div class="emptyState">本轮暂无文件记录</div></section>
-            <section class="taskPanelBody hidden" data-task-panel="changes"><div class="emptyState">本轮暂无文件变更</div></section>
-            <section class="taskPanelBody hidden" data-task-panel="artifacts"><div class="emptyState">本轮暂无独立产物</div></section>
-            <section class="taskPanelBody diagnosticsPanel hidden" data-task-panel="diagnostics">
+            <section class="taskPanelBody hidden" id="taskPanel-files" role="tabpanel" aria-labelledby="taskTab-files" aria-hidden="true" data-task-panel="files"><div class="emptyState">本轮暂无文件记录</div></section>
+            <section class="taskPanelBody hidden" id="taskPanel-changes" role="tabpanel" aria-labelledby="taskTab-changes" aria-hidden="true" data-task-panel="changes"><div class="emptyState">本轮暂无文件变更</div></section>
+            <section class="taskPanelBody hidden" id="taskPanel-artifacts" role="tabpanel" aria-labelledby="taskTab-artifacts" aria-hidden="true" data-task-panel="artifacts"><div class="emptyState">本轮暂无独立产物</div></section>
+            <section class="taskPanelBody diagnosticsPanel hidden" id="taskPanel-diagnostics" role="tabpanel" aria-labelledby="taskTab-diagnostics" aria-hidden="true" data-task-panel="diagnostics">
               <div class="diagnosticBlock"><div class="taskPanelMeta"><strong>实时日志</strong><button class="button ghost compact" type="button" id="clearLogs">清空</button></div><div class="logs" id="logPanel"></div></div>
               <details class="stateBox"><summary>运行状态 <button class="button secondary compact" type="button" id="copyReport" disabled>复制结果</button></summary><pre id="stateJson">{"status":"idle","task_id":null}</pre></details>
             </section>

@@ -106,6 +106,11 @@ function renderTaskPanelEmptyStates() {
   els.chatDetailPanel.classList.toggle("has-task", Boolean(state.taskId));
 }
 
+function setStopTaskVisible(isVisible) {
+  els.stopTask.classList.toggle("hidden", !isVisible);
+  els.stopTask.disabled = !isVisible;
+}
+
 const MEMORY_KIND_GROUPS = [
   { kind: "identity", title: "用户画像", empty: "还没有形成稳定的用户画像。" },
   { kind: "preference", title: "偏好", empty: "还没有记录明确偏好。" },
@@ -753,6 +758,8 @@ function renderSkillErrors(errors) {
 }
 
 function resetRunSurface() {
+  setTaskPanelOpen(false);
+  setStopTaskVisible(false);
   state.taskId = null;
   els.planList.innerHTML = "";
   els.logPanel.innerHTML = "";
@@ -801,6 +808,8 @@ async function runTask() {
     }
     els.taskInput.value = "";
     if (result.direct) {
+      setTaskPanelOpen(false);
+      setStopTaskVisible(false);
       state.conversationId = result.conversation_id;
       updatePendingAssistant({ content: result.message || "已回复。", status: "completed" });
       setStatus("done", "已回复");
@@ -815,6 +824,7 @@ async function runTask() {
     els.taskIdLabel.textContent = result.task_id;
     setTaskPanelTab("progress");
     setTaskPanelOpen(true);
+    setStopTaskVisible(true);
     renderTaskPanelEmptyStates();
   } catch (error) {
     setStatus("error", "失败");
@@ -860,6 +870,7 @@ async function resumeTask() {
     els.taskIdLabel.textContent = result.task_id;
     setTaskPanelTab("progress");
     setTaskPanelOpen(true);
+    setStopTaskVisible(true);
     renderTaskPanelEmptyStates();
   } catch (error) {
     state.running = false;
@@ -872,6 +883,23 @@ async function resumeTask() {
       els.runTask.disabled = false;
       els.resumeTask.disabled = false;
     }
+  }
+}
+
+async function stopTask() {
+  if (!state.running || !state.taskId) return;
+  els.stopTask.disabled = true;
+  try {
+    const result = await callApi("cancel_task", state.taskId);
+    if (!result.ok) {
+      els.stopTask.disabled = false;
+      showToast("无法停止", result.error || "停止任务失败");
+      return;
+    }
+    setStatus("running", "正在停止");
+  } catch (error) {
+    els.stopTask.disabled = false;
+    showToast("无法停止", error.message);
   }
 }
 
@@ -928,6 +956,7 @@ function sourceFor(event) {
     step_done: "Loop",
     memory_saved: "Memory",
     task_completed: "Result",
+    cancelled: "Runner",
     authorization_required: "Authorization",
     error: "Error"
   };
@@ -950,6 +979,7 @@ function messageFor(event) {
   if (event.type === "step_done") return `步骤 ${data.step_id} ${data.status}`;
   if (event.type === "memory_saved") return `保存状态：${data.saved ? "true" : "false"}`;
   if (event.type === "task_completed") return `任务结束：${data.status}`;
+  if (event.type === "cancelled") return "任务已停止";
   if (event.type === "authorization_required") return data.summary || "等待用户授权";
   if (event.type === "error") return data.message || "未知错误";
   return JSON.stringify(data);
@@ -1017,6 +1047,7 @@ async function handleProgress(event) {
 
   if (event.type === "task_completed") {
     state.running = false;
+    setStopTaskVisible(false);
     els.taskInput.readOnly = false;
     els.runTask.disabled = false;
     els.resumeTask.disabled = false;
@@ -1038,11 +1069,23 @@ async function handleProgress(event) {
 
   if (event.type === "error") {
     state.running = false;
+    setStopTaskVisible(false);
     els.taskInput.readOnly = false;
     els.runTask.disabled = false;
     els.resumeTask.disabled = false;
     setStatus("error", "失败");
     updateAssistantMessage(state.taskId, { content: data.message || "任务失败", status: "failed" });
+    await refreshResult();
+  }
+
+  if (event.type === "cancelled") {
+    state.running = false;
+    setStopTaskVisible(false);
+    els.taskInput.readOnly = false;
+    els.runTask.disabled = false;
+    els.resumeTask.disabled = false;
+    setStatus("done", "已停止");
+    updateAssistantMessage(state.taskId, { content: "任务已停止", status: "completed" });
     await refreshResult();
   }
 }
@@ -1149,6 +1192,7 @@ function bindEvents() {
   });
   els.runTask.addEventListener("click", runTask);
   els.resumeTask.addEventListener("click", resumeTask);
+  els.stopTask.addEventListener("click", stopTask);
   els.toggleTaskPanel.addEventListener("click", () => setTaskPanelOpen(!state.taskPanelOpen));
   els.closeTaskPanel.addEventListener("click", () => setTaskPanelOpen(false));
   document.querySelectorAll("[data-task-tab]").forEach((button) => {

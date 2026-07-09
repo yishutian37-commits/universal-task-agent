@@ -48,7 +48,9 @@
       button.setAttribute("aria-selected", String(active));
     });
     document.querySelectorAll("[data-task-panel]").forEach((panel) => {
-      panel.classList.toggle("hidden", panel.dataset.taskPanel !== nextTab);
+      const active = panel.dataset.taskPanel === nextTab;
+      panel.classList.toggle("hidden", !active);
+      panel.setAttribute("aria-hidden", String(!active));
     });
     return nextTab;
   }

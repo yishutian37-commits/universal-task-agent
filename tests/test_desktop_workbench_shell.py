@@ -73,3 +73,10 @@ def test_logs_and_state_are_diagnostics_only():
     diagnostics = html.split('data-task-panel="diagnostics"', 1)[1]
     assert 'id="logPanel"' in diagnostics
     assert 'id="stateJson"' in diagnostics
+
+
+def test_shell_syncs_task_tab_aria_state():
+    js = (FRONTEND_ROOT / "shell.js").read_text(encoding="utf-8")
+
+    assert 'button.setAttribute("aria-selected", String(active));' in js
+    assert 'panel.setAttribute("aria-hidden", String(!active));' in js

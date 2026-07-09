@@ -20,6 +20,52 @@ def test_frontend_keeps_task_details_in_tabbed_panel():
         assert f'data-task-panel="{name}"' in html
 
 
+def test_frontend_task_panel_has_minimum_functional_layout():
+    css = (FRONTEND_ROOT / "style.css").read_text(encoding="utf-8")
+
+    assert ".conversationSurface {\n  min-width: 0;\n  min-height: 0;\n  height: 100%;\n  display: grid;\n  grid-template-rows: auto minmax(0, 1fr) auto;\n  overflow: hidden;\n}" in css
+    assert ".chatWorkspace.task-panel-open {\n  grid-template-columns: minmax(0, 1fr) minmax(320px, 0.82fr);\n}" in css
+    assert ".taskPanel {\n  min-width: 0;\n  min-height: 0;\n  display: grid;\n  grid-template-rows: auto auto minmax(0, 1fr);\n  overflow: hidden;\n}" in css
+    assert ".taskPanel.collapsed {\n  display: none;\n}" in css
+    assert ".chatMessages {\n  min-height: 0;\n  overflow-y: auto;" in css
+    assert ".chatComposer {\n  border-top: 1px solid var(--border);\n  background: var(--surface);\n  min-height: 0;\n}" in css
+
+
+def test_frontend_task_tabs_have_stable_aria_relationships():
+    html = (FRONTEND_ROOT / "index.html").read_text(encoding="utf-8")
+
+    for name in ["progress", "files", "changes", "artifacts", "diagnostics"]:
+        selected = "true" if name == "progress" else "false"
+        hidden = "false" if name == "progress" else "true"
+        assert f'id="taskTab-{name}" role="tab" aria-selected="{selected}" aria-controls="taskPanel-{name}"' in html
+        assert f'id="taskPanel-{name}" role="tabpanel" aria-labelledby="taskTab-{name}" aria-hidden="{hidden}"' in html
+
+
+def test_frontend_task_panel_and_stop_control_follow_run_lifecycle():
+    js = (FRONTEND_ROOT / "app.js").read_text(encoding="utf-8")
+    reset_start = js.index("function resetRunSurface")
+    run_start = js.index("async function runTask", reset_start)
+    direct_start = js.index("if (result.direct)", run_start)
+    task_start = js.index("state.running = true", direct_start)
+    progress_start = js.index("async function handleProgress")
+    completed_start = js.index('if (event.type === "task_completed")', progress_start)
+    error_start = js.index('if (event.type === "error")', completed_start)
+    cancelled_start = js.index('if (event.type === "cancelled")', error_start)
+
+    assert "setTaskPanelOpen(false);" in js[reset_start:run_start]
+    assert "setTaskPanelOpen(false);" in js[direct_start:task_start]
+    assert "setStopTaskVisible(false);" in js[reset_start:run_start]
+    assert "setStopTaskVisible(false);" in js[direct_start:task_start]
+    assert "setStopTaskVisible(true);" in js[task_start:js.index("} catch", task_start)]
+    assert "setStopTaskVisible(false);" in js[completed_start:error_start]
+    assert "setStopTaskVisible(false);" in js[error_start:]
+    assert "setStopTaskVisible(false);" in js[cancelled_start:]
+    assert "function setStopTaskVisible" in js
+    assert "async function stopTask" in js
+    assert 'callApi("cancel_task", state.taskId)' in js
+    assert 'els.stopTask.addEventListener("click", stopTask);' in js
+
+
 def test_frontend_includes_memory_view():
     html = (FRONTEND_ROOT / "index.html").read_text(encoding="utf-8")
 
