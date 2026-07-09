@@ -393,6 +393,16 @@ button {
   font-size: 12px;
 }
 
+.authStatus {
+  border-color: var(--border);
+  background: var(--surface-1);
+}
+
+.authStatus.enabled {
+  border-color: rgba(74, 222, 128, 0.35);
+  color: var(--success);
+}
+
 .button:disabled {
   cursor: not-allowed;
   opacity: 0.35;
@@ -736,6 +746,69 @@ pre {
   border-radius: var(--r-md);
   color: var(--text);
   background: var(--surface-0);
+}
+
+.settingsGroup {
+  margin: 16px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--surface-0);
+}
+
+.settingsGroup strong {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--text);
+}
+
+.settingsGroup p {
+  margin: 0 0 10px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.settingsGroup .switchRow {
+  padding: 0;
+}
+
+.dangerModal {
+  border-color: var(--danger);
+}
+
+.authorizationBody {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+}
+
+.authorizationBody p {
+  margin: 0;
+  color: var(--text);
+  font-weight: 700;
+}
+
+.authorizationDetails {
+  display: grid;
+  grid-template-columns: 110px minmax(0, 1fr);
+  gap: 8px 12px;
+  margin: 0;
+}
+
+.authorizationDetails dt {
+  color: var(--muted);
+}
+
+.authorizationDetails dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  font-family: var(--mono);
+}
+
+.dangerButton {
+  border-color: var(--danger);
 }
 
 .switchRow {

@@ -144,6 +144,25 @@ def test_frontend_uses_checklist_markers_for_step_status():
     assert "grid-template-columns: 52px minmax(0, 1fr) auto;" in css
 
 
+def test_frontend_includes_manual_authorization_modal():
+    html = (FRONTEND_ROOT / "index.html").read_text(encoding="utf-8")
+    js = (FRONTEND_ROOT / "app.js").read_text(encoding="utf-8")
+
+    assert 'id="dangerousToolsStatus"' in html
+    assert "工具授权" in html
+    assert 'id="dangerousToolsEnabled"' in html
+    assert 'id="authorizationModal"' in html
+    assert 'id="approveAuthorization"' in html
+    assert 'id="rejectAuthorization"' in html
+    assert "function updateDangerousToolsStatus" in js
+    assert "result.open_settings" in js
+    assert 'event.type === "authorization_required"' in js
+    assert 'callApi("authorize_operation", requestId)' in js
+    assert 'callApi("reject_authorization", requestId' in js
+    assert "payload.code" in js
+    assert "payload.trash_path" in js
+
+
 def test_frontend_preserves_history_log_whitespace():
     css = (FRONTEND_ROOT / "style.css").read_text(encoding="utf-8")
 

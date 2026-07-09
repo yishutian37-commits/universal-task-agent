@@ -26,7 +26,7 @@
         <button class="nav" type="button" id="openSkills"><svg aria-hidden="true" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg><span>技能包</span></button>
         <button class="nav" type="button" id="openSettingsSide"><svg aria-hidden="true" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 1v2m0 18v2M4.22 4.22l1.42 1.42m12.72 12.72l1.42 1.42M1 12h2m18 0h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg><span>设置</span></button>
         <div class="sidebarFooter">
-          <span>输出：~/.uta/outputs</span>
+          <span>记忆：~/.uta/memory</span>
           <span id="keyState">Key：未配置</span>
         </div>
       </aside>
@@ -39,6 +39,8 @@
           </div>
           <div class="headActions">
             <span class="status ready" id="statusPill"><i></i><span id="statusText">就绪</span></span>
+            <button class="button ghost compact authStatus" type="button" id="dangerousToolsStatus">工具授权：关闭</button>
+            <button class="button ghost" type="button" id="resumeTask">恢复</button>
             <button class="button ghost" type="button" id="openSettings">设置</button>
           </div>
         </header>
@@ -286,11 +288,37 @@
         <span>SSL 校验</span>
         <input id="sslVerify" type="checkbox" />
       </label>
+      <section class="settingsGroup">
+        <div>
+          <strong>工具授权</strong>
+          <p>开启后，Shell、Python REPL、文件写入和文件删除会在执行前请求手动授权。</p>
+        </div>
+        <label class="switchRow">
+          <span>启用高风险工具</span>
+          <input id="dangerousToolsEnabled" type="checkbox" />
+        </label>
+      </section>
       <footer>
         <button class="button secondary" type="button" id="clearKey">清除 Key</button>
         <button class="button primary" type="submit">保存</button>
       </footer>
     </form>
+  </div>
+
+  <div class="modalBackdrop" id="authorizationModal" role="dialog" aria-modal="true" aria-labelledby="authorizationTitle">
+    <section class="modal dangerModal">
+      <header>
+        <h2 id="authorizationTitle">授权高风险操作</h2>
+      </header>
+      <div class="authorizationBody">
+        <p id="authorizationSummary">等待授权请求</p>
+        <dl class="authorizationDetails" id="authorizationDetails"></dl>
+      </div>
+      <footer>
+        <button class="button secondary" type="button" id="rejectAuthorization">拒绝</button>
+        <button class="button primary dangerButton" type="button" id="approveAuthorization">授权执行</button>
+      </footer>
+    </section>
   </div>
 
   <div class="toast" id="toast">

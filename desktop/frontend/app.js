@@ -33,6 +33,7 @@ const els = {
   taskIdLabel: document.getElementById("taskIdLabel"),
   taskInput: document.getElementById("taskInput"),
   runTask: document.getElementById("runTask"),
+  resumeTask: document.getElementById("resumeTask"),
   loadExample: document.getElementById("loadExample"),
   clearTask: document.getElementById("clearTask"),
   clearLogs: document.getElementById("clearLogs"),
@@ -47,11 +48,18 @@ const els = {
   openSettings: document.getElementById("openSettings"),
   openSettingsSide: document.getElementById("openSettingsSide"),
   closeSettings: document.getElementById("closeSettings"),
+  dangerousToolsStatus: document.getElementById("dangerousToolsStatus"),
   baseUrl: document.getElementById("baseUrl"),
   modelName: document.getElementById("modelName"),
   apiKey: document.getElementById("apiKey"),
   sslVerify: document.getElementById("sslVerify"),
+  dangerousToolsEnabled: document.getElementById("dangerousToolsEnabled"),
   clearKey: document.getElementById("clearKey"),
+  authorizationModal: document.getElementById("authorizationModal"),
+  authorizationSummary: document.getElementById("authorizationSummary"),
+  authorizationDetails: document.getElementById("authorizationDetails"),
+  approveAuthorization: document.getElementById("approveAuthorization"),
+  rejectAuthorization: document.getElementById("rejectAuthorization"),
   toast: document.getElementById("toast"),
   toastTitle: document.getElementById("toastTitle"),
   toastBody: document.getElementById("toastBody"),
@@ -80,6 +88,7 @@ const state = {
   conversationId: null,
   messages: [],
   pendingAssistantId: null,
+  pendingAuthorization: null,
   reportText: "",
   historyRuns: []
 };
@@ -190,6 +199,13 @@ function updateKeyState(settings) {
   els.keyState.textContent = settings.has_api_key ? "Key：已配置" : "Key：未配置";
 }
 
+function updateDangerousToolsStatus(settings) {
+  const enabled = settings.dangerous_tools_enabled === true;
+  if (!els.dangerousToolsStatus) return;
+  els.dangerousToolsStatus.textContent = enabled ? "工具授权：开启" : "工具授权：关闭";
+  els.dangerousToolsStatus.classList.toggle("enabled", enabled);
+}
+
 function openSettings() {
   els.settingsModal.classList.add("open");
   els.baseUrl.focus();
@@ -199,13 +215,68 @@ function closeSettings() {
   els.settingsModal.classList.remove("open");
 }
 
+function showAuthorizationModal(payload) {
+  state.pendingAuthorization = payload || null;
+  const requestId = payload && payload.request_id ? payload.request_id : "";
+  els.authorizationSummary.textContent = payload.summary || "请求执行高风险操作";
+  const rows = [
+    ["请求 ID", requestId],
+    ["工具", payload.tool_name || ""],
+    ["风险等级", payload.risk_level || ""],
+    ["影响", payload.impact || ""],
+    ["工作目录", payload.cwd || ""],
+    ["文件路径", payload.path || ""],
+    ["回收站路径", payload.trash_path || ""],
+    ["命令", payload.command || ""],
+    ["Python 代码", payload.code || ""],
+    ["写入模式", payload.mode || ""],
+    ["内容预览", payload.content_preview || ""]
+  ].filter((row) => row[1]);
+  els.authorizationDetails.innerHTML = rows.map(([label, value]) => `
+    <dt>${escapeHtml(label)}</dt>
+    <dd>${escapeHtml(String(value))}</dd>
+  `).join("");
+  els.authorizationModal.classList.add("open");
+}
+
+function closeAuthorizationModal() {
+  els.authorizationModal.classList.remove("open");
+  state.pendingAuthorization = null;
+}
+
+async function approveAuthorization() {
+  const requestId = state.pendingAuthorization && state.pendingAuthorization.request_id;
+  if (!requestId) return;
+  const result = await callApi("authorize_operation", requestId);
+  if (!result.ok) {
+    showToast("授权失败", result.error || "未知错误");
+    return;
+  }
+  closeAuthorizationModal();
+  showToast("已授权", "操作继续执行");
+}
+
+async function rejectAuthorization() {
+  const requestId = state.pendingAuthorization && state.pendingAuthorization.request_id;
+  if (!requestId) return;
+  const result = await callApi("reject_authorization", requestId, "用户拒绝授权");
+  if (!result.ok) {
+    showToast("拒绝失败", result.error || "未知错误");
+    return;
+  }
+  closeAuthorizationModal();
+  showToast("已拒绝", "操作不会执行");
+}
+
 async function loadSettings() {
   try {
     const settings = await callApi("get_settings");
     els.baseUrl.value = settings.llm_base_url || "";
     els.modelName.value = settings.llm_model || "";
     els.sslVerify.checked = settings.llm_ssl_verify !== false;
+    els.dangerousToolsEnabled.checked = settings.dangerous_tools_enabled === true;
     updateKeyState(settings);
+    updateDangerousToolsStatus(settings);
     els.bridgeState.textContent = "已连接";
   } catch (error) {
     els.bridgeState.textContent = "未连接";
@@ -219,7 +290,8 @@ async function saveSettings(event) {
     llm_base_url: els.baseUrl.value,
     llm_model: els.modelName.value,
     llm_api_key: els.apiKey.value,
-    llm_ssl_verify: els.sslVerify.checked
+    llm_ssl_verify: els.sslVerify.checked,
+    dangerous_tools_enabled: els.dangerousToolsEnabled.checked
   });
   if (!result.ok) {
     showToast("保存失败", result.error || "未知错误");
@@ -802,6 +874,7 @@ async function runTask() {
   setStatus("running", "运行中");
   els.taskInput.readOnly = true;
   els.runTask.disabled = true;
+  els.resumeTask.disabled = true;
 
   try {
     const result = await callApi("run_chat_message", state.conversationId || "", text);
@@ -809,7 +882,7 @@ async function runTask() {
       setStatus("error", "未运行");
       updatePendingAssistant({ content: result.error || "未知错误", status: "failed" });
       showToast("无法运行", result.error || "未知错误");
-      if ((result.error || "").includes("Key")) openSettings();
+      if ((result.error || "").includes("Key") || result.open_settings) openSettings();
       return;
     }
     els.taskInput.value = "";
@@ -833,6 +906,50 @@ async function runTask() {
     if (!state.running) {
       els.taskInput.readOnly = false;
       els.runTask.disabled = false;
+      els.resumeTask.disabled = false;
+    }
+  }
+}
+
+async function resumeTask() {
+  if (state.running) {
+    showToast("任务运行中", "当前版本一次只运行一个任务");
+    return;
+  }
+  const taskId = window.prompt("输入要恢复的 task_id");
+  if (!taskId || !taskId.trim()) return;
+
+  resetRunSurface();
+  state.taskId = taskId.trim();
+  addChatMessage("assistant", `正在从 checkpoint 恢复：${state.taskId}`, "running", state.taskId);
+  setStatus("running", "恢复中");
+  els.taskIdLabel.textContent = state.taskId;
+  els.taskInput.readOnly = true;
+  els.runTask.disabled = true;
+  els.resumeTask.disabled = true;
+
+  try {
+    const result = await callApi("resume_task", state.taskId);
+    if (!result.ok) {
+      state.running = false;
+      setStatus("error", "恢复失败");
+      updateAssistantMessage(state.taskId, { content: result.error || "恢复失败", status: "failed" });
+      showToast("恢复失败", result.error || "checkpoint 不存在");
+      return;
+    }
+    state.running = true;
+    state.taskId = result.task_id;
+    els.taskIdLabel.textContent = result.task_id;
+  } catch (error) {
+    state.running = false;
+    setStatus("error", "恢复失败");
+    updateAssistantMessage(state.taskId, { content: error.message, status: "failed" });
+    showToast("恢复失败", error.message);
+  } finally {
+    if (!state.running) {
+      els.taskInput.readOnly = false;
+      els.runTask.disabled = false;
+      els.resumeTask.disabled = false;
     }
   }
 }
@@ -880,6 +997,7 @@ function sourceFor(event) {
     parsed: "TaskParser",
     skill_matched: "SkillLoader",
     plan_created: "Planner",
+    plan_resumed: "Checkpoint",
     step_started: "Loop",
     tool_selected: "Router",
     tool_executed: "Executor",
@@ -889,6 +1007,7 @@ function sourceFor(event) {
     step_done: "Loop",
     memory_saved: "Memory",
     task_completed: "Result",
+    authorization_required: "Authorization",
     error: "Error"
   };
   return map[event.type] || event.type;
@@ -900,6 +1019,7 @@ function messageFor(event) {
   if (event.type === "parsed") return `类型 ${data.task_type}，意图 ${data.intent}`;
   if (event.type === "skill_matched") return `匹配 Skill：${data.skill_id || "none"}`;
   if (event.type === "plan_created") return `生成 ${data.steps.length} 个步骤`;
+  if (event.type === "plan_resumed") return `恢复到步骤 ${data.resume_step_id || "完成检查"}`;
   if (event.type === "step_started") return `开始步骤 ${data.step_id}：${data.goal}`;
   if (event.type === "tool_selected") return `步骤 ${data.step_id} 路由到 ${data.tool_name}`;
   if (event.type === "tool_executed") return `工具 ${data.tool_name} 执行 ${data.success ? "成功" : "失败"}`;
@@ -909,6 +1029,7 @@ function messageFor(event) {
   if (event.type === "step_done") return `步骤 ${data.step_id} ${data.status}`;
   if (event.type === "memory_saved") return `保存状态：${data.saved ? "true" : "false"}`;
   if (event.type === "task_completed") return `任务结束：${data.status}`;
+  if (event.type === "authorization_required") return data.summary || "等待用户授权";
   if (event.type === "error") return data.message || "未知错误";
   return JSON.stringify(data);
 }
@@ -933,11 +1054,18 @@ async function handleProgress(event) {
   if (event.type === "skill_matched" && data.skill_id) {
     appendAssistantProgress(state.taskId, `匹配 Skill：${data.skill_id}`);
   }
-  if (event.type === "plan_created") {
+  if (event.type === "plan_created" || event.type === "plan_resumed") {
     renderPlan(data.steps || []);
-    appendAssistantProgress(state.taskId, `生成 ${(data.steps || []).length} 个步骤`);
+    appendAssistantProgress(
+      state.taskId,
+      event.type === "plan_resumed"
+        ? `从步骤 ${data.resume_step_id || "完成检查"} 恢复`
+        : `生成 ${(data.steps || []).length} 个步骤`
+    );
     updateAssistantMessage(state.taskId, {
-      content: `已拆解为 ${(data.steps || []).length} 个步骤，正在执行...`,
+      content: event.type === "plan_resumed"
+        ? `已从 checkpoint 恢复，正在继续执行...`
+        : `已拆解为 ${(data.steps || []).length} 个步骤，正在执行...`,
       status: "running"
     });
   }
@@ -948,6 +1076,14 @@ async function handleProgress(event) {
   if (event.type === "tool_selected") {
     appendAssistantProgress(state.taskId, `调用工具：${data.tool_name}`);
     markStep(data.step_id, "active", "tool", data.tool_name);
+  }
+  if (event.type === "authorization_required") {
+    appendAssistantProgress(state.taskId, `等待授权：${data.summary || data.tool_name || "高风险操作"}`);
+    updateAssistantMessage(state.taskId, {
+      content: "需要你手动授权后才能继续执行这个高风险操作。",
+      status: "running"
+    });
+    showAuthorizationModal(data);
   }
   if (event.type === "replanned") markStep(data.failed_step_id, "active", "重新规划");
   if (event.type === "verified") {
@@ -962,6 +1098,7 @@ async function handleProgress(event) {
     state.running = false;
     els.taskInput.readOnly = false;
     els.runTask.disabled = false;
+    els.resumeTask.disabled = false;
     setStatus(data.status === "completed" ? "done" : "error", data.status === "completed" ? "已完成" : "失败");
     state.reportText = data.final_output || "";
     updateAssistantMessage(state.taskId, {
@@ -981,6 +1118,7 @@ async function handleProgress(event) {
     state.running = false;
     els.taskInput.readOnly = false;
     els.runTask.disabled = false;
+    els.resumeTask.disabled = false;
     setStatus("error", "失败");
     updateAssistantMessage(state.taskId, { content: data.message || "任务失败", status: "failed" });
     await refreshResult();
@@ -1072,12 +1210,15 @@ function bindEvents() {
   els.refreshSkills.addEventListener("click", loadSkillOverview);
   els.openSettings.addEventListener("click", openSettings);
   els.openSettingsSide.addEventListener("click", openSettings);
+  els.dangerousToolsStatus.addEventListener("click", openSettings);
   els.closeSettings.addEventListener("click", closeSettings);
   els.settingsModal.addEventListener("click", (event) => {
     if (event.target === els.settingsModal) closeSettings();
   });
   els.settingsForm.addEventListener("submit", saveSettings);
   els.clearKey.addEventListener("click", clearKey);
+  els.approveAuthorization.addEventListener("click", approveAuthorization);
+  els.rejectAuthorization.addEventListener("click", rejectAuthorization);
   els.loadExample.addEventListener("click", loadExample);
   els.clearTask.addEventListener("click", () => {
     els.taskInput.value = "";
@@ -1087,6 +1228,7 @@ function bindEvents() {
     els.logPanel.innerHTML = "";
   });
   els.runTask.addEventListener("click", runTask);
+  els.resumeTask.addEventListener("click", resumeTask);
   els.taskInput.addEventListener("keydown", (event) => {
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
