@@ -171,6 +171,42 @@ def test_frontend_guards_late_run_results_after_conversation_switch():
     assert "state.conversationRevision === requestRevision" in js[finally_start:js.index("async function resumeTask", finally_start)]
 
 
+def test_frontend_clears_shared_composer_only_when_activating_a_conversation():
+    js = (FRONTEND_ROOT / "app.js").read_text(encoding="utf-8")
+
+    revision_start = js.index("function advanceConversationRevision")
+    revision_end = js.index("function showToast", revision_start)
+    revision = js[revision_start:revision_end]
+    reset_start = js.index("function resetRunSurface")
+    reset_end = js.index("async function runTask", reset_start)
+    reset = js[reset_start:reset_end]
+    run_start = js.index("async function runTask")
+    task_mapping = js.index("state.taskConversationIds.set(result.task_id, result.conversation_id);", run_start)
+    stale_guard = js.index("state.conversationRevision !== requestRevision", task_mapping)
+    stale_return = js.index("return;", stale_guard)
+    input_clear = js.index('els.taskInput.value = "";', stale_return)
+
+    assert "els.taskInput.value = \"\";" in revision
+    assert "resetRunSurface();" in revision
+    assert "els.taskInput.readOnly = false;" in reset
+    assert "els.runTask.disabled = false;" in reset
+    assert "els.resumeTask.disabled = false;" in reset
+    for name in [
+        "terminalTaskIds",
+        "syncedTaskIds",
+        "syncingTaskIds",
+        "taskConversationIds",
+        "terminalSyncTimers",
+        "terminalSyncAttempts",
+    ]:
+        assert name not in revision
+
+    assert stale_return < input_clear
+    assert 'els.taskInput.value = "";' not in js[stale_guard:stale_return]
+    assert task_mapping < stale_guard
+    assert "await syncTerminalTask(result.task_id);" in js[task_mapping:stale_return]
+
+
 def test_frontend_retries_terminal_sync_with_bounded_deduplicated_backoff():
     js = (FRONTEND_ROOT / "app.js").read_text(encoding="utf-8")
 

@@ -206,6 +206,7 @@ function advanceConversationRevision() {
   state.conversationRevision += 1;
   state.messages = [];
   state.pendingAssistantId = null;
+  els.taskInput.value = "";
   resetRunSurface();
   setStatus("ready", "就绪");
 }
