@@ -109,6 +109,25 @@ def test_frontend_syncs_all_terminal_events_and_retries_after_api_return():
     assert "await syncTerminalTask(state.taskId);" in js[return_start:running_start]
 
 
+def test_frontend_marks_terminal_sync_only_after_a_non_running_success():
+    js = (FRONTEND_ROOT / "app.js").read_text(encoding="utf-8")
+
+    assert "async function syncTerminalTask" in js
+    helper_start = js.index("async function syncTerminalTask")
+    helper_end = js.index("const MEMORY_KIND_GROUPS", helper_start)
+    helper = js[helper_start:helper_end]
+
+    assert 'const result = await callApi("sync_chat_result", conversationId, taskId);' in helper
+    assert 'if (result.ok !== true || result.status === "running") return false;' in helper
+    assert "state.syncedTaskIds.add(taskId);" in helper
+    assert "await loadConversationSidebar();" in helper
+    assert "return true;" in helper
+    assert helper.index('if (result.ok !== true || result.status === "running") return false;') < helper.index("state.syncedTaskIds.add(taskId);")
+    assert "return false;" in helper
+    assert "finally" in helper
+    assert "state.syncingTaskIds.delete(taskId);" in helper
+
+
 def test_frontend_includes_memory_view():
     html = (FRONTEND_ROOT / "index.html").read_text(encoding="utf-8")
 

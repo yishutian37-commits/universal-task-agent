@@ -117,18 +117,21 @@ function setStopTaskVisible(isVisible) {
 
 async function syncTerminalTask(taskId) {
   const conversationId = state.taskConversationIds.get(taskId);
-  if (!taskId || state.running || !state.terminalTaskIds.has(taskId) || !conversationId) return;
-  if (state.syncedTaskIds.has(taskId) || state.syncingTaskIds.has(taskId)) return;
+  if (!taskId || state.running || !state.terminalTaskIds.has(taskId) || !conversationId) return false;
+  if (state.syncedTaskIds.has(taskId)) return true;
+  if (state.syncingTaskIds.has(taskId)) return false;
 
   state.syncingTaskIds.add(taskId);
   try {
-    await callApi("sync_chat_result", conversationId, taskId);
-    if (!state.running) {
-      state.syncedTaskIds.add(taskId);
-      await loadConversationSidebar();
-    }
+    const result = await callApi("sync_chat_result", conversationId, taskId);
+    if (result.ok !== true || result.status === "running") return false;
+    if (state.running) return false;
+    state.syncedTaskIds.add(taskId);
+    await loadConversationSidebar();
+    return true;
   } catch (error) {
     showToast("会话同步失败", error.message);
+    return false;
   } finally {
     state.syncingTaskIds.delete(taskId);
   }
