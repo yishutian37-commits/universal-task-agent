@@ -800,6 +800,7 @@ async function runTask() {
       state.conversationId = result.conversation_id;
       updatePendingAssistant({ content: result.message || "已回复。", status: "completed" });
       setStatus("done", "已回复");
+      await loadConversationSidebar();
       return;
     }
     state.running = true;
@@ -1021,6 +1022,7 @@ async function handleProgress(event) {
     }
     els.copyReport.disabled = !state.reportText;
     await callApi("sync_chat_result", state.conversationId || "", state.taskId || "");
+    await loadConversationSidebar();
     await refreshResult();
   }
 

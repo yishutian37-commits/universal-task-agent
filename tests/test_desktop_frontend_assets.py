@@ -140,6 +140,13 @@ def test_frontend_includes_manual_authorization_modal():
     assert "payload.trash_path" in js
 
 
+def test_frontend_uses_a_single_sidebar_dangerous_tools_status_entry():
+    html = (FRONTEND_ROOT / "index.html").read_text(encoding="utf-8")
+
+    assert html.count('id="dangerousToolsStatus"') == 1
+    assert html.index('id="dangerousToolsStatus"') < html.index('<main class="main">')
+
+
 def test_frontend_preserves_history_log_whitespace():
     css = (FRONTEND_ROOT / "style.css").read_text(encoding="utf-8")
 
@@ -253,6 +260,18 @@ def test_frontend_handles_direct_chat_replies():
 
     assert "result.direct" in js
     assert "updatePendingAssistant({ content: result.message" in js
+
+
+def test_frontend_refreshes_sidebar_after_chat_conversation_writes():
+    js = (FRONTEND_ROOT / "app.js").read_text(encoding="utf-8")
+    direct_start = js.index("if (result.direct)")
+    direct_end = js.index("state.running = true", direct_start)
+    progress_start = js.index("async function handleProgress")
+    completed_start = js.index('if (event.type === "task_completed")', progress_start)
+    completed_end = js.index('if (event.type === "error")', completed_start)
+
+    assert "await loadConversationSidebar();" in js[direct_start:direct_end]
+    assert 'await callApi("sync_chat_result", state.conversationId || "", state.taskId || "");\n    await loadConversationSidebar();' in js[completed_start:completed_end]
 
 
 def test_frontend_task_completed_updates_assistant_message_not_report_panel_only():

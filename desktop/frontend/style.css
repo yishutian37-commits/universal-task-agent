@@ -89,7 +89,7 @@ button {
 .window {
   height: 100%;
   display: grid;
-  grid-template-rows: 44px 1fr;
+  grid-template-rows: minmax(0, 1fr);
 }
 
 .titlebar {

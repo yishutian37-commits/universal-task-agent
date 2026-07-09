@@ -44,3 +44,11 @@ def test_app_loads_and_opens_conversations_from_sidebar():
     assert "function renderConversationSidebar" in js
     assert "function startNewConversation" in js
     assert "function openConversation" in js
+
+
+def test_window_layout_uses_the_full_height_after_titlebar_removal():
+    html = (FRONTEND_ROOT / "index.html").read_text(encoding="utf-8")
+    css = (FRONTEND_ROOT / "style.css").read_text(encoding="utf-8")
+
+    assert 'class="titlebar"' not in html
+    assert ".window {\n  height: 100%;\n  display: grid;\n  grid-template-rows: minmax(0, 1fr);\n}" in css
