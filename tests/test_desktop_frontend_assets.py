@@ -118,14 +118,48 @@ def test_frontend_marks_terminal_sync_only_after_a_non_running_success():
     helper = js[helper_start:helper_end]
 
     assert 'const result = await callApi("sync_chat_result", conversationId, taskId);' in helper
-    assert 'if (result.ok !== true || result.status === "running") return false;' in helper
+    assert 'if (result.ok !== true || result.status === "running") {' in helper
+    assert "shouldRetry = true;" in helper
+    assert "return false;" in helper
     assert "state.syncedTaskIds.add(taskId);" in helper
     assert "await loadConversationSidebar();" in helper
     assert "return true;" in helper
-    assert helper.index('if (result.ok !== true || result.status === "running") return false;') < helper.index("state.syncedTaskIds.add(taskId);")
+    assert helper.index('if (result.ok !== true || result.status === "running") {') < helper.index("state.syncedTaskIds.add(taskId);")
     assert "return false;" in helper
     assert "finally" in helper
     assert "state.syncingTaskIds.delete(taskId);" in helper
+
+
+def test_frontend_retries_terminal_sync_with_bounded_deduplicated_backoff():
+    js = (FRONTEND_ROOT / "app.js").read_text(encoding="utf-8")
+
+    assert "const TERMINAL_SYNC_RETRY_DELAYS = [80, 200, 500, 1000];" in js
+    assert "terminalSyncTimers: new Map()" in js
+    assert "terminalSyncAttempts: new Map()" in js
+    assert "function scheduleTerminalSyncRetry" in js
+    assert "function clearTerminalSyncRetry" in js
+    helper_start = js.index("async function syncTerminalTask")
+    helper_end = js.index("const MEMORY_KIND_GROUPS", helper_start)
+    helper = js[helper_start:helper_end]
+    scheduler_start = js.index("function scheduleTerminalSyncRetry")
+    scheduler_end = helper_start
+    scheduler = js[scheduler_start:scheduler_end]
+    reset_start = js.index("function resetRunSurface")
+    run_start = js.index("async function runTask", reset_start)
+    direct_start = js.index("if (result.direct)", run_start)
+    running_start = js.index("state.running = true", direct_start)
+
+    assert "state.terminalSyncTimers.has(taskId) || state.syncingTaskIds.has(taskId)" in scheduler
+    assert "const delay = TERMINAL_SYNC_RETRY_DELAYS[attempt];" in scheduler
+    assert "setTimeout(async () =>" in scheduler
+    assert "state.terminalSyncTimers.set(taskId, timer);" in scheduler
+    assert "会话同步未完成" in scheduler
+    assert "shouldRetry = true;" in helper
+    assert "scheduleTerminalSyncRetry(taskId);" in helper
+    assert "clearTerminalSyncRetry(taskId);" in helper
+    assert helper.index("clearTerminalSyncRetry(taskId);") < helper.index("state.syncedTaskIds.add(taskId);")
+    assert "clearTerminalSyncRetry" not in js[reset_start:run_start]
+    assert "clearTerminalSyncRetry" not in js[direct_start:running_start]
 
 
 def test_frontend_includes_memory_view():

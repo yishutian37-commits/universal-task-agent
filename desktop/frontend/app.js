@@ -95,8 +95,12 @@ const state = {
   terminalTaskIds: new Set(),
   syncedTaskIds: new Set(),
   syncingTaskIds: new Set(),
-  taskConversationIds: new Map()
+  taskConversationIds: new Map(),
+  terminalSyncTimers: new Map(),
+  terminalSyncAttempts: new Map()
 };
+
+const TERMINAL_SYNC_RETRY_DELAYS = [80, 200, 500, 1000];
 
 function setTaskPanelOpen(isOpen) {
   state.taskPanelOpen = window.UTAShell.setTaskPanelOpen(isOpen);
@@ -115,25 +119,58 @@ function setStopTaskVisible(isVisible) {
   els.stopTask.disabled = !isVisible;
 }
 
+function clearTerminalSyncRetry(taskId) {
+  if (state.terminalSyncTimers.has(taskId)) {
+    clearTimeout(state.terminalSyncTimers.get(taskId));
+    state.terminalSyncTimers.delete(taskId);
+  }
+  state.terminalSyncAttempts.delete(taskId);
+}
+
+function scheduleTerminalSyncRetry(taskId) {
+  if (!taskId || state.syncedTaskIds.has(taskId)) return;
+  if (state.terminalSyncTimers.has(taskId) || state.syncingTaskIds.has(taskId)) return;
+
+  const attempt = state.terminalSyncAttempts.get(taskId) || 0;
+  if (attempt >= TERMINAL_SYNC_RETRY_DELAYS.length) {
+    addLog("Sync", `任务 ${taskId} 的会话同步未完成，请稍后刷新会话。`);
+    return;
+  }
+
+  const delay = TERMINAL_SYNC_RETRY_DELAYS[attempt];
+  state.terminalSyncAttempts.set(taskId, attempt + 1);
+  const timer = setTimeout(async () => {
+    state.terminalSyncTimers.delete(taskId);
+    await syncTerminalTask(taskId);
+  }, delay);
+  state.terminalSyncTimers.set(taskId, timer);
+}
+
 async function syncTerminalTask(taskId) {
   const conversationId = state.taskConversationIds.get(taskId);
-  if (!taskId || state.running || !state.terminalTaskIds.has(taskId) || !conversationId) return false;
+  if (!taskId || !state.terminalTaskIds.has(taskId) || !conversationId) return false;
   if (state.syncedTaskIds.has(taskId)) return true;
   if (state.syncingTaskIds.has(taskId)) return false;
 
   state.syncingTaskIds.add(taskId);
+  let shouldRetry = false;
   try {
     const result = await callApi("sync_chat_result", conversationId, taskId);
-    if (result.ok !== true || result.status === "running") return false;
-    if (state.running) return false;
+    if (result.ok !== true || result.status === "running") {
+      shouldRetry = true;
+      return false;
+    }
+    clearTerminalSyncRetry(taskId);
     state.syncedTaskIds.add(taskId);
     await loadConversationSidebar();
     return true;
   } catch (error) {
+    shouldRetry = true;
     showToast("会话同步失败", error.message);
     return false;
   } finally {
     state.syncingTaskIds.delete(taskId);
+    if (shouldRetry) scheduleTerminalSyncRetry(taskId);
   }
 }
 
