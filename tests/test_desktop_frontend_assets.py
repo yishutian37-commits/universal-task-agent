@@ -66,6 +66,49 @@ def test_frontend_task_panel_and_stop_control_follow_run_lifecycle():
     assert 'els.stopTask.addEventListener("click", stopTask);' in js
 
 
+def test_frontend_does_not_revive_tasks_that_finish_before_api_return():
+    js = (FRONTEND_ROOT / "app.js").read_text(encoding="utf-8")
+
+    assert "terminalTaskIds: new Set()" in js
+    assert "state.terminalTaskIds.add(terminalTaskId);" in js
+    assert "if (state.terminalTaskIds.has(result.task_id))" in js
+    run_start = js.index("async function runTask")
+    return_start = js.index('const result = await callApi("run_chat_message"', run_start)
+    early_terminal_start = js.index("if (state.terminalTaskIds.has(result.task_id))", return_start)
+    running_start = js.index("state.running = true", return_start)
+
+    assert early_terminal_start < running_start
+    assert "setTaskPanelOpen(true);" not in js[early_terminal_start:running_start]
+    assert "setStopTaskVisible(true);" not in js[early_terminal_start:running_start]
+
+
+def test_frontend_syncs_all_terminal_events_and_retries_after_api_return():
+    js = (FRONTEND_ROOT / "app.js").read_text(encoding="utf-8")
+
+    assert "syncedTaskIds: new Set()" in js
+    assert "syncingTaskIds: new Set()" in js
+    assert "taskConversationIds: new Map()" in js
+    assert "async function syncTerminalTask" in js
+    helper_start = js.index("async function syncTerminalTask")
+    progress_start = js.index("async function handleProgress")
+    completed_start = js.index('if (event.type === "task_completed")', progress_start)
+    error_start = js.index('if (event.type === "error")', completed_start)
+    cancelled_start = js.index('if (event.type === "cancelled")', error_start)
+    run_start = js.index("async function runTask")
+    return_start = js.index('const result = await callApi("run_chat_message"', run_start)
+    running_start = js.index("state.running = true", return_start)
+
+    assert "const conversationId = state.taskConversationIds.get(taskId);" in js[helper_start:progress_start]
+    assert 'await callApi("sync_chat_result", conversationId, taskId);' in js[helper_start:progress_start]
+    assert "state.syncedTaskIds.add(taskId);" in js[helper_start:progress_start]
+    assert "state.syncedTaskIds.add(taskId);" not in js[:js.index('await callApi("sync_chat_result", conversationId, taskId);', helper_start)]
+    assert "await syncTerminalTask(state.taskId);" in js[completed_start:error_start]
+    assert "await syncTerminalTask(state.taskId);" in js[error_start:cancelled_start]
+    assert "await syncTerminalTask(state.taskId);" in js[cancelled_start:]
+    assert "state.taskConversationIds.set(result.task_id, result.conversation_id);" in js[return_start:running_start]
+    assert "await syncTerminalTask(state.taskId);" in js[return_start:running_start]
+
+
 def test_frontend_includes_memory_view():
     html = (FRONTEND_ROOT / "index.html").read_text(encoding="utf-8")
 
@@ -295,7 +338,7 @@ def test_frontend_refreshes_sidebar_after_chat_conversation_writes():
     completed_end = js.index('if (event.type === "error")', completed_start)
 
     assert "await loadConversationSidebar();" in js[direct_start:direct_end]
-    assert 'await callApi("sync_chat_result", state.conversationId || "", state.taskId || "");\n    await loadConversationSidebar();' in js[completed_start:completed_end]
+    assert "await syncTerminalTask(state.taskId);" in js[completed_start:completed_end]
 
 
 def test_frontend_task_completed_updates_assistant_message_not_report_panel_only():

@@ -91,7 +91,11 @@ const state = {
   conversations: [],
   activePage: "conversation",
   taskPanelOpen: false,
-  taskPanelTab: "progress"
+  taskPanelTab: "progress",
+  terminalTaskIds: new Set(),
+  syncedTaskIds: new Set(),
+  syncingTaskIds: new Set(),
+  taskConversationIds: new Map()
 };
 
 function setTaskPanelOpen(isOpen) {
@@ -109,6 +113,25 @@ function renderTaskPanelEmptyStates() {
 function setStopTaskVisible(isVisible) {
   els.stopTask.classList.toggle("hidden", !isVisible);
   els.stopTask.disabled = !isVisible;
+}
+
+async function syncTerminalTask(taskId) {
+  const conversationId = state.taskConversationIds.get(taskId);
+  if (!taskId || state.running || !state.terminalTaskIds.has(taskId) || !conversationId) return;
+  if (state.syncedTaskIds.has(taskId) || state.syncingTaskIds.has(taskId)) return;
+
+  state.syncingTaskIds.add(taskId);
+  try {
+    await callApi("sync_chat_result", conversationId, taskId);
+    if (!state.running) {
+      state.syncedTaskIds.add(taskId);
+      await loadConversationSidebar();
+    }
+  } catch (error) {
+    showToast("会话同步失败", error.message);
+  } finally {
+    state.syncingTaskIds.delete(taskId);
+  }
 }
 
 const MEMORY_KIND_GROUPS = [
@@ -816,16 +839,21 @@ async function runTask() {
       await loadConversationSidebar();
       return;
     }
-    state.running = true;
     state.conversationId = result.conversation_id;
+    state.taskConversationIds.set(result.task_id, result.conversation_id);
     state.taskId = result.task_id;
     assistant.taskId = result.task_id;
     renderChatMessages();
     els.taskIdLabel.textContent = result.task_id;
+    renderTaskPanelEmptyStates();
+    if (state.terminalTaskIds.has(result.task_id)) {
+      await syncTerminalTask(state.taskId);
+      return;
+    }
+    state.running = true;
     setTaskPanelTab("progress");
     setTaskPanelOpen(true);
     setStopTaskVisible(true);
-    renderTaskPanelEmptyStates();
   } catch (error) {
     setStatus("error", "失败");
     updatePendingAssistant({ content: error.message, status: "failed" });
@@ -865,13 +893,18 @@ async function resumeTask() {
       showToast("恢复失败", result.error || "checkpoint 不存在");
       return;
     }
-    state.running = true;
     state.taskId = result.task_id;
+    if (state.conversationId) state.taskConversationIds.set(result.task_id, state.conversationId);
     els.taskIdLabel.textContent = result.task_id;
+    renderTaskPanelEmptyStates();
+    if (state.terminalTaskIds.has(result.task_id)) {
+      await syncTerminalTask(state.taskId);
+      return;
+    }
+    state.running = true;
     setTaskPanelTab("progress");
     setTaskPanelOpen(true);
     setStopTaskVisible(true);
-    renderTaskPanelEmptyStates();
   } catch (error) {
     state.running = false;
     setStatus("error", "恢复失败");
@@ -995,6 +1028,11 @@ async function handleProgress(event) {
     if (pending) pending.taskId = event.task_id;
   }
 
+  const terminalTaskId = event.task_id || state.taskId;
+  if (terminalTaskId && ["task_completed", "cancelled", "error"].includes(event.type)) {
+    state.terminalTaskIds.add(terminalTaskId);
+  }
+
   if (event.type === "task_received") {
     appendAssistantProgress(state.taskId, "收到任务，正在解析...");
   }
@@ -1062,8 +1100,7 @@ async function handleProgress(event) {
       els.report.innerHTML = renderMarkdown(state.reportText);
     }
     els.copyReport.disabled = !state.reportText;
-    await callApi("sync_chat_result", state.conversationId || "", state.taskId || "");
-    await loadConversationSidebar();
+    await syncTerminalTask(state.taskId);
     await refreshResult();
   }
 
@@ -1075,6 +1112,7 @@ async function handleProgress(event) {
     els.resumeTask.disabled = false;
     setStatus("error", "失败");
     updateAssistantMessage(state.taskId, { content: data.message || "任务失败", status: "failed" });
+    await syncTerminalTask(state.taskId);
     await refreshResult();
   }
 
@@ -1086,6 +1124,7 @@ async function handleProgress(event) {
     els.resumeTask.disabled = false;
     setStatus("done", "已停止");
     updateAssistantMessage(state.taskId, { content: "任务已停止", status: "completed" });
+    await syncTerminalTask(state.taskId);
     await refreshResult();
   }
 }
