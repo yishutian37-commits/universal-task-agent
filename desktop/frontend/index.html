@@ -37,70 +37,63 @@
       </aside>
 
       <main class="main">
-        <header class="mainHead">
-          <div>
-            <h2 id="conversationTitle">新任务</h2>
-            <span id="taskIdLabel">未运行</span>
-          </div>
-          <div class="headActions">
-            <span class="status ready" id="statusPill"><i></i><span id="statusText">就绪</span></span>
-            <button class="button ghost" type="button" id="resumeTask">恢复</button>
-            <button class="button ghost" type="button" id="openSettings">设置</button>
-          </div>
-        </header>
-
         <section class="workspace chatWorkspace" id="taskView" data-page="conversation">
-          <div class="chatColumn">
-            <section class="panel chatPanel">
-              <div class="panelHead">
-                <h3>对话</h3>
-                <div class="segments">
-                  <button class="segment active" type="button" data-example="summarize">文本</button>
-                  <button class="segment" type="button" data-example="data">表格</button>
+          <section class="conversationSurface">
+            <header class="conversationHeader">
+              <div>
+                <h1 id="conversationTitle">新任务</h1>
+                <button class="workspaceSelector" type="button" id="workspaceSelector" disabled title="无工作区">无工作区</button>
+              </div>
+              <div class="headActions">
+                <span class="status ready" id="statusPill"><i></i><span id="statusText">就绪</span></span>
+                <button class="iconButton" type="button" id="toggleTaskPanel" title="任务详情" aria-label="任务详情">▥</button>
+              </div>
+            </header>
+            <div class="chatMessages" id="chatMessages"></div>
+            <article class="report empty hidden" id="report">等待任务运行</article>
+            <div class="chatComposer">
+              <textarea id="taskInput" spellcheck="false" rows="3" placeholder="继续提问或安排下一项任务"></textarea>
+              <div class="composerToolbar">
+                <div>
+                  <button class="iconButton" type="button" id="loadExample" title="载入示例" aria-label="载入示例">＋</button>
+                  <button class="iconButton" type="button" id="clearTask" title="清空输入" aria-label="清空输入">×</button>
                 </div>
-              </div>
-              <div class="chatMessages" id="chatMessages">
-                <article class="chatMessage assistant">
-                  <div class="messageBubble">你好，我是 UTA。把任务发给我，我会在右侧展示拆解步骤和执行状态。</div>
-                </article>
-              </div>
-              <div class="chatComposer">
-                <textarea id="taskInput" spellcheck="false" rows="3">帮我总结一段文本：面对庞杂的Agent学习资料，其知识内容并非无序堆砌，而是一种高度结构化、模块化但分布在不同载体中的体系。</textarea>
-                <div class="toolbar">
-                  <button class="button secondary" type="button" id="loadExample">载入示例</button>
-                  <button class="button secondary" type="button" id="clearTask">清空</button>
+                <div>
+                  <button class="button secondary hidden" type="button" id="stopTask">停止</button>
                   <button class="button primary" type="button" id="runTask">发送</button>
                 </div>
               </div>
-              <article class="report empty hidden" id="report">等待任务运行</article>
-            </section>
-          </div>
+            </div>
+          </section>
 
-          <div class="detailColumn" id="chatDetailPanel">
-            <section class="panel grow">
-              <div class="panelHead">
-                <h3>执行详情</h3>
-                <span id="planMeta">0 步</span>
+          <aside class="taskPanel collapsed" id="chatDetailPanel" aria-hidden="true">
+            <header class="taskPanelHeader">
+              <div><h2>本轮任务</h2><span id="taskIdLabel">未运行</span></div>
+              <div>
+                <button class="button ghost compact" type="button" id="resumeTask">继续</button>
+                <button class="iconButton" type="button" id="closeTaskPanel" title="收起任务详情" aria-label="收起任务详情">×</button>
               </div>
+            </header>
+            <div class="taskTabs" role="tablist" aria-label="任务详情">
+              <button class="active" type="button" data-task-tab="progress" role="tab">进度</button>
+              <button type="button" data-task-tab="files" role="tab">文件</button>
+              <button type="button" data-task-tab="changes" role="tab">变更</button>
+              <button type="button" data-task-tab="artifacts" role="tab">产物</button>
+              <button type="button" data-task-tab="diagnostics" role="tab">诊断</button>
+            </div>
+            <section class="taskPanelBody" data-task-panel="progress">
+              <div class="taskPanelMeta"><strong>执行进度</strong><span id="planMeta">0 步</span></div>
+              <p class="taskActivity" id="taskActivity">尚未开始</p>
               <div class="steps" id="planList"></div>
             </section>
-
-            <section class="panel logsPanel">
-              <div class="panelHead">
-                <h3>实时日志</h3>
-                <button class="button ghost compact" type="button" id="clearLogs">清空</button>
-              </div>
-              <div class="logs" id="logPanel"></div>
+            <section class="taskPanelBody hidden" data-task-panel="files"><div class="emptyState">本轮暂无文件记录</div></section>
+            <section class="taskPanelBody hidden" data-task-panel="changes"><div class="emptyState">本轮暂无文件变更</div></section>
+            <section class="taskPanelBody hidden" data-task-panel="artifacts"><div class="emptyState">本轮暂无独立产物</div></section>
+            <section class="taskPanelBody diagnosticsPanel hidden" data-task-panel="diagnostics">
+              <div class="diagnosticBlock"><div class="taskPanelMeta"><strong>实时日志</strong><button class="button ghost compact" type="button" id="clearLogs">清空</button></div><div class="logs" id="logPanel"></div></div>
+              <details class="stateBox"><summary>运行状态 <button class="button secondary compact" type="button" id="copyReport" disabled>复制结果</button></summary><pre id="stateJson">{"status":"idle","task_id":null}</pre></details>
             </section>
-
-            <details class="stateBox">
-              <summary>state.json <button class="button secondary compact" type="button" id="copyReport" disabled>复制最新结果</button></summary>
-              <pre id="stateJson">{
-  "status": "idle",
-  "task_id": null
-}</pre>
-            </details>
-          </div>
+          </aside>
         </section>
 
         <section class="workspace memoryWorkspace hidden" id="memoryView" data-page="memory">

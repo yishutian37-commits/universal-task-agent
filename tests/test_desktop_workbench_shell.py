@@ -52,3 +52,24 @@ def test_window_layout_uses_the_full_height_after_titlebar_removal():
 
     assert 'class="titlebar"' not in html
     assert ".window {\n  height: 100%;\n  display: grid;\n  grid-template-rows: minmax(0, 1fr);\n}" in css
+
+
+def test_workbench_has_center_conversation_and_contextual_task_panel():
+    html = (FRONTEND_ROOT / "index.html").read_text(encoding="utf-8")
+
+    assert 'id="conversationTitle"' in html
+    assert 'id="workspaceSelector"' in html
+    assert 'id="chatMessages"' in html
+    assert 'id="taskInput"' in html
+    assert 'id="chatDetailPanel"' in html
+    for name in ["progress", "files", "changes", "artifacts", "diagnostics"]:
+        assert f'data-task-tab="{name}"' in html
+        assert f'data-task-panel="{name}"' in html
+
+
+def test_logs_and_state_are_diagnostics_only():
+    html = (FRONTEND_ROOT / "index.html").read_text(encoding="utf-8")
+
+    diagnostics = html.split('data-task-panel="diagnostics"', 1)[1]
+    assert 'id="logPanel"' in diagnostics
+    assert 'id="stateJson"' in diagnostics

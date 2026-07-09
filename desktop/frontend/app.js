@@ -29,18 +29,21 @@ const els = {
   taskInput: document.getElementById("taskInput"),
   runTask: document.getElementById("runTask"),
   resumeTask: document.getElementById("resumeTask"),
+  stopTask: document.getElementById("stopTask"),
+  toggleTaskPanel: document.getElementById("toggleTaskPanel"),
+  closeTaskPanel: document.getElementById("closeTaskPanel"),
   loadExample: document.getElementById("loadExample"),
   clearTask: document.getElementById("clearTask"),
   clearLogs: document.getElementById("clearLogs"),
   planMeta: document.getElementById("planMeta"),
   planList: document.getElementById("planList"),
+  taskActivity: document.getElementById("taskActivity"),
   logPanel: document.getElementById("logPanel"),
   report: document.getElementById("report"),
   copyReport: document.getElementById("copyReport"),
   stateJson: document.getElementById("stateJson"),
   settingsModal: document.getElementById("settingsModal"),
   settingsForm: document.getElementById("settingsForm"),
-  openSettings: document.getElementById("openSettings"),
   openSettingsSide: document.getElementById("openSettingsSide"),
   closeSettings: document.getElementById("closeSettings"),
   dangerousToolsStatus: document.getElementById("dangerousToolsStatus"),
@@ -91,6 +94,18 @@ const state = {
   taskPanelTab: "progress"
 };
 
+function setTaskPanelOpen(isOpen) {
+  state.taskPanelOpen = window.UTAShell.setTaskPanelOpen(isOpen);
+}
+
+function setTaskPanelTab(tabName) {
+  state.taskPanelTab = window.UTAShell.activateTaskTab(tabName);
+}
+
+function renderTaskPanelEmptyStates() {
+  els.chatDetailPanel.classList.toggle("has-task", Boolean(state.taskId));
+}
+
 const MEMORY_KIND_GROUPS = [
   { kind: "identity", title: "用户画像", empty: "还没有形成稳定的用户画像。" },
   { kind: "preference", title: "偏好", empty: "还没有记录明确偏好。" },
@@ -132,8 +147,7 @@ function addChatMessage(role, content, status = "completed", taskId = null) {
     role,
     content,
     status,
-    taskId,
-    progress: []
+    taskId
   };
   state.messages.push(message);
   renderChatMessages();
@@ -155,11 +169,8 @@ function updatePendingAssistant(patch) {
 }
 
 function appendAssistantProgress(taskId, line) {
-  const message = [...state.messages].reverse().find((item) => item.role === "assistant" && item.taskId === taskId);
-  if (!message || !line) return;
-  if (!Array.isArray(message.progress)) message.progress = [];
-  message.progress.push(line);
-  renderChatMessages();
+  if (!taskId || !line) return;
+  els.taskActivity.textContent = line;
 }
 
 function renderChatMessages() {
@@ -176,21 +187,10 @@ function renderChatMessages() {
     <article class="chatMessage ${escapeHtml(message.role)} ${escapeHtml(message.status || "")}" data-message-id="${escapeHtml(message.id)}">
       <div class="messageBubble">
         ${message.role === "assistant" ? renderMarkdown(message.content || "") : escapeHtml(message.content || "")}
-        ${message.role === "assistant" ? renderMessageProgress(message) : ""}
       </div>
     </article>
   `).join("");
   els.chatMessages.scrollTop = els.chatMessages.scrollHeight;
-}
-
-function renderMessageProgress(message) {
-  const progress = Array.isArray(message.progress) ? message.progress : [];
-  if (!progress.length) return "";
-  return `
-    <div class="messageProgress">
-      ${progress.slice(-12).map((line) => `<p class="progressLine">${escapeHtml(line)}</p>`).join("")}
-    </div>
-  `;
 }
 
 function updateKeyState(settings) {
@@ -753,9 +753,12 @@ function renderSkillErrors(errors) {
 }
 
 function resetRunSurface() {
+  state.taskId = null;
   els.planList.innerHTML = "";
   els.logPanel.innerHTML = "";
   els.planMeta.textContent = "0 步";
+  els.taskActivity.textContent = "尚未开始";
+  els.taskIdLabel.textContent = "未运行";
   if (els.report) {
     els.report.className = "report empty hidden";
     els.report.textContent = "等待任务运行";
@@ -763,6 +766,7 @@ function resetRunSurface() {
   els.stateJson.textContent = JSON.stringify({ status: "idle", task_id: null }, null, 2);
   els.copyReport.disabled = true;
   state.reportText = "";
+  renderTaskPanelEmptyStates();
 }
 
 async function runTask() {
@@ -809,6 +813,9 @@ async function runTask() {
     assistant.taskId = result.task_id;
     renderChatMessages();
     els.taskIdLabel.textContent = result.task_id;
+    setTaskPanelTab("progress");
+    setTaskPanelOpen(true);
+    renderTaskPanelEmptyStates();
   } catch (error) {
     setStatus("error", "失败");
     updatePendingAssistant({ content: error.message, status: "failed" });
@@ -851,6 +858,9 @@ async function resumeTask() {
     state.running = true;
     state.taskId = result.task_id;
     els.taskIdLabel.textContent = result.task_id;
+    setTaskPanelTab("progress");
+    setTaskPanelOpen(true);
+    renderTaskPanelEmptyStates();
   } catch (error) {
     state.running = false;
     setStatus("error", "恢复失败");
@@ -1119,7 +1129,6 @@ function bindEvents() {
   els.refreshMemory.addEventListener("click", loadMemoryOverview);
   els.compressCurrentConversation.addEventListener("click", compressCurrentConversation);
   els.refreshSkills.addEventListener("click", loadSkillOverview);
-  els.openSettings.addEventListener("click", openSettings);
   els.openSettingsSide.addEventListener("click", openSettings);
   els.dangerousToolsStatus.addEventListener("click", openSettings);
   els.closeSettings.addEventListener("click", closeSettings);
@@ -1140,6 +1149,11 @@ function bindEvents() {
   });
   els.runTask.addEventListener("click", runTask);
   els.resumeTask.addEventListener("click", resumeTask);
+  els.toggleTaskPanel.addEventListener("click", () => setTaskPanelOpen(!state.taskPanelOpen));
+  els.closeTaskPanel.addEventListener("click", () => setTaskPanelOpen(false));
+  document.querySelectorAll("[data-task-tab]").forEach((button) => {
+    button.addEventListener("click", () => setTaskPanelTab(button.dataset.taskTab));
+  });
   els.taskInput.addEventListener("keydown", (event) => {
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();

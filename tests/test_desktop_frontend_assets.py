@@ -12,14 +12,12 @@ def test_frontend_does_not_draw_duplicate_traffic_lights():
     assert ".traffic" not in css
 
 
-def test_frontend_keeps_plan_and_logs_in_separate_scroll_regions():
-    css = (FRONTEND_ROOT / "style.css").read_text(encoding="utf-8")
+def test_frontend_keeps_task_details_in_tabbed_panel():
+    html = (FRONTEND_ROOT / "index.html").read_text(encoding="utf-8")
 
-    assert "grid-template-rows: auto auto auto;" in css
-    assert ".leftColumn {\n  align-content: start;" in css
-    assert ".grow {\n  min-height: 300px;\n  max-height: 360px;" in css
-    assert ".logsPanel {\n  min-height: 0;\n  display: grid;" in css
-    assert ".logs {\n  min-height: 0;\n  height: auto;" in css
+    for name in ["progress", "files", "changes", "artifacts", "diagnostics"]:
+        assert f'data-task-tab="{name}"' in html
+        assert f'data-task-panel="{name}"' in html
 
 
 def test_frontend_includes_memory_view():
@@ -176,7 +174,7 @@ def test_frontend_includes_chat_surface_and_detail_panel():
     assert 'id="planList"' in html
     assert 'id="logPanel"' in html
     assert 'id="stateJson"' in html
-    assert "执行详情" in html
+    assert "本轮任务" in html
 
 
 def test_frontend_chat_styles_exist():
@@ -188,23 +186,6 @@ def test_frontend_chat_styles_exist():
     assert ".chatMessage.assistant" in css
     assert ".chatComposer" in css
     assert ".detailColumn" in css
-
-
-def test_frontend_chat_layout_keeps_messages_above_bottom_composer():
-    css = (FRONTEND_ROOT / "style.css").read_text(encoding="utf-8")
-    js = (FRONTEND_ROOT / "app.js").read_text(encoding="utf-8")
-
-    assert ".chatColumn {\n  grid-template-rows: minmax(0, 1fr);\n}" in css
-    assert ".chatPanel {\n  height: 100%;" in css
-    assert "  display: grid;\n  grid-template-rows: auto minmax(0, 1fr) auto;" in css
-    assert ".chatMessages {\n  min-height: 0;" in css
-    assert ".chatComposer {\n  border-top: 1px solid var(--border);\n  background: var(--surface);" in css
-    assert ".chatComposer {\n  border-top: 1px solid var(--border);\n  background: var(--surface);\n  margin-top: auto;" not in css
-    assert "flex-shrink: 0;" in css
-    assert 'els.taskInput.value = "";' in js
-    assert "chatPanel.style.height" not in js
-    assert "chatMessages.style.height" not in js
-    assert "fixChatLayout" not in js
 
 
 def test_frontend_hidden_report_cannot_create_extra_chat_row():
@@ -243,16 +224,13 @@ def test_frontend_calls_chat_bridge_methods_and_updates_messages():
     assert "pendingAssistantId" in js
 
 
-def test_frontend_shows_progress_inside_assistant_message():
+def test_frontend_keeps_execution_progress_out_of_assistant_messages():
     js = (FRONTEND_ROOT / "app.js").read_text(encoding="utf-8")
-    css = (FRONTEND_ROOT / "style.css").read_text(encoding="utf-8")
 
-    assert "function appendAssistantProgress" in js
-    assert "function renderMessageProgress" in js
-    assert 'appendAssistantProgress(state.taskId, "收到任务，正在解析...")' in js
-    assert 'appendAssistantProgress(state.taskId, `开始步骤 ${data.step_id}：${data.goal}`)' in js
-    assert ".messageProgress" in css
-    assert ".progressLine" in css
+    assert "function renderMessageProgress" not in js
+    assert "function renderPlan" in js
+    assert "function markStep" in js
+    assert "els.taskActivity.textContent = line" in js
 
 
 def test_frontend_handles_direct_chat_replies():
