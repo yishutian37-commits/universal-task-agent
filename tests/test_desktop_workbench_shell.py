@@ -124,7 +124,7 @@ def test_secondary_workspaces_collapse_to_one_column_without_changing_chat_drawe
     assert "@media (max-width: 760px)" in css
     drawer_media = css.split("@media (max-width: 1179px)", 1)[1].split("@media (max-width: 760px)", 1)[0]
 
-    assert ".workspace:not(.chatWorkspace) {\n    grid-template-columns: minmax(0, 1fr);\n  }" in drawer_media
+    assert ".workspace:not(.chatWorkspace) {\n    grid-template-columns: minmax(0, 1fr);\n    align-content: start;\n    align-items: start;\n  }" in drawer_media
     assert ".chatWorkspace,\n  .chatWorkspace.task-panel-open {\n    grid-template-columns: minmax(0, 1fr);\n  }" in drawer_media
 
 

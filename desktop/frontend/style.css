@@ -1450,6 +1450,8 @@ pre {
 
   .workspace:not(.chatWorkspace) {
     grid-template-columns: minmax(0, 1fr);
+    align-content: start;
+    align-items: start;
   }
 }
 
