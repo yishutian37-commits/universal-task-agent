@@ -18,7 +18,7 @@
 
 ---
 
-### 任务 1：知识库专用布局与条目样式
+### Task 1：知识库专用布局与条目样式
 
 **文件：**
 - 修改：`tests/test_desktop_frontend_assets.py`
@@ -104,7 +104,7 @@ git diff --check -- desktop/frontend/index.html desktop/frontend/app.js desktop/
 
 ---
 
-### 任务 2：真实窗口验收与重新打包
+### Task 2：真实窗口验收与重新打包
 
 **文件：**
 - 验证：`desktop/frontend/index.html`
