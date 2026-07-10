@@ -96,57 +96,70 @@
           </aside>
         </section>
 
-        <section class="workspace memoryWorkspace hidden" id="memoryView" data-page="memory">
-          <header class="pageHeader" style="grid-column: 1 / -1;"><h1>记忆中心</h1></header>
-          <section class="panel memoryPanel longTermMemoryPanel">
-            <div class="panelHead">
-              <h3>长期记忆总览</h3>
+        <section class="workspace memoryCenterWorkspace hidden" id="memoryView" data-page="memory">
+          <header class="pageHeader memoryCenterHeader">
+            <h1>记忆中心</h1>
+            <button class="button secondary compact" type="button" id="refreshMemory">刷新</button>
+          </header>
+          <div class="memoryTabs" role="tablist" aria-label="记忆中心">
+            <button class="active" type="button" id="memoryTab-long-term" role="tab" tabindex="0" aria-selected="true" aria-controls="memoryPanel-long-term" data-memory-tab="long-term">长期记忆</button>
+            <button type="button" id="memoryTab-session" role="tab" tabindex="-1" aria-selected="false" aria-controls="memoryPanel-session" data-memory-tab="session">当前会话</button>
+            <button type="button" id="memoryTab-learning" role="tab" tabindex="-1" aria-selected="false" aria-controls="memoryPanel-learning" data-memory-tab="learning">经验规则</button>
+            <button type="button" id="memoryTab-archive" role="tab" tabindex="-1" aria-selected="false" aria-controls="memoryPanel-archive" data-memory-tab="archive">任务归档</button>
+          </div>
+
+          <section class="memoryTabPanel" id="memoryPanel-long-term" role="tabpanel" aria-labelledby="memoryTab-long-term" aria-hidden="false" data-memory-panel="long-term">
+            <div class="memoryLongTermLayout">
+              <section class="panel memoryPanel">
+                <div class="panelHead"><h3>记忆分类</h3></div>
+                <div class="memoryKindList" id="memoryLongTermKinds"></div>
+              </section>
+              <section class="panel memoryPanel">
+                <div class="panelHead"><h3>长期事实</h3></div>
+                <div class="memoryBlock memoryLongTermFacts" id="memoryLongTermFacts"></div>
+              </section>
             </div>
-            <div class="memoryBlock" id="memoryLongTermGroups"></div>
           </section>
 
-          <div class="memoryColumn">
-            <section class="panel memoryPanel">
+          <section class="memoryTabPanel" id="memoryPanel-session" role="tabpanel" aria-labelledby="memoryTab-session" aria-hidden="true" data-memory-panel="session" hidden>
+            <section class="panel memoryPanel memorySessionPanel">
               <div class="panelHead">
-                <h3>短期会话记忆</h3>
-                <div class="headActions">
-                  <button class="button secondary compact" type="button" id="compressCurrentConversation">压缩当前会话</button>
-                  <button class="button secondary compact" type="button" id="refreshMemory">刷新</button>
-                </div>
+                <h3>当前会话短期记忆</h3>
+                <button class="button secondary compact" type="button" id="compressCurrentConversation" disabled>压缩当前会话</button>
               </div>
               <div class="memoryBlock" id="memoryConversationShortTerm"></div>
             </section>
+          </section>
 
-            <section class="panel memoryPanel">
-              <div class="panelHead">
-                <h3>任务历史</h3>
-              </div>
-              <div class="memoryBlock" id="memoryTaskHistory"></div>
-            </section>
-          </div>
+          <section class="memoryTabPanel" id="memoryPanel-learning" role="tabpanel" aria-labelledby="memoryTab-learning" aria-hidden="true" data-memory-panel="learning" hidden>
+            <div class="memoryLearningLayout">
+              <section class="panel memoryPanel">
+                <div class="panelHead"><h3>经验</h3></div>
+                <div class="memoryBlock" id="memoryLessons"></div>
+              </section>
+              <section class="panel memoryPanel">
+                <div class="panelHead"><h3>负向规则</h3></div>
+                <div class="memoryBlock" id="memoryNegativeRules"></div>
+              </section>
+              <section class="panel memoryPanel">
+                <div class="panelHead"><h3>Skill 候选</h3></div>
+                <div class="memoryBlock" id="memorySkillCandidates"></div>
+              </section>
+            </div>
+          </section>
 
-          <div class="memoryColumn">
-            <section class="panel memoryPanel">
-              <div class="panelHead">
-                <h3>经验</h3>
-              </div>
-              <div class="memoryBlock" id="memoryLessons"></div>
-            </section>
-
-            <section class="panel memoryPanel">
-              <div class="panelHead">
-                <h3>负向规则</h3>
-              </div>
-              <div class="memoryBlock" id="memoryNegativeRules"></div>
-            </section>
-
-            <section class="panel memoryPanel">
-              <div class="panelHead">
-                <h3>Skill 候选</h3>
-              </div>
-              <div class="memoryBlock" id="memorySkillCandidates"></div>
-            </section>
-          </div>
+          <section class="memoryTabPanel" id="memoryPanel-archive" role="tabpanel" aria-labelledby="memoryTab-archive" aria-hidden="true" data-memory-panel="archive" hidden>
+            <div class="memoryArchiveLayout">
+              <section class="panel memoryPanel">
+                <div class="panelHead"><h3>归档任务</h3></div>
+                <div class="memoryArchiveList" id="memoryArchiveList"></div>
+              </section>
+              <section class="panel memoryPanel">
+                <div class="panelHead"><h3>任务详情</h3></div>
+                <div class="memoryArchiveDetail" id="memoryArchiveDetail"></div>
+              </section>
+            </div>
+          </section>
         </section>
 
         <section class="workspace knowledgeWorkspace hidden" id="knowledgeView" data-page="knowledge">

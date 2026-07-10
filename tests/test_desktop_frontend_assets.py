@@ -235,18 +235,29 @@ def test_frontend_includes_memory_view():
 
     assert 'id="openMemory"' in html
     assert "记忆" in html
-    assert 'id="memoryView"' in html
+    assert 'class="workspace memoryCenterWorkspace hidden" id="memoryView"' in html
+    for name in ["long-term", "session", "learning", "archive"]:
+        assert f'id="memoryTab-{name}"' in html
+        assert f'role="tab"' in html
+        assert f'aria-controls="memoryPanel-{name}"' in html
+        assert f'data-memory-tab="{name}"' in html
+        assert f'id="memoryPanel-{name}"' in html
+        assert f'role="tabpanel"' in html
+        assert f'aria-labelledby="memoryTab-{name}"' in html
+        assert f'data-memory-panel="{name}"' in html
     assert 'id="memoryConversationShortTerm"' in html
-    assert 'id="memoryLongTermGroups"' in html
+    assert 'id="memoryLongTermKinds"' in html
+    assert 'id="memoryLongTermFacts"' in html
     assert 'id="compressCurrentConversation"' in html
-    assert 'class="panel memoryPanel longTermMemoryPanel"' in html
-    assert "短期会话记忆" in html
-    assert "长期记忆总览" in html
+    assert 'id="refreshMemory"' in html
+    assert "当前会话" in html
+    assert "长期记忆" in html
     assert "压缩当前会话" in html
-    assert 'id="memoryTaskHistory"' in html
     assert 'id="memoryLessons"' in html
     assert 'id="memoryNegativeRules"' in html
     assert 'id="memorySkillCandidates"' in html
+    assert 'id="memoryArchiveList"' in html
+    assert 'id="memoryArchiveDetail"' in html
 
 
 def test_frontend_calls_memory_bridge_method():
@@ -257,10 +268,12 @@ def test_frontend_calls_memory_bridge_method():
     assert "function showCapabilityPage" in js
     assert "function renderMemoryOverview" in js
     assert "function renderConversationShortTermMemory" in js
-    assert "function renderLongTermMemoryGroups" in js
+    assert "function renderMemoryLongTerm" in js
+    assert "function renderMemoryLearning" in js
+    assert "function renderMemoryArchive" in js
     assert "function renderMemoryFact" in js
+    assert "function setMemoryTab" in js
     assert "const MEMORY_KIND_GROUPS" in js
-    assert "renderLongTermFacts" not in js
     assert "function compressCurrentConversation" in js
 
 
@@ -275,38 +288,41 @@ def test_frontend_groups_long_term_memory_instead_of_flat_list():
     assert "明确约束" in js
     assert "决策记录" in js
     assert "待确认问题" in js
-    assert 'class="memoryGroup' in js
+    assert "window.UTAShell.groupMemoryFacts(facts)" in js
+    assert 'data-memory-kind=' in js
     assert 'class="memoryFact"' in js
     assert 'class="memoryDetails"' in js
     assert "<summary>来源详情</summary>" in js
-    assert "#memoryLongTermGroups" in css
-    assert ".memoryGroup" in css
+    assert ".memoryLongTermLayout" in css
+    assert ".memoryKindList" in css
     assert ".memoryDetails" in css
 
 
 def test_frontend_long_term_memory_panel_has_room_to_render_groups():
     css = (FRONTEND_ROOT / "style.css").read_text(encoding="utf-8")
 
-    assert ".longTermMemoryPanel {\n  grid-column: 1 / -1;" in css
-    assert ".longTermMemoryPanel {\n  grid-column: 1 / -1;\n  overflow: visible;" in css
-    assert "#memoryLongTermGroups {\n  max-height: none;" in css
-    assert "grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));" in css
+    assert ".memoryLongTermLayout,\n.memoryArchiveLayout {\n  min-height: 0;\n  display: grid;\n  grid-template-columns: 260px minmax(0, 1fr);" in css
+    assert ".memoryLearningLayout {\n  min-height: 0;\n  display: grid;\n  grid-template-columns: repeat(3, minmax(0, 1fr));" in css
+    assert ".memoryKindList,\n.memoryLongTermFacts" in css
+    assert "min-height: 0;\n  overflow: auto;" in css
 
 
 def test_frontend_memory_view_has_bottom_scroll_clearance_for_long_overview():
     css = (FRONTEND_ROOT / "style.css").read_text(encoding="utf-8")
 
-    assert "#memoryView {\n  align-items: start;\n  align-content: start;\n  padding-bottom: 72px;\n  scroll-padding-bottom: 72px;" in css
-    assert "#memoryLongTermGroups {\n  max-height: none;\n  overflow: visible;\n  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));" in css
-    assert "row-gap: 14px;" in css
+    assert ".memoryCenterWorkspace {\n  grid-template-columns: minmax(0, 1fr);\n  grid-template-rows: auto auto minmax(0, 1fr);\n  overflow: hidden;" in css
+    assert "#memoryView .memoryBlock {\n  max-height: none;\n  overflow: visible;" not in css
+    assert "@media (max-width: 1179px)" in css
+    assert "@media (max-width: 960px)" in css
+    assert "max-height: min(32vh, 240px);" in css
 
 
 def test_frontend_memory_view_panels_expand_instead_of_clipping_cards():
     css = (FRONTEND_ROOT / "style.css").read_text(encoding="utf-8")
 
-    assert "#memoryView {\n  align-items: start;\n  align-content: start;" in css
-    assert "#memoryView .memoryPanel {\n  grid-template-rows: auto auto;\n  overflow: visible;" in css
-    assert "#memoryView .memoryBlock {\n  max-height: none;\n  overflow: visible;" in css
+    assert ".memoryTabPanel {\n  min-height: 0;\n  overflow: hidden;" in css
+    assert ".memoryPanel {\n  min-height: 0;\n  display: grid;\n  grid-template-rows: auto minmax(0, 1fr);\n  overflow: hidden;" in css
+    assert ".memoryBlock {\n  min-height: 0;\n  overflow: auto;" in css
 
 
 def test_frontend_handles_replanned_progress_event():
@@ -550,11 +566,12 @@ def test_frontend_sidebar_nav_has_icons_without_breaking_ids():
 def test_frontend_preserves_current_memory_nodes_during_redesign():
     html = (FRONTEND_ROOT / "index.html").read_text(encoding="utf-8")
 
-    assert 'id="memoryLongTermGroups"' in html
+    assert 'id="memoryLongTermKinds"' in html
+    assert 'id="memoryLongTermFacts"' in html
     assert 'id="memoryConversationShortTerm"' in html
     assert 'id="compressCurrentConversation"' in html
-    assert "长期记忆总览" in html
-    assert "短期会话记忆" in html
+    assert "长期记忆" in html
+    assert "当前会话" in html
     assert "压缩当前会话" in html
 
 
@@ -563,10 +580,31 @@ def test_frontend_dark_memory_cards_do_not_clip_titles():
 
     assert ".memoryCard {" in css
     assert "overflow-wrap: anywhere;" in css
-    assert "#memoryView .memoryPanel {\n  grid-template-rows: auto auto;\n  overflow: visible;" in css
-    assert "#memoryView .memoryBlock {\n  max-height: none;\n  overflow: visible;" in css
-    assert ".memoryGroupHead" in css
+    assert ".memoryPanel {\n  min-height: 0;" in css
+    assert ".memoryBlock {\n  min-height: 0;\n  overflow: auto;" in css
+    assert ".memoryKindButton" in css
     assert "min-width: 0;" in css
+
+
+def test_frontend_memory_rendering_reuses_shell_helpers_and_keeps_controls_in_sync():
+    js = (FRONTEND_ROOT / "app.js").read_text(encoding="utf-8")
+
+    for helper in [
+        "activateMemoryTab",
+        "handleMemoryTabKeydown",
+        "groupMemoryFacts",
+        "compactMemoryText",
+        "dedupeMemoryLessons",
+    ]:
+        assert f"window.UTAShell.{helper}" in js
+    assert "state.memoryOverview = memory;" in js
+    assert "state.memoryTab" in js
+    assert "state.memoryLongTermKind" in js
+    assert "state.memoryArchiveTaskId" in js
+    assert "els.compressCurrentConversation.disabled = !state.conversationId;" in js
+    assert "累计 ${escapeHtml(lesson.occurrence_count || 1)} 次" in js
+    assert "els.memoryArchiveDetail.innerHTML = renderMarkdown" in js
+    assert "window.UTAShell.compactMemoryText" in js
 
 
 def test_frontend_sidebar_keeps_conversations_and_capability_entries():

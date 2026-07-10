@@ -900,9 +900,10 @@ pre {
   white-space: pre-wrap;
 }
 
-.memoryWorkspace {
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  min-height: 0;
+.memoryCenterWorkspace {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto auto minmax(0, 1fr);
+  overflow: hidden;
 }
 
 .knowledgeWorkspace {
@@ -1020,18 +1021,73 @@ pre {
   margin: 12px;
 }
 
-#memoryView {
-  align-items: start;
-  align-content: start;
-  padding-bottom: 72px;
-  scroll-padding-bottom: 72px;
+.memoryCenterHeader {
+  padding: 0 4px 12px;
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border-bottom: 0;
 }
 
-.memoryColumn {
+.memoryTabs {
+  min-width: 0;
+  display: flex;
+  gap: 4px;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--border);
+}
+
+.memoryTabs button {
+  min-width: max-content;
+  padding: 10px 14px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.memoryTabs button.active {
+  border-bottom-color: var(--action);
+  color: var(--text);
+}
+
+.memoryTabs button:focus-visible,
+.memoryKindButton:focus-visible,
+.memoryArchiveItem:focus-visible {
+  outline: 2px solid var(--action);
+  outline-offset: -2px;
+}
+
+.memoryTabPanel {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.memoryTabPanel[hidden] {
+  display: none;
+}
+
+.memoryLongTermLayout,
+.memoryArchiveLayout {
   min-height: 0;
   display: grid;
+  grid-template-columns: 260px minmax(0, 1fr);
   gap: 16px;
-  align-content: start;
+  height: 100%;
+}
+
+.memoryLearningLayout {
+  min-height: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  height: 100%;
 }
 
 .memoryPanel {
@@ -1043,7 +1099,6 @@ pre {
 
 .memoryBlock {
   min-height: 0;
-  max-height: 300px;
   overflow: auto;
   padding: 12px;
   display: grid;
@@ -1051,81 +1106,114 @@ pre {
   gap: 10px;
 }
 
-#memoryView .memoryPanel {
-  grid-template-rows: auto auto;
-  overflow: visible;
+.memoryKindList,
+.memoryLongTermFacts,
+.memoryArchiveList,
+.memoryArchiveDetail {
+  min-height: 0;
+  overflow: auto;
 }
 
-#memoryView .memoryBlock {
-  max-height: none;
-  overflow: visible;
+.memoryKindList,
+.memoryArchiveList {
+  padding: 8px;
+  display: grid;
+  align-content: start;
+  gap: 4px;
 }
 
-.longTermMemoryPanel {
-  grid-column: 1 / -1;
-  overflow: visible;
+.memoryLongTermFacts,
+.memoryArchiveDetail {
+  padding: 14px;
 }
 
-#memoryLongTermGroups {
-  max-height: none;
-  overflow: visible;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  align-items: start;
-  row-gap: 14px;
-}
-
-.memoryGroup {
+.memoryKindButton,
+.memoryArchiveItem {
+  width: 100%;
   min-width: 0;
-  border: 1px solid var(--border);
+  border: 1px solid transparent;
   border-radius: var(--r-md);
-  background: var(--surface-1);
-  overflow: hidden;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  text-align: left;
 }
 
-.memoryGroup.empty {
-  background: var(--surface-0);
-}
-
-.memoryGroupHead {
-  min-width: 0;
-  min-height: 42px;
-  padding: 10px 12px;
+.memoryKindButton {
+  min-height: 40px;
+  padding: 8px 10px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
-  border-bottom: 1px solid var(--border);
+  gap: 12px;
+}
+
+.memoryKindButton:hover,
+.memoryArchiveItem:hover {
   background: var(--surface-2);
 }
 
-.memoryGroupHead strong,
-.memoryGroupHead small {
-  min-width: 0;
-  overflow-wrap: anywhere;
+.memoryKindButton.active,
+.memoryArchiveItem.active {
+  border-color: var(--border-strong);
+  background: var(--surface-2);
 }
 
-.memoryGroupHead small {
+.memoryKindButton small,
+.memoryArchiveItem small {
   color: var(--muted);
   font-family: var(--mono);
   font-size: 12px;
 }
 
-.memoryGroupBody {
-  min-width: 0;
+.memoryArchiveItem {
+  padding: 10px;
   display: grid;
+  gap: 5px;
+}
+
+.memoryArchiveItem strong,
+.memoryArchiveItem small {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.memoryArchiveDetail {
+  line-height: 1.6;
+}
+
+.memoryArchiveDetail > :first-child {
+  margin-top: 0;
+}
+
+.memoryArchiveDetail h2,
+.memoryArchiveDetail h3 {
+  font-size: 15px;
+}
+
+.memorySessionPanel {
+  height: 100%;
+}
+
+.memorySessionPanel .panelHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
 }
 
 .memoryFact {
   min-width: 0;
-  padding: 10px 12px;
+  padding: 12px;
   display: grid;
   gap: 8px;
-  border-top: 1px solid var(--border);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
   background: var(--surface-1);
 }
 
-.memoryFact:first-child {
-  border-top: 0;
+.memoryFact + .memoryFact {
+  margin-top: 10px;
 }
 
 .memoryFact p {
@@ -1170,6 +1258,12 @@ pre {
 .memoryCard strong,
 .memoryCard small {
   min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.memoryCard p {
+  margin: 0;
+  line-height: 1.5;
   overflow-wrap: anywhere;
 }
 
@@ -1587,6 +1681,25 @@ pre {
     align-items: start;
   }
 
+  .workspace.memoryCenterWorkspace {
+    grid-template-rows: auto auto minmax(0, 1fr);
+    align-content: stretch;
+    align-items: stretch;
+  }
+
+  .memoryLongTermLayout,
+  .memoryArchiveLayout,
+  .memoryLearningLayout {
+    grid-template-columns: minmax(0, 1fr);
+    grid-auto-rows: minmax(180px, auto);
+    overflow: auto;
+  }
+
+  .memoryKindList,
+  .memoryArchiveList {
+    max-height: min(32vh, 240px);
+  }
+
   .knowledgeWorkspace {
     grid-template-rows: auto;
   }
@@ -1606,6 +1719,25 @@ pre {
   .knowledgeAnswer,
   .knowledgeSources {
     max-height: none;
+    overflow: visible;
+  }
+}
+
+@media (max-width: 960px) {
+  .memoryCenterWorkspace {
+    padding: 12px;
+    gap: 12px;
+  }
+
+  .memoryTabPanel {
+    overflow: auto;
+  }
+
+  .memoryLongTermLayout,
+  .memoryArchiveLayout,
+  .memoryLearningLayout {
+    gap: 12px;
+    height: auto;
     overflow: visible;
   }
 }

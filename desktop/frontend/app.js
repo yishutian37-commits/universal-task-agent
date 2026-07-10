@@ -17,12 +17,14 @@ const els = {
   refreshMemory: document.getElementById("refreshMemory"),
   refreshSkills: document.getElementById("refreshSkills"),
   memoryConversationShortTerm: document.getElementById("memoryConversationShortTerm"),
-  memoryLongTermGroups: document.getElementById("memoryLongTermGroups"),
+  memoryLongTermKinds: document.getElementById("memoryLongTermKinds"),
+  memoryLongTermFacts: document.getElementById("memoryLongTermFacts"),
   compressCurrentConversation: document.getElementById("compressCurrentConversation"),
-  memoryTaskHistory: document.getElementById("memoryTaskHistory"),
   memoryLessons: document.getElementById("memoryLessons"),
   memoryNegativeRules: document.getElementById("memoryNegativeRules"),
   memorySkillCandidates: document.getElementById("memorySkillCandidates"),
+  memoryArchiveList: document.getElementById("memoryArchiveList"),
+  memoryArchiveDetail: document.getElementById("memoryArchiveDetail"),
   statusPill: document.getElementById("statusPill"),
   statusText: document.getElementById("statusText"),
   taskIdLabel: document.getElementById("taskIdLabel"),
@@ -90,7 +92,11 @@ const state = {
   activePage: "conversation",
   taskPanelOpen: false,
   taskPanelTab: "progress",
-  conversationRevision: 0
+  conversationRevision: 0,
+  memoryOverview: null,
+  memoryTab: "long-term",
+  memoryLongTermKind: "identity",
+  memoryArchiveTaskId: null
 };
 
 const runLifecycle = window.UTAShell.createRunLifecycle();
@@ -109,6 +115,10 @@ function setTaskPanelOpen(isOpen) {
 
 function setTaskPanelTab(tabName) {
   state.taskPanelTab = window.UTAShell.activateTaskTab(tabName);
+}
+
+function setMemoryTab(tabName) {
+  state.memoryTab = window.UTAShell.activateMemoryTab(tabName);
 }
 
 function renderTaskPanelEmptyStates() {
@@ -670,21 +680,23 @@ async function loadMemoryOverview() {
 }
 
 function renderMemoryOverview(memory, currentConversation = null) {
-  els.memoryConversationShortTerm.innerHTML = renderConversationShortTermMemory(currentConversation);
-  els.memoryLongTermGroups.innerHTML = renderLongTermMemoryGroups(memory.long_term_facts || []);
-  els.memoryTaskHistory.innerHTML = renderMemoryCards(memory.task_history, "task_id", "暂无任务历史");
-  els.memoryLessons.innerHTML = renderMemoryCards(memory.lessons, "lesson_id", "暂无经验");
-  els.memoryNegativeRules.innerHTML = renderMemoryCards(memory.negative_rules, "rule_id", "暂无负向规则");
-  els.memorySkillCandidates.innerHTML = renderMemoryCards(memory.skill_candidates, "task_type", "暂无 Skill 候选");
+  state.memoryOverview = memory;
+  renderMemoryLongTerm(memory.long_term_facts || []);
+  renderConversationShortTermMemory(currentConversation);
+  renderMemoryLearning(memory);
+  renderMemoryArchive(memory.task_history || []);
+  setMemoryTab(state.memoryTab);
 }
 
 function renderConversationShortTermMemory(conversation) {
+  els.compressCurrentConversation.disabled = !state.conversationId;
   if (!conversation) {
-    return '<div class="emptyState">当前没有选中的会话。先发送消息，或从会话历史中打开一条会话。</div>';
+    els.memoryConversationShortTerm.innerHTML = '<div class="emptyState">当前没有选中的会话。先发送消息，或从会话历史中打开一条会话。</div>';
+    return;
   }
   const shortTerm = conversation.short_term || {};
   const summary = shortTerm.summary || "这个会话还没有生成短期摘要。";
-  return `
+  els.memoryConversationShortTerm.innerHTML = `
     <article class="memoryCard">
       <strong>${escapeHtml(conversation.title || "新对话")}</strong>
       <small>会话 ID：${escapeHtml(conversation.conversation_id || "")}</small>
@@ -695,29 +707,37 @@ function renderConversationShortTermMemory(conversation) {
   `;
 }
 
-function renderLongTermMemoryGroups(facts) {
-  const grouped = {};
-  (facts || []).forEach((fact) => {
-    const kind = fact.kind || "unknown";
-    if (!grouped[kind]) grouped[kind] = [];
-    grouped[kind].push(fact);
-  });
-
-  return MEMORY_KIND_GROUPS.map((group) => {
-    const groupFacts = grouped[group.kind] || [];
-    const body = groupFacts.length
-      ? groupFacts.slice(-8).reverse().map(renderMemoryFact).join("")
-      : `<div class="emptyState compact">${escapeHtml(group.empty)}</div>`;
+function renderMemoryLongTerm(facts) {
+  const grouped = window.UTAShell.groupMemoryFacts(facts);
+  const knownKinds = new Set(MEMORY_KIND_GROUPS.map((group) => group.kind));
+  const groups = MEMORY_KIND_GROUPS.concat(
+    Object.keys(grouped)
+      .filter((kind) => !knownKinds.has(kind))
+      .map((kind) => ({ kind, title: kind, empty: "暂无记忆。" }))
+  );
+  if (!groups.some((group) => group.kind === state.memoryLongTermKind)) {
+    state.memoryLongTermKind = groups[0].kind;
+  }
+  els.memoryLongTermKinds.innerHTML = groups.map((group) => {
+    const active = group.kind === state.memoryLongTermKind;
     return `
-      <section class="memoryGroup ${groupFacts.length ? "" : "empty"}">
-        <header class="memoryGroupHead">
-          <strong>${escapeHtml(group.title)}</strong>
-          <small>${groupFacts.length} 条</small>
-        </header>
-        <div class="memoryGroupBody">${body}</div>
-      </section>
+      <button class="memoryKindButton ${active ? "active" : ""}" type="button" aria-pressed="${active}" data-memory-kind="${escapeHtml(group.kind)}">
+        <span>${escapeHtml(group.title)}</span><small>${(grouped[group.kind] || []).length}</small>
+      </button>
     `;
   }).join("");
+
+  const selectedGroup = groups.find((group) => group.kind === state.memoryLongTermKind);
+  const selectedFacts = grouped[state.memoryLongTermKind] || [];
+  els.memoryLongTermFacts.innerHTML = selectedFacts.length
+    ? selectedFacts.slice().reverse().map(renderMemoryFact).join("")
+    : `<div class="emptyState">${escapeHtml(selectedGroup.empty)}</div>`;
+  els.memoryLongTermKinds.querySelectorAll("[data-memory-kind]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.memoryLongTermKind = button.dataset.memoryKind;
+      renderMemoryLongTerm(state.memoryOverview?.long_term_facts || []);
+    });
+  });
 }
 
 function renderMemoryFact(fact) {
@@ -741,11 +761,12 @@ async function compressCurrentConversation() {
     showToast("没有当前会话", "先发送一条消息，或从会话历史中打开一条会话。");
     return;
   }
+  const conversationId = state.conversationId;
   const previousText = els.compressCurrentConversation.textContent;
   els.compressCurrentConversation.disabled = true;
   els.compressCurrentConversation.textContent = "压缩中";
   try {
-    const result = await callApi("compress_conversation", state.conversationId);
+    const result = await callApi("compress_conversation", conversationId);
     if (!result.ok) {
       showToast("压缩失败", result.error || "未知错误");
       return;
@@ -755,25 +776,91 @@ async function compressCurrentConversation() {
   } catch (error) {
     showToast("压缩失败", error.message);
   } finally {
-    els.compressCurrentConversation.disabled = false;
+    els.compressCurrentConversation.disabled = !state.conversationId;
     els.compressCurrentConversation.textContent = previousText;
   }
 }
 
-function renderMemoryCards(items, titleKey, emptyText) {
-  if (!items || !items.length) {
-    return `<div class="emptyState">${escapeHtml(emptyText)}</div>`;
-  }
-  return items.slice(-20).reverse().map((item) => {
-    const title = item[titleKey] || item.task_id || item.status || "memory";
-    const body = item.content || item.reason || item.final_output_preview || item.intent || JSON.stringify(item);
-    return `
+function renderMemoryLearning(memory) {
+  const lessons = window.UTAShell.dedupeMemoryLessons(memory.lessons || []);
+  els.memoryLessons.innerHTML = lessons.length
+    ? lessons.slice().reverse().map((lesson) => `
       <article class="memoryCard">
-        <strong>${escapeHtml(String(title))}</strong>
-        <small>${escapeHtml(String(body))}</small>
+        <strong>${escapeHtml(lesson.task_type || "通用经验")}</strong>
+        <p>${escapeHtml(lesson.content || "")}</p>
+        <small>累计 ${escapeHtml(lesson.occurrence_count || 1)} 次 · ${escapeHtml(lesson.created_at || "")}</small>
       </article>
+    `).join("")
+    : '<div class="emptyState">暂无经验</div>';
+
+  const negativeRules = memory.negative_rules || [];
+  els.memoryNegativeRules.innerHTML = negativeRules.length
+    ? negativeRules.slice().reverse().map((rule) => `
+      <article class="memoryCard">
+        <strong>${escapeHtml(rule.task_type || "通用规则")}</strong>
+        <p>${escapeHtml(rule.content || "")}</p>
+        <small>${escapeHtml(rule.created_at || "")}</small>
+      </article>
+    `).join("")
+    : '<div class="emptyState">暂无负向规则</div>';
+
+  const candidates = memory.skill_candidates || [];
+  els.memorySkillCandidates.innerHTML = candidates.length
+    ? candidates.slice().reverse().map((candidate) => `
+      <article class="memoryCard">
+        <strong>${escapeHtml(candidate.task_type || "Skill 候选")}</strong>
+        <p>${escapeHtml(candidate.reason || "")}</p>
+        <small>${escapeHtml(candidate.status || "pending")} · 成功 ${escapeHtml(candidate.success_count || 0)} 次 · ${escapeHtml(candidate.updated_at || "")}</small>
+      </article>
+    `).join("")
+    : '<div class="emptyState">暂无 Skill 候选</div>';
+}
+
+function renderMemoryArchive(tasks) {
+  const sortedTasks = (tasks || []).slice().sort((left, right) => {
+    const leftTime = Date.parse(left.updated_at || left.created_at || "") || 0;
+    const rightTime = Date.parse(right.updated_at || right.created_at || "") || 0;
+    return rightTime - leftTime;
+  });
+  if (!sortedTasks.length) {
+    state.memoryArchiveTaskId = null;
+    els.memoryArchiveList.innerHTML = '<div class="emptyState">暂无归档任务</div>';
+    els.memoryArchiveDetail.innerHTML = '<div class="emptyState">选择任务后查看详情</div>';
+    return;
+  }
+  if (!sortedTasks.some((task) => task.task_id === state.memoryArchiveTaskId)) {
+    state.memoryArchiveTaskId = sortedTasks[0].task_id;
+  }
+  els.memoryArchiveList.innerHTML = sortedTasks.map((task) => {
+    const active = task.task_id === state.memoryArchiveTaskId;
+    const preview = task.user_input || task.intent || task.final_output_preview || task.task_id;
+    return `
+      <button class="memoryArchiveItem ${active ? "active" : ""}" type="button" aria-pressed="${active}" data-memory-task-id="${escapeHtml(task.task_id)}">
+        <strong>${escapeHtml(window.UTAShell.compactMemoryText(preview, 72) || task.task_id)}</strong>
+        <small>${escapeHtml(task.task_type || "task")} · ${escapeHtml(task.status || "unknown")}</small>
+        <small>${escapeHtml(task.updated_at || task.created_at || "")}</small>
+      </button>
     `;
   }).join("");
+
+  const selectedTask = sortedTasks.find((task) => task.task_id === state.memoryArchiveTaskId);
+  const detailMarkdown = [
+    `## ${selectedTask.user_input || selectedTask.intent || selectedTask.task_id}`,
+    `**任务 ID：** ${selectedTask.task_id}`,
+    `**类型：** ${selectedTask.task_type || "unknown"}`,
+    `**状态：** ${selectedTask.status || "unknown"}`,
+    `**创建时间：** ${selectedTask.created_at || ""}`,
+    `**更新时间：** ${selectedTask.updated_at || ""}`,
+    `### 意图\n${selectedTask.intent || "无"}`,
+    `### 最终输出\n${selectedTask.final_output_preview || "无输出预览"}`
+  ].join("\n\n");
+  els.memoryArchiveDetail.innerHTML = renderMarkdown(detailMarkdown);
+  els.memoryArchiveList.querySelectorAll("[data-memory-task-id]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.memoryArchiveTaskId = button.dataset.memoryTaskId;
+      renderMemoryArchive(state.memoryOverview?.task_history || []);
+    });
+  });
 }
 
 async function loadSkillOverview() {
@@ -1360,6 +1447,13 @@ function bindEvents() {
     button.addEventListener("keydown", (event) => {
       const nextTab = window.UTAShell.handleTaskTabKeydown(event);
       if (nextTab) state.taskPanelTab = nextTab;
+    });
+  });
+  document.querySelectorAll("[data-memory-tab]").forEach((button) => {
+    button.addEventListener("click", () => setMemoryTab(button.dataset.memoryTab));
+    button.addEventListener("keydown", (event) => {
+      const nextTab = window.UTAShell.handleMemoryTabKeydown(event);
+      if (nextTab) state.memoryTab = nextTab;
     });
   });
   els.taskInput.addEventListener("keydown", (event) => {

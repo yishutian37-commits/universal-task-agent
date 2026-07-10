@@ -19,6 +19,25 @@ def test_shell_exposes_workbench_state_helpers():
     assert "function activatePage" in js
     assert "function setTaskPanelOpen" in js
     assert "function activateTaskTab" in js
+    assert "function activateMemoryTab" in js
+    assert "function handleMemoryTabKeydown" in js
+    assert "function groupMemoryFacts" in js
+    assert "function compactMemoryText" in js
+    assert "function dedupeMemoryLessons" in js
+
+
+def test_memory_center_has_four_accessible_tabs_and_dedicated_panels():
+    html = (FRONTEND_ROOT / "index.html").read_text(encoding="utf-8")
+
+    assert 'class="workspace memoryCenterWorkspace hidden" id="memoryView"' in html
+    assert 'class="memoryTabs" role="tablist" aria-label="记忆中心"' in html
+    for name in ["long-term", "session", "learning", "archive"]:
+        assert f'id="memoryTab-{name}"' in html
+        assert f'aria-controls="memoryPanel-{name}"' in html
+        assert f'data-memory-tab="{name}"' in html
+        assert f'id="memoryPanel-{name}"' in html
+        assert f'aria-labelledby="memoryTab-{name}"' in html
+        assert f'data-memory-panel="{name}"' in html
 
 
 def test_sidebar_is_conversation_first_and_keeps_capability_entries():
