@@ -149,49 +149,49 @@
           </div>
         </section>
 
-        <section class="workspace memoryWorkspace hidden" id="knowledgeView" data-page="knowledge">
+        <section class="workspace knowledgeWorkspace hidden" id="knowledgeView" data-page="knowledge">
           <header class="pageHeader" style="grid-column: 1 / -1;"><h1>知识库</h1></header>
-          <div class="memoryColumn">
-            <section class="panel memoryPanel">
+          <div class="knowledgeLibraryColumn">
+            <section class="panel knowledgeLibraryPanel">
               <div class="panelHead">
                 <h3>文档管理</h3>
                 <span id="kbMode">加载中</span>
               </div>
-              <div style="padding:12px 16px;">
-                <input id="kbIngestPath" placeholder="文件或目录路径（如 ~/notes.md）" style="width:100%;box-sizing:border-box;margin-bottom:8px;padding:8px;border-radius:6px;border:1px solid var(--border);background:var(--surface);" />
+              <div class="knowledgeIngestComposer">
+                <input id="kbIngestPath" placeholder="文件或目录路径（如 ~/notes.md）" />
                 <button class="button primary compact" type="button" id="kbIngestBtn">摄入</button>
                 <button class="button secondary compact" type="button" id="kbRefreshBtn">刷新</button>
               </div>
-              <div class="historyList" id="kbDocList"></div>
+              <div class="knowledgeDocList" id="kbDocList"></div>
             </section>
 
-            <section class="panel memoryPanel">
+            <section class="panel knowledgeStatsPanel">
               <div class="panelHead">
                 <h3>库统计</h3>
               </div>
-              <div style="padding:12px 16px;" id="kbStats">--</div>
+              <div class="knowledgeStats" id="kbStats">--</div>
             </section>
           </div>
 
-          <div class="memoryColumn">
-            <section class="panel reportPanel">
+          <div class="knowledgeQueryColumn">
+            <section class="panel knowledgeQueryPanel">
               <div class="panelHead">
                 <h3>知识库问答</h3>
                 <span id="kbAskMeta">就绪</span>
               </div>
-              <div style="padding:12px 16px;">
-                <textarea id="kbQuestion" placeholder="输入你的问题..." rows="2" style="width:100%;box-sizing:border-box;margin-bottom:8px;padding:8px;border-radius:6px;border:1px solid var(--border);background:var(--surface);resize:vertical;"></textarea>
+              <div class="knowledgeQueryComposer">
+                <textarea id="kbQuestion" placeholder="输入你的问题..." rows="2"></textarea>
                 <button class="button primary compact" type="button" id="kbAskBtn">提问</button>
                 <button class="button secondary compact" type="button" id="kbQueryBtn">仅检索</button>
               </div>
-              <article class="report empty" id="kbAnswer" style="padding:12px 16px;">摄入文档后开始提问</article>
+              <article class="report empty knowledgeAnswer" id="kbAnswer">摄入文档后开始提问</article>
             </section>
 
-            <section class="panel logsPanel">
+            <section class="panel knowledgeSourcesPanel">
               <div class="panelHead">
                 <h3>检索来源</h3>
               </div>
-              <div class="logs" id="kbSources"></div>
+              <div class="logs knowledgeSources" id="kbSources"></div>
             </section>
           </div>
         </section>

@@ -533,10 +533,13 @@ async function loadKnowledgeDocs() {
       return;
     }
     els.kbDocList.innerHTML = result.docs.map((doc) => `
-      <div class="historyItem" data-doc-id="${escapeHtml(doc.doc_id)}">
-        <span><strong>${escapeHtml(doc.title || doc.source)}</strong><small>${escapeHtml(doc.type || "?")} · ${doc.chunk_count} 片段</small></span>
-        <small>${escapeHtml(doc.source)}</small>
-        <button class="button ghost compact kbDelBtn" type="button" data-doc-id="${escapeHtml(doc.doc_id)}" title="删除此文档" style="margin-top:6px;">删除</button>
+      <div class="knowledgeDocItem" data-doc-id="${escapeHtml(doc.doc_id)}">
+        <div class="knowledgeDocMain">
+          <strong>${escapeHtml(doc.title || doc.source)}</strong>
+          <small>${escapeHtml(doc.type || "?")} · ${doc.chunk_count} 片段</small>
+          <small class="knowledgeDocPath" title="${escapeHtml(doc.source)}">${escapeHtml(doc.source)}</small>
+        </div>
+        <button class="button ghost compact kbDelBtn" type="button" data-doc-id="${escapeHtml(doc.doc_id)}" title="删除此文档">删除</button>
       </div>
     `).join("");
     els.kbDocList.querySelectorAll(".kbDelBtn").forEach((btn) => {
@@ -589,7 +592,7 @@ async function askKnowledge() {
   els.kbAskBtn.disabled = true;
   els.kbQueryBtn.disabled = true;
   els.kbAskMeta.textContent = "检索中...";
-  els.kbAnswer.className = "report";
+  els.kbAnswer.className = "report knowledgeAnswer";
   els.kbAnswer.textContent = "正在检索并生成答案...";
   els.kbSources.innerHTML = "";
   try {
@@ -612,7 +615,7 @@ async function queryKnowledge() {
   els.kbAskBtn.disabled = true;
   els.kbQueryBtn.disabled = true;
   els.kbAskMeta.textContent = "检索中...";
-  els.kbAnswer.className = "report";
+  els.kbAnswer.className = "report knowledgeAnswer";
   els.kbAnswer.textContent = "正在检索...";
   els.kbSources.innerHTML = "";
   try {

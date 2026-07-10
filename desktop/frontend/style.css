@@ -905,6 +905,121 @@ pre {
   min-height: 0;
 }
 
+.knowledgeWorkspace {
+  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
+  min-height: 0;
+}
+
+.knowledgeLibraryColumn,
+.knowledgeQueryColumn {
+  min-height: 0;
+  display: grid;
+  gap: 16px;
+}
+
+.knowledgeLibraryColumn {
+  grid-template-rows: minmax(0, 1fr) auto;
+}
+
+.knowledgeQueryColumn {
+  grid-template-rows: minmax(0, 1fr) 220px;
+}
+
+.knowledgeLibraryPanel,
+.knowledgeQueryPanel,
+.knowledgeSourcesPanel {
+  min-height: 0;
+  display: grid;
+  overflow: hidden;
+}
+
+.knowledgeLibraryPanel,
+.knowledgeQueryPanel {
+  grid-template-rows: auto auto minmax(0, 1fr);
+}
+
+.knowledgeSourcesPanel {
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.knowledgeIngestComposer,
+.knowledgeQueryComposer,
+.knowledgeStats {
+  padding: 12px 16px;
+}
+
+.knowledgeIngestComposer input,
+.knowledgeQueryComposer textarea {
+  width: 100%;
+  box-sizing: border-box;
+  margin-bottom: 8px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--surface);
+}
+
+.knowledgeQueryComposer textarea {
+  resize: vertical;
+}
+
+.knowledgeDocList {
+  min-height: 0;
+  overflow: auto;
+  padding: 12px;
+  display: grid;
+  align-content: start;
+  gap: 10px;
+}
+
+.knowledgeDocItem {
+  min-width: 0;
+  padding: 11px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--surface-1);
+}
+
+.knowledgeDocMain {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.knowledgeDocMain strong,
+.knowledgeDocMain small {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.knowledgeDocMain small {
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+.knowledgeDocPath {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.knowledgeAnswer {
+  min-height: 0;
+  overflow: auto;
+  padding: 12px 16px;
+}
+
+.knowledgeSources {
+  min-height: 0;
+  margin: 12px;
+}
+
 #memoryView {
   align-items: start;
   align-content: start;
@@ -1470,6 +1585,28 @@ pre {
     grid-template-columns: minmax(0, 1fr);
     align-content: start;
     align-items: start;
+  }
+
+  .knowledgeWorkspace {
+    grid-template-rows: auto;
+  }
+
+  .knowledgeLibraryColumn,
+  .knowledgeQueryColumn {
+    grid-template-rows: auto;
+  }
+
+  .knowledgeLibraryPanel,
+  .knowledgeQueryPanel,
+  .knowledgeSourcesPanel {
+    grid-template-rows: auto auto;
+  }
+
+  .knowledgeDocList,
+  .knowledgeAnswer,
+  .knowledgeSources {
+    max-height: none;
+    overflow: visible;
   }
 }
 

@@ -602,3 +602,28 @@ def test_frontend_can_load_conversations_into_sidebar():
     assert "function loadConversationSidebar" in js
     assert "function renderConversationSidebar" in js
     assert "function openConversation" in js
+
+
+def test_knowledge_workspace_uses_dedicated_layout_without_history_card_leakage():
+    html = (FRONTEND_ROOT / "index.html").read_text(encoding="utf-8")
+    js = (FRONTEND_ROOT / "app.js").read_text(encoding="utf-8")
+    css = (FRONTEND_ROOT / "style.css").read_text(encoding="utf-8")
+
+    assert 'class="workspace knowledgeWorkspace hidden"' in html
+    assert 'class="knowledgeDocList" id="kbDocList"' in html
+    assert 'class="panel knowledgeQueryPanel"' in html
+    assert 'class="report empty knowledgeAnswer"' in html
+    assert 'class="logs knowledgeSources"' in html
+    assert 'class="knowledgeDocItem"' in js
+    assert 'class="historyItem" data-doc-id' not in js
+    assert 'class="knowledgeDocPath" title=' in js
+    assert ".knowledgeDocPath" in css
+    assert "text-overflow: ellipsis" in css
+    assert ".knowledgeAnswer" in css
+
+
+def test_knowledge_document_titles_can_shrink_inside_their_dedicated_items():
+    css = (FRONTEND_ROOT / "style.css").read_text(encoding="utf-8")
+
+    title_rule = css[css.index(".knowledgeDocMain strong"):css.index("}", css.index(".knowledgeDocMain strong"))]
+    assert "overflow-wrap: anywhere;" in title_rule
