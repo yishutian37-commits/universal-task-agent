@@ -34,6 +34,20 @@ def test_sidebar_is_conversation_first_and_keeps_capability_entries():
     assert 'id="historyView"' not in html
 
 
+def test_secondary_capability_pages_keep_titles_routes_and_data_nodes():
+    html = (FRONTEND_ROOT / "index.html").read_text(encoding="utf-8")
+    js = (FRONTEND_ROOT / "app.js").read_text(encoding="utf-8")
+
+    for page_name, title, view_id, loader in [
+        ("knowledge", "知识库", "knowledgeView", "loadKnowledgeBase"),
+        ("memory", "记忆中心", "memoryView", "loadMemoryOverview"),
+        ("capabilities", "技能与工具", "skillsView", "loadSkillOverview"),
+    ]:
+        assert f'<h1>{title}</h1>' in html
+        assert f'id="{view_id}" data-page="{page_name}"' in html
+        assert f'if (pageName === "{page_name}") await {loader}();' in js
+
+
 def test_app_loads_and_opens_conversations_from_sidebar():
     js = (FRONTEND_ROOT / "app.js").read_text(encoding="utf-8")
 
