@@ -109,7 +109,8 @@ def test_workbench_uses_neutral_tokens_without_gradients():
 
 def test_workbench_has_stable_three_column_and_drawer_layouts():
     css = (FRONTEND_ROOT / "style.css").read_text(encoding="utf-8")
-    drawer_media = css.split("@media (max-width: 1179px)", 1)[1].split("@media (max-width: 759px)", 1)[0]
+    assert "@media (max-width: 760px)" in css
+    drawer_media = css.split("@media (max-width: 1179px)", 1)[1].split("@media (max-width: 760px)", 1)[0]
 
     assert "grid-template-columns: 260px minmax(0, 1fr);" in css
     assert "grid-template-columns: minmax(0, 1fr) 340px;" in css
@@ -120,7 +121,8 @@ def test_workbench_has_stable_three_column_and_drawer_layouts():
 
 def test_secondary_workspaces_collapse_to_one_column_without_changing_chat_drawer():
     css = (FRONTEND_ROOT / "style.css").read_text(encoding="utf-8")
-    drawer_media = css.split("@media (max-width: 1179px)", 1)[1].split("@media (max-width: 759px)", 1)[0]
+    assert "@media (max-width: 760px)" in css
+    drawer_media = css.split("@media (max-width: 1179px)", 1)[1].split("@media (max-width: 760px)", 1)[0]
 
     assert ".workspace:not(.chatWorkspace) {\n    grid-template-columns: minmax(0, 1fr);\n  }" in drawer_media
     assert ".chatWorkspace,\n  .chatWorkspace.task-panel-open {\n    grid-template-columns: minmax(0, 1fr);\n  }" in drawer_media

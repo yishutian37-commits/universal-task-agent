@@ -421,7 +421,7 @@ def test_frontend_narrow_layout_keeps_chat_surface_and_drawer_viewport_bound():
     assert "@media (max-width: 1179px)" in css
     assert ".taskPanel {\n    position: absolute;" in css
     assert "bottom: 0;" in css
-    assert "@media (max-width: 759px)" in css
+    assert "@media (max-width: 760px)" in css
     assert ".app {\n    grid-template-columns: 72px minmax(0, 1fr);\n  }" in css
 
 
@@ -554,6 +554,21 @@ def test_frontend_sidebar_keeps_conversations_and_capability_entries():
     assert "知识库" in html
     assert "记忆中心" in html
     assert "技能与工具" in html
+
+
+def test_frontend_sidebar_actions_keep_names_when_labels_are_hidden():
+    html = (FRONTEND_ROOT / "index.html").read_text(encoding="utf-8")
+
+    for element_id, label in [
+        ("newConversation", "新任务"),
+        ("openKnowledge", "知识库"),
+        ("openMemory", "记忆中心"),
+        ("openSkills", "技能与工具"),
+        ("openSettingsSide", "设置与授权"),
+    ]:
+        button = html.split(f'id="{element_id}"', 1)[1].split("</button>", 1)[0]
+        assert f'aria-label="{label}"' in button
+        assert f'title="{label}"' in button
 
 
 def test_frontend_can_load_conversations_into_sidebar():

@@ -1453,7 +1453,7 @@ pre {
   }
 }
 
-@media (max-width: 759px) {
+@media (max-width: 760px) {
   .app {
     grid-template-columns: 72px minmax(0, 1fr);
   }
