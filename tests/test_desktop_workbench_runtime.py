@@ -256,7 +256,15 @@ def test_memory_view_helpers_cover_tabs_keyboard_and_content_organization():
           compactMemoryText("## 标题\\n- **`内容`**\\n```text\\n代码\\n```", 20),
           "标题 内容 代码"
         );
+        assert.equal(
+          compactMemoryText("1. first\\n2、 second\\n3) third\\n__bold__", 60),
+          "first second third bold"
+        );
         assert.equal(compactMemoryText("**一二三四五六七**", 6), "一二三...");
+        assert.equal(compactMemoryText("abcdef", 0), "");
+        assert.equal(compactMemoryText("abcdef", 1), ".");
+        assert.equal(compactMemoryText("abcdef", 2), "..");
+        assert.equal(compactMemoryText("abcdef", 3), "...");
         assert.deepEqual(
           groupMemoryFacts([
             { kind: "preference", content: "中文" },
@@ -278,6 +286,70 @@ def test_memory_view_helpers_cover_tabs_keyboard_and_content_organization():
         ]), [
           { task_type: "summarize", content: "复用流程", source: "new", occurrence_count: 2 },
           { task_type: "review", content: "独立复查", occurrence_count: 1 }
+        ]);
+        const unorderedLessons = dedupeMemoryLessons([
+          {
+            task_type: "summarize",
+            content: "按时间保留",
+            source: "newest-updated",
+            updated_at: "2026-07-11T09:00:00Z"
+          },
+          {
+            task_type: "summarize",
+            content: "按时间保留",
+            source: "oldest-updated",
+            updated_at: "2026-07-10T09:00:00Z"
+          },
+          {
+            task_type: "review",
+            content: "按创建时间保留",
+            source: "newest-created",
+            created_at: "2026-07-11T09:00:00Z"
+          },
+          {
+            task_type: "review",
+            content: "按创建时间保留",
+            source: "oldest-created",
+            created_at: "2026-07-10T09:00:00Z"
+          }
+        ]);
+        assert.deepEqual(unorderedLessons, [
+          {
+            task_type: "summarize",
+            content: "按时间保留",
+            source: "newest-updated",
+            updated_at: "2026-07-11T09:00:00Z",
+            occurrence_count: 2
+          },
+          {
+            task_type: "review",
+            content: "按创建时间保留",
+            source: "newest-created",
+            created_at: "2026-07-11T09:00:00Z",
+            occurrence_count: 2
+          }
+        ]);
+        assert.deepEqual(dedupeMemoryLessons([
+          {
+            task_type: "review",
+            content: "同一时间取后项",
+            source: "first",
+            updated_at: "2026-07-11T09:00:00Z"
+          },
+          {
+            task_type: "review",
+            content: "同一时间取后项",
+            source: "later",
+            updated_at: "2026-07-11T09:00:00Z"
+          }
+        ]), [
+          {
+            task_type: "review",
+            content: "同一时间取后项",
+            source: "later",
+            updated_at: "2026-07-11T09:00:00Z",
+            occurrence_count: 2
+          }
         ]);
         """
     )

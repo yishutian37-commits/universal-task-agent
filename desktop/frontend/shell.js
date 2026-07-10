@@ -137,14 +137,28 @@
     const compacted = text
       .replace(/```[^\n]*\n?/g, "")
       .replace(/^\s{0,3}#{1,6}\s*/gm, "")
-      .replace(/^\s*[-*+]\s+/gm, "")
-      .replace(/\*\*/g, "")
+      .replace(/^\s*(?:[-*+]|\d+[.)]|\d+\u3001)\s+/gm, "")
+      .replace(/(?:\*\*|__)/g, "")
       .replace(/`/g, "")
       .replace(/\s+/g, " ")
       .trim();
-    const maxLength = Math.max(3, Number.isFinite(Number(limit)) ? Math.floor(Number(limit)) : 160);
+    const maxLength = Math.max(0, Number.isFinite(Number(limit)) ? Math.floor(Number(limit)) : 160);
     if (compacted.length <= maxLength) return compacted;
-    return `${compacted.slice(0, maxLength - 3)}...`;
+    const ellipsis = "...".slice(0, maxLength);
+    return `${compacted.slice(0, maxLength - ellipsis.length)}${ellipsis}`;
+  }
+
+  function memoryLessonTimestamp(item) {
+    for (const field of ["updated_at", "created_at"]) {
+      const value = item[field];
+      const timestamp = typeof value === "number"
+        ? value
+        : typeof value === "string" || value instanceof Date
+          ? new Date(value).getTime()
+          : Number.NaN;
+      if (Number.isFinite(timestamp)) return timestamp;
+    }
+    return null;
   }
 
   function dedupeMemoryLessons(items) {
@@ -152,8 +166,19 @@
     (Array.isArray(items) ? items : []).forEach((item) => {
       if (!item || typeof item !== "object") return;
       const key = JSON.stringify([item.task_type || "", item.content || ""]);
-      const occurrenceCount = (lessons.get(key)?.occurrence_count || 0) + 1;
-      lessons.set(key, { ...item, occurrence_count: occurrenceCount });
+      const existing = lessons.get(key);
+      const occurrenceCount = (existing?.occurrence_count || 0) + 1;
+      const itemTimestamp = memoryLessonTimestamp(item);
+      const existingTimestamp = existing ? memoryLessonTimestamp(existing) : null;
+      const shouldReplace = !existing
+        || (itemTimestamp !== null && (existingTimestamp === null || itemTimestamp >= existingTimestamp))
+        || (itemTimestamp === null && existingTimestamp === null);
+      lessons.set(
+        key,
+        shouldReplace
+          ? { ...item, occurrence_count: occurrenceCount }
+          : { ...existing, occurrence_count: occurrenceCount }
+      );
     });
     return Array.from(lessons.values());
   }
