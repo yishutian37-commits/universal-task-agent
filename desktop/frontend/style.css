@@ -296,17 +296,14 @@ button {
 
 .status.running i {
   background: var(--accent);
-  box-shadow: 0 0 8px var(--accent-glow-2);
 }
 
 .status.done i {
   background: var(--success);
-  box-shadow: 0 0 8px var(--success-dim);
 }
 
 .status.error i {
   background: var(--danger);
-  box-shadow: 0 0 8px var(--danger-dim);
 }
 
 .button {
@@ -1296,8 +1293,8 @@ pre {
 }
 
 .chatMessage.failed .messageBubble {
-  border-color: var(--danger);
-  border-left-color: var(--danger);
+  border-left: 3px solid var(--danger);
+  background: var(--danger-dim);
 }
 
 .chatMessage.running .messageBubble::after {
@@ -1451,7 +1448,7 @@ pre {
     box-shadow: -12px 0 28px rgba(30, 30, 28, 0.12);
   }
 
-  .memoryWorkspace {
+  .workspace:not(.chatWorkspace) {
     grid-template-columns: minmax(0, 1fr);
   }
 }

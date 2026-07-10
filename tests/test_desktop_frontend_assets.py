@@ -433,6 +433,20 @@ def test_frontend_chat_messages_stay_near_composer_while_running():
     assert ".chatMessages > .chatMessage:first-child" not in css
 
 
+def test_frontend_failed_messages_keep_a_visible_danger_border():
+    css = (FRONTEND_ROOT / "style.css").read_text(encoding="utf-8")
+
+    assert ".chatMessage.failed .messageBubble {\n  border-left: 3px solid var(--danger);\n  background: var(--danger-dim);\n}" in css
+
+
+def test_frontend_status_indicators_do_not_use_decorative_glow():
+    css = (FRONTEND_ROOT / "style.css").read_text(encoding="utf-8")
+
+    for selector in [".status.running i", ".status.done i", ".status.error i"]:
+        rule = css.split(selector, 1)[1].split("}", 1)[0]
+        assert "box-shadow" not in rule
+
+
 def test_frontend_calls_chat_bridge_methods_and_updates_messages():
     js = (FRONTEND_ROOT / "app.js").read_text(encoding="utf-8")
 
