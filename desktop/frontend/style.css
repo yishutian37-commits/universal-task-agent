@@ -656,7 +656,8 @@ pre {
 
 .modalBackdrop {
   position: fixed;
-  inset: 42px 0 0;
+  inset: 0;
+  z-index: 100;
   display: none;
   place-items: center;
   padding: 24px;
@@ -670,7 +671,12 @@ pre {
 
 .modal {
   width: min(560px, 100%);
+  max-height: calc(100vh - 48px);
+  max-height: calc(100dvh - 48px);
   padding: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  overflow: hidden;
   border: 1px solid var(--border);
   border-radius: var(--r-lg);
   background: var(--surface-1);
@@ -679,8 +685,11 @@ pre {
 
 .modal header,
 .modal footer {
+  position: relative;
+  z-index: 1;
   padding: 16px;
   border-bottom: 1px solid var(--border);
+  background: var(--surface-1);
 }
 
 .modal footer {
@@ -692,6 +701,12 @@ pre {
   display: grid;
   gap: 7px;
   padding: 14px 16px 0;
+}
+
+.settingsBody {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .modal label span {
@@ -737,8 +752,11 @@ pre {
 }
 
 .authorizationBody {
+  min-height: 0;
   display: grid;
   gap: 14px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 16px;
 }
 
@@ -1456,6 +1474,19 @@ pre {
 }
 
 @media (max-width: 760px) {
+  .modalBackdrop {
+    padding: 12px;
+  }
+
+  .modal {
+    max-height: calc(100vh - 24px);
+    max-height: calc(100dvh - 24px);
+  }
+
+  .authorizationDetails {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .app {
     grid-template-columns: 72px minmax(0, 1fr);
   }

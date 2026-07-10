@@ -14,7 +14,7 @@ def test_workbench_loads_shell_before_app():
 def test_shell_exposes_workbench_state_helpers():
     js = (FRONTEND_ROOT / "shell.js").read_text(encoding="utf-8")
 
-    assert "window.UTAShell" in js
+    assert "root.UTAShell = shell" in js
     assert "function groupConversations" in js
     assert "function activatePage" in js
     assert "function setTaskPanelOpen" in js
@@ -94,6 +94,45 @@ def test_shell_syncs_task_tab_aria_state():
 
     assert 'button.setAttribute("aria-selected", String(active));' in js
     assert 'panel.setAttribute("aria-hidden", String(!active));' in js
+
+
+def test_task_panel_toggle_and_tabs_have_complete_keyboard_aria_contract():
+    html = (FRONTEND_ROOT / "index.html").read_text(encoding="utf-8")
+    js = (FRONTEND_ROOT / "shell.js").read_text(encoding="utf-8")
+    app = (FRONTEND_ROOT / "app.js").read_text(encoding="utf-8")
+
+    toggle = html.split('id="toggleTaskPanel"', 1)[1].split(">", 1)[0]
+    assert 'aria-controls="chatDetailPanel"' in toggle
+    assert 'aria-expanded="false"' in toggle
+    for name in ["progress", "files", "changes", "artifacts", "diagnostics"]:
+        tab = html.split(f'id="taskTab-{name}"', 1)[1].split(">", 1)[0]
+        assert f'tabindex="{0 if name == "progress" else -1}"' in tab
+    assert "function handleTaskTabKeydown" in js
+    assert 'button.tabIndex = active ? 0 : -1;' in js
+    assert '["ArrowLeft", "ArrowRight", "Home", "End"]' in js
+    assert 'toggle.setAttribute("aria-expanded", String(open));' in js
+    assert "window.UTAShell.handleTaskTabKeydown(event)" in app
+
+
+def test_conversation_sidebar_marks_the_current_conversation():
+    js = (FRONTEND_ROOT / "app.js").read_text(encoding="utf-8")
+
+    assert "const active = conversation.conversation_id === state.conversationId;" in js
+    assert 'class="conversationItem${active ? " active" : ""}"' in js
+    assert 'aria-current="${active ? "true" : "false"}"' in js
+
+
+def test_plan_and_handoff_use_the_same_761_and_760_pixel_boundary():
+    plan = Path("docs/superpowers/plans/2026-07-10-uta-codex-workbench-phase-1-shell.md").read_text(encoding="utf-8")
+    handoff = Path("docs/superpowers/progress/2026-07-10-uta-codex-workbench-phase-1-handoff.md").read_text(encoding="utf-8")
+
+    assert "761px-1179px 右侧任务抽屉" in plan
+    assert "760px 及以下可折叠会话侧栏" in plan
+    assert "@media (max-width: 760px)" in plan
+    assert "@media (max-width: 759px)" not in plan
+    assert "761px 至 1179px 任务面板变为抽屉" in handoff
+    assert "760px 及以下侧栏收窄" in handoff
+    assert not handoff.endswith("\n\n")
 
 
 def test_workbench_uses_neutral_tokens_without_gradients():

@@ -46,7 +46,7 @@
               </div>
               <div class="headActions">
                 <span class="status ready" id="statusPill"><i></i><span id="statusText">就绪</span></span>
-                <button class="iconButton" type="button" id="toggleTaskPanel" title="任务详情" aria-label="任务详情">▥</button>
+                <button class="iconButton" type="button" id="toggleTaskPanel" title="任务详情" aria-label="任务详情" aria-controls="chatDetailPanel" aria-expanded="false">▥</button>
               </div>
             </header>
             <div class="chatMessages" id="chatMessages"></div>
@@ -75,11 +75,11 @@
               </div>
             </header>
             <div class="taskTabs" role="tablist" aria-label="任务详情">
-              <button class="active" type="button" id="taskTab-progress" role="tab" aria-selected="true" aria-controls="taskPanel-progress" data-task-tab="progress">进度</button>
-              <button type="button" id="taskTab-files" role="tab" aria-selected="false" aria-controls="taskPanel-files" data-task-tab="files">文件</button>
-              <button type="button" id="taskTab-changes" role="tab" aria-selected="false" aria-controls="taskPanel-changes" data-task-tab="changes">变更</button>
-              <button type="button" id="taskTab-artifacts" role="tab" aria-selected="false" aria-controls="taskPanel-artifacts" data-task-tab="artifacts">产物</button>
-              <button type="button" id="taskTab-diagnostics" role="tab" aria-selected="false" aria-controls="taskPanel-diagnostics" data-task-tab="diagnostics">诊断</button>
+              <button class="active" type="button" id="taskTab-progress" role="tab" tabindex="0" aria-selected="true" aria-controls="taskPanel-progress" data-task-tab="progress">进度</button>
+              <button type="button" id="taskTab-files" role="tab" tabindex="-1" aria-selected="false" aria-controls="taskPanel-files" data-task-tab="files">文件</button>
+              <button type="button" id="taskTab-changes" role="tab" tabindex="-1" aria-selected="false" aria-controls="taskPanel-changes" data-task-tab="changes">变更</button>
+              <button type="button" id="taskTab-artifacts" role="tab" tabindex="-1" aria-selected="false" aria-controls="taskPanel-artifacts" data-task-tab="artifacts">产物</button>
+              <button type="button" id="taskTab-diagnostics" role="tab" tabindex="-1" aria-selected="false" aria-controls="taskPanel-diagnostics" data-task-tab="diagnostics">诊断</button>
             </div>
             <section class="taskPanelBody" id="taskPanel-progress" role="tabpanel" aria-labelledby="taskTab-progress" aria-hidden="false" data-task-panel="progress">
               <div class="taskPanelMeta"><strong>执行进度</strong><span id="planMeta">0 步</span></div>
@@ -235,32 +235,34 @@
         <h2 id="settingsTitle">本地设置</h2>
         <button class="button ghost compact" type="button" id="closeSettings">关闭</button>
       </header>
-      <label>
-        <span>Base URL</span>
-        <input id="baseUrl" autocomplete="off" />
-      </label>
-      <label>
-        <span>模型</span>
-        <input id="modelName" autocomplete="off" />
-      </label>
-      <label>
-        <span>API Key</span>
-        <input id="apiKey" type="password" autocomplete="off" placeholder="留空则保留原 Key" />
-      </label>
-      <label class="switchRow">
-        <span>SSL 校验</span>
-        <input id="sslVerify" type="checkbox" />
-      </label>
-      <section class="settingsGroup">
-        <div>
-          <strong>工具授权</strong>
-          <p>开启后，Shell、Python REPL、文件写入和文件删除会在执行前请求手动授权。</p>
-        </div>
-        <label class="switchRow">
-          <span>启用高风险工具</span>
-          <input id="dangerousToolsEnabled" type="checkbox" />
+      <div class="modalBody settingsBody">
+        <label>
+          <span>Base URL</span>
+          <input id="baseUrl" autocomplete="off" />
         </label>
-      </section>
+        <label>
+          <span>模型</span>
+          <input id="modelName" autocomplete="off" />
+        </label>
+        <label>
+          <span>API Key</span>
+          <input id="apiKey" type="password" autocomplete="off" placeholder="留空则保留原 Key" />
+        </label>
+        <label class="switchRow">
+          <span>SSL 校验</span>
+          <input id="sslVerify" type="checkbox" />
+        </label>
+        <section class="settingsGroup">
+          <div>
+            <strong>工具授权</strong>
+            <p>开启后，Shell、Python REPL、文件写入和文件删除会在执行前请求手动授权。</p>
+          </div>
+          <label class="switchRow">
+            <span>启用高风险工具</span>
+            <input id="dangerousToolsEnabled" type="checkbox" />
+          </label>
+        </section>
+      </div>
       <footer>
         <button class="button secondary" type="button" id="clearKey">清除 Key</button>
         <button class="button primary" type="submit">保存</button>

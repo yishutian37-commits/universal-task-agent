@@ -1,7 +1,14 @@
 from pathlib import Path
+import re
 
 
 FRONTEND_ROOT = Path("desktop/frontend")
+
+
+def css_rule(css: str, selector: str) -> str:
+    match = re.search(rf"{re.escape(selector)}\s*\{{([^}}]*)\}}", css)
+    assert match is not None, f"missing CSS rule: {selector}"
+    return match.group(1)
 
 
 def test_frontend_does_not_draw_duplicate_traffic_lights():
@@ -37,7 +44,10 @@ def test_frontend_task_tabs_have_stable_aria_relationships():
     for name in ["progress", "files", "changes", "artifacts", "diagnostics"]:
         selected = "true" if name == "progress" else "false"
         hidden = "false" if name == "progress" else "true"
-        assert f'id="taskTab-{name}" role="tab" aria-selected="{selected}" aria-controls="taskPanel-{name}"' in html
+        tab = html.split(f'id="taskTab-{name}"', 1)[1].split(">", 1)[0]
+        assert 'role="tab"' in tab
+        assert f'aria-selected="{selected}"' in tab
+        assert f'aria-controls="taskPanel-{name}"' in tab
         assert f'id="taskPanel-{name}" role="tabpanel" aria-labelledby="taskTab-{name}" aria-hidden="{hidden}"' in html
 
 
@@ -45,68 +55,79 @@ def test_frontend_task_panel_and_stop_control_follow_run_lifecycle():
     js = (FRONTEND_ROOT / "app.js").read_text(encoding="utf-8")
     reset_start = js.index("function resetRunSurface")
     run_start = js.index("async function runTask", reset_start)
-    direct_start = js.index("if (result.direct)", run_start)
-    task_start = js.index("state.running = true", direct_start)
     progress_start = js.index("async function handleProgress")
     completed_start = js.index('if (event.type === "task_completed")', progress_start)
     error_start = js.index('if (event.type === "error")', completed_start)
     cancelled_start = js.index('if (event.type === "cancelled")', error_start)
+    stop_start = js.index("async function stopTask")
+    stop_end = js.index("function stepMarkerFor", stop_start)
+    stop = js[stop_start:stop_end]
 
     assert "setTaskPanelOpen(false);" in js[reset_start:run_start]
-    assert "setTaskPanelOpen(false);" in js[direct_start:task_start]
     assert "setStopTaskVisible(false);" in js[reset_start:run_start]
-    assert "setStopTaskVisible(false);" in js[direct_start:task_start]
-    assert "setStopTaskVisible(true);" in js[task_start:js.index("} catch", task_start)]
     assert "setStopTaskVisible(false);" in js[completed_start:error_start]
     assert "setStopTaskVisible(false);" in js[error_start:]
     assert "setStopTaskVisible(false);" in js[cancelled_start:]
     assert "function setStopTaskVisible" in js
     assert "async function stopTask" in js
-    assert 'callApi("cancel_task", state.taskId)' in js
+    assert "const taskId = state.taskId;" in stop
+    assert "if (!taskId || !runLifecycle.beginCancel(taskId)) return;" in stop
+    assert 'callApi("cancel_task", taskId)' in stop
+    assert "runLifecycle.confirmCancel(taskId);" in stop
+    assert "runLifecycle.failCancel(taskId)" in stop
+    assert stop.index('setStatus("running", "正在停止");') < stop.index('await callApi("cancel_task", taskId)')
     assert 'els.stopTask.addEventListener("click", stopTask);' in js
 
 
-def test_frontend_does_not_revive_tasks_that_finish_before_api_return():
+def test_frontend_binds_and_replays_events_that_arrive_before_api_return():
     js = (FRONTEND_ROOT / "app.js").read_text(encoding="utf-8")
-
-    assert "terminalTaskIds: new Set()" in js
-    assert "state.terminalTaskIds.add(terminalTaskId);" in js
-    assert "if (state.terminalTaskIds.has(result.task_id))" in js
     run_start = js.index("async function runTask")
+    request_start = js.index("runLifecycle.beginRequest", run_start)
     return_start = js.index('const result = await callApi("run_chat_message"', run_start)
-    early_terminal_start = js.index("if (state.terminalTaskIds.has(result.task_id))", return_start)
-    running_start = js.index("state.running = true", return_start)
+    binding_start = js.index("runLifecycle.bindTask", return_start)
+    replay_start = js.index("for (const earlyEvent of binding.events)", binding_start)
 
-    assert early_terminal_start < running_start
-    assert "setTaskPanelOpen(true);" not in js[early_terminal_start:running_start]
-    assert "setStopTaskVisible(true);" not in js[early_terminal_start:running_start]
+    assert request_start < return_start < binding_start < replay_start
+    assert "await handleProgress(earlyEvent);" in js[replay_start:js.index("} catch", replay_start)]
+    assert "terminalTaskIds" not in js
 
 
-def test_frontend_syncs_all_terminal_events_and_retries_after_api_return():
+def test_frontend_routes_events_before_any_visible_task_update():
     js = (FRONTEND_ROOT / "app.js").read_text(encoding="utf-8")
+    progress_start = js.index("async function handleProgress")
+    progress_end = js.index("async function refreshResult", progress_start)
+    progress = js[progress_start:progress_end]
 
-    assert "syncedTaskIds: new Set()" in js
-    assert "syncingTaskIds: new Set()" in js
-    assert "taskConversationIds: new Map()" in js
-    assert "async function syncTerminalTask" in js
+    assert "const route = runLifecycle.routeEvent(event);" in progress
+    assert 'route.disposition === "buffered" || route.disposition === "ignored"' in progress
+    assert "const taskId = route.taskId;" in progress
+    assert "const context = route.context;" in progress
+    assert 'route.disposition === "visible"' in progress
+    assert "isRunContextVisible(context)" in progress
+    assert progress.index("const route = runLifecycle.routeEvent(event);") < progress.index("addLog(sourceFor(event), messageFor(event));")
+    assert "state.taskId = event.task_id" not in progress
+
+
+def test_frontend_syncs_and_refreshes_terminal_events_by_routed_task_id():
+    js = (FRONTEND_ROOT / "app.js").read_text(encoding="utf-8")
     helper_start = js.index("async function syncTerminalTask")
     progress_start = js.index("async function handleProgress")
     completed_start = js.index('if (event.type === "task_completed")', progress_start)
     error_start = js.index('if (event.type === "error")', completed_start)
     cancelled_start = js.index('if (event.type === "cancelled")', error_start)
-    run_start = js.index("async function runTask")
-    return_start = js.index('const result = await callApi("run_chat_message"', run_start)
-    running_start = js.index("state.running = true", return_start)
+    refresh_start = js.index("async function refreshResult", cancelled_start)
 
-    assert "const conversationId = state.taskConversationIds.get(taskId);" in js[helper_start:progress_start]
+    assert "const context = runLifecycle.getTaskContext(taskId);" in js[helper_start:progress_start]
+    assert "const conversationId = context && context.conversationId;" in js[helper_start:progress_start]
     assert 'await callApi("sync_chat_result", conversationId, taskId);' in js[helper_start:progress_start]
-    assert "state.syncedTaskIds.add(taskId);" in js[helper_start:progress_start]
-    assert "state.syncedTaskIds.add(taskId);" not in js[:js.index('await callApi("sync_chat_result", conversationId, taskId);', helper_start)]
-    assert "await syncTerminalTask(state.taskId);" in js[completed_start:error_start]
-    assert "await syncTerminalTask(state.taskId);" in js[error_start:cancelled_start]
-    assert "await syncTerminalTask(state.taskId);" in js[cancelled_start:]
-    assert "state.taskConversationIds.set(result.task_id, result.conversation_id);" in js[return_start:running_start]
-    assert "await syncTerminalTask(state.taskId);" in js[return_start:running_start]
+    assert "terminalSync.syncedTaskIds.add(taskId);" in js[helper_start:progress_start]
+    for branch in [js[completed_start:error_start], js[error_start:cancelled_start], js[cancelled_start:refresh_start]]:
+        assert "await syncTerminalTask(taskId);" in branch
+        assert "await refreshResult(taskId);" in branch
+    assert "async function refreshResult(taskId)" in js[refresh_start:]
+    assert 'callApi("get_result", taskId)' in js[refresh_start:]
+    assert "syncTerminalTask(state.taskId)" not in js
+    assert "refreshResult()" not in js
 
 
 def test_frontend_marks_terminal_sync_only_after_a_non_running_success():
@@ -121,13 +142,13 @@ def test_frontend_marks_terminal_sync_only_after_a_non_running_success():
     assert 'if (result.ok !== true || result.status === "running") {' in helper
     assert "shouldRetry = true;" in helper
     assert "return false;" in helper
-    assert "state.syncedTaskIds.add(taskId);" in helper
+    assert "terminalSync.syncedTaskIds.add(taskId);" in helper
     assert "await loadConversationSidebar();" in helper
     assert "return true;" in helper
-    assert helper.index('if (result.ok !== true || result.status === "running") {') < helper.index("state.syncedTaskIds.add(taskId);")
+    assert helper.index('if (result.ok !== true || result.status === "running") {') < helper.index("terminalSync.syncedTaskIds.add(taskId);")
     assert "return false;" in helper
     assert "finally" in helper
-    assert "state.syncingTaskIds.delete(taskId);" in helper
+    assert "terminalSync.syncingTaskIds.delete(taskId);" in helper
 
 
 def test_frontend_guards_late_run_results_after_conversation_switch():
@@ -139,34 +160,25 @@ def test_frontend_guards_late_run_results_after_conversation_switch():
     open_start = js.index("async function openConversation")
     run_start = js.index("async function runTask")
     return_start = js.index('const result = await callApi("run_chat_message"', run_start)
-    task_mapping = js.index("state.taskConversationIds.set(result.task_id, result.conversation_id);", return_start)
-    error_branch = js.index("if (!result.ok)", return_start)
+    task_mapping = js.index("runLifecycle.bindTask", return_start)
     catch_start = js.index("} catch (error)", return_start)
     finally_start = js.index("} finally", catch_start)
 
     assert "advanceConversationRevision();" in js[start_new:open_start]
     assert "advanceConversationRevision();" in js[open_start:run_start]
+    assert "if (runLifecycle.isBusy())" in js[start_new:open_start]
+    assert "if (runLifecycle.isBusy())" in js[open_start:run_start]
     revision_start = js.index("function advanceConversationRevision")
     revision_end = start_new
     assert "state.messages = [];" in js[revision_start:revision_end]
-    assert "state.pendingAssistantId = null;" in js[revision_start:revision_end]
     assert "setStatus(\"ready\", \"就绪\");" in js[revision_start:revision_end]
-    assert "terminalSyncTimers" not in js[js.index("function advanceConversationRevision"):js.index("async function startNewConversation")]
 
-    assert "const requestRevision = state.conversationRevision;" in js[return_start - 500:return_start]
-    assert "const requestAssistant = assistant;" in js[return_start - 500:return_start]
-    revision_guard = js.index("state.conversationRevision !== requestRevision", task_mapping)
-    stale_direct_start = js.index("if (result.direct)", revision_guard)
-    current_direct_start = js.index("if (result.direct)", stale_direct_start + 1)
-    assert task_mapping < revision_guard
-    assert revision_guard < stale_direct_start < current_direct_start
-    assert "await loadConversationSidebar();" in js[revision_guard:current_direct_start]
-    assert "await syncTerminalTask(result.task_id);" in js[task_mapping:revision_guard + 300]
-    stale_error_end = js.index('setStatus("error", "未运行")', error_branch)
-    assert "await loadConversationSidebar();" in js[error_branch:stale_error_end]
-    assert "showToast" not in js[error_branch:stale_error_end]
-    assert "els.taskInput.value = \"\";" in js[stale_direct_start:current_direct_start]
-    assert js.index('els.taskInput.value = "";', revision_guard) < current_direct_start
+    assert "const requestRevision = state.conversationRevision;" in js[run_start:return_start]
+    assert "const requestContext = runLifecycle.beginRequest" in js[run_start:return_start]
+    revision_guard = js.index("if (state.conversationRevision !== requestRevision)", task_mapping)
+    replay_start = js.index("for (const earlyEvent of binding.events)", task_mapping)
+    assert task_mapping < replay_start < revision_guard
+    assert "await loadConversationSidebar();" in js[revision_guard:catch_start]
     assert "state.conversationRevision !== requestRevision" in js[catch_start:finally_start]
     assert "state.conversationRevision === requestRevision" in js[finally_start:js.index("async function resumeTask", finally_start)]
 
@@ -180,31 +192,13 @@ def test_frontend_clears_shared_composer_only_when_activating_a_conversation():
     reset_start = js.index("function resetRunSurface")
     reset_end = js.index("async function runTask", reset_start)
     reset = js[reset_start:reset_end]
-    run_start = js.index("async function runTask")
-    task_mapping = js.index("state.taskConversationIds.set(result.task_id, result.conversation_id);", run_start)
-    stale_guard = js.index("state.conversationRevision !== requestRevision", task_mapping)
-    stale_return = js.index("return;", stale_guard)
-    input_clear = js.index('els.taskInput.value = "";', stale_return)
 
     assert "els.taskInput.value = \"\";" in revision
     assert "resetRunSurface();" in revision
     assert "els.taskInput.readOnly = false;" in reset
     assert "els.runTask.disabled = false;" in reset
     assert "els.resumeTask.disabled = false;" in reset
-    for name in [
-        "terminalTaskIds",
-        "syncedTaskIds",
-        "syncingTaskIds",
-        "taskConversationIds",
-        "terminalSyncTimers",
-        "terminalSyncAttempts",
-    ]:
-        assert name not in revision
-
-    assert stale_return < input_clear
-    assert 'els.taskInput.value = "";' not in js[stale_guard:stale_return]
-    assert task_mapping < stale_guard
-    assert "await syncTerminalTask(result.task_id);" in js[task_mapping:stale_return]
+    assert "runLifecycle" not in revision
 
 
 def test_frontend_retries_terminal_sync_with_bounded_deduplicated_backoff():
@@ -223,20 +217,17 @@ def test_frontend_retries_terminal_sync_with_bounded_deduplicated_backoff():
     scheduler = js[scheduler_start:scheduler_end]
     reset_start = js.index("function resetRunSurface")
     run_start = js.index("async function runTask", reset_start)
-    direct_start = js.index("if (result.direct)", run_start)
-    running_start = js.index("state.running = true", direct_start)
 
-    assert "state.terminalSyncTimers.has(taskId) || state.syncingTaskIds.has(taskId)" in scheduler
+    assert "terminalSync.terminalSyncTimers.has(taskId) || terminalSync.syncingTaskIds.has(taskId)" in scheduler
     assert "const delay = TERMINAL_SYNC_RETRY_DELAYS[attempt];" in scheduler
     assert "setTimeout(async () =>" in scheduler
-    assert "state.terminalSyncTimers.set(taskId, timer);" in scheduler
+    assert "terminalSync.terminalSyncTimers.set(taskId, timer);" in scheduler
     assert "会话同步未完成" in scheduler
     assert "shouldRetry = true;" in helper
     assert "scheduleTerminalSyncRetry(taskId);" in helper
     assert "clearTerminalSyncRetry(taskId);" in helper
-    assert helper.index("clearTerminalSyncRetry(taskId);") < helper.index("state.syncedTaskIds.add(taskId);")
+    assert helper.index("clearTerminalSyncRetry(taskId);") < helper.index("terminalSync.syncedTaskIds.add(taskId);")
     assert "clearTerminalSyncRetry" not in js[reset_start:run_start]
-    assert "clearTerminalSyncRetry" not in js[direct_start:running_start]
 
 
 def test_frontend_includes_memory_view():
@@ -357,6 +348,38 @@ def test_frontend_includes_manual_authorization_modal():
     assert "payload.trash_path" in js
 
 
+def test_modals_keep_scrollable_bodies_between_stable_headers_and_footers():
+    html = (FRONTEND_ROOT / "index.html").read_text(encoding="utf-8")
+
+    settings = html.split('id="settingsModal"', 1)[1].split('</form>', 1)[0]
+    authorization = html.split('id="authorizationModal"', 1)[1].split('</section>', 1)[0]
+    assert 'class="modalBody settingsBody"' in settings
+    assert settings.index("<header>") < settings.index('class="modalBody settingsBody"') < settings.index("<footer>")
+    assert 'class="authorizationBody"' in authorization
+    assert authorization.index("<header>") < authorization.index('class="authorizationBody"') < authorization.index("<footer>")
+
+
+def test_modal_backdrop_and_scroll_contract_stays_above_the_narrow_task_drawer():
+    css = (FRONTEND_ROOT / "style.css").read_text(encoding="utf-8")
+    backdrop = css_rule(css, ".modalBackdrop")
+    modal = css_rule(css, ".modal")
+    settings_body = css_rule(css, ".settingsBody")
+    authorization_body = css_rule(css, ".authorizationBody")
+    drawer_media = css.split("@media (max-width: 1179px)", 1)[1].split("@media (max-width: 760px)", 1)[0]
+    drawer = css_rule(drawer_media, ".taskPanel")
+
+    assert "inset: 0;" in backdrop
+    assert "z-index: 100;" in backdrop
+    assert int(re.search(r"z-index:\s*(\d+)", backdrop).group(1)) > int(re.search(r"z-index:\s*(\d+)", drawer).group(1))
+    assert "max-height: calc(100dvh - 48px);" in modal
+    assert "display: grid;" in modal
+    assert "grid-template-rows: auto minmax(0, 1fr) auto;" in modal
+    assert "overflow: hidden;" in modal
+    for body in [settings_body, authorization_body]:
+        assert "min-height: 0;" in body
+        assert "overflow-y: auto;" in body
+
+
 def test_frontend_uses_a_single_sidebar_dangerous_tools_status_entry():
     html = (FRONTEND_ROOT / "index.html").read_text(encoding="utf-8")
 
@@ -453,9 +476,9 @@ def test_frontend_calls_chat_bridge_methods_and_updates_messages():
     assert 'callApi("run_chat_message"' in js
     assert 'callApi("sync_chat_result"' in js
     assert "function addChatMessage" in js
-    assert "function updateAssistantMessage" in js
+    assert "function updateAssistantForContext" in js
     assert "function renderChatMessages" in js
-    assert "pendingAssistantId" in js
+    assert "const runLifecycle = window.UTAShell.createRunLifecycle();" in js
 
 
 def test_frontend_keeps_execution_progress_out_of_assistant_messages():
@@ -478,20 +501,20 @@ def test_frontend_handles_direct_chat_replies():
 def test_frontend_refreshes_sidebar_after_chat_conversation_writes():
     js = (FRONTEND_ROOT / "app.js").read_text(encoding="utf-8")
     direct_start = js.index("if (result.direct)")
-    direct_end = js.index("state.running = true", direct_start)
+    direct_end = js.index("const binding = runLifecycle.bindTask", direct_start)
     progress_start = js.index("async function handleProgress")
     completed_start = js.index('if (event.type === "task_completed")', progress_start)
     completed_end = js.index('if (event.type === "error")', completed_start)
 
     assert "await loadConversationSidebar();" in js[direct_start:direct_end]
-    assert "await syncTerminalTask(state.taskId);" in js[completed_start:completed_end]
+    assert "await syncTerminalTask(taskId);" in js[completed_start:completed_end]
 
 
 def test_frontend_task_completed_updates_assistant_message_not_report_panel_only():
     js = (FRONTEND_ROOT / "app.js").read_text(encoding="utf-8")
 
     assert 'event.type === "task_completed"' in js
-    assert "updateAssistantMessage" in js
+    assert "updateAssistantForContext" in js
     assert "renderMarkdown(state.reportText)" in js
 
 

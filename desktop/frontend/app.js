@@ -81,22 +81,22 @@ const els = {
 
 const state = {
   activeExample: "summarize",
-  running: false,
   taskId: null,
   conversationId: null,
   messages: [],
-  pendingAssistantId: null,
   pendingAuthorization: null,
   reportText: "",
   conversations: [],
   activePage: "conversation",
   taskPanelOpen: false,
   taskPanelTab: "progress",
-  conversationRevision: 0,
-  terminalTaskIds: new Set(),
+  conversationRevision: 0
+};
+
+const runLifecycle = window.UTAShell.createRunLifecycle();
+const terminalSync = {
   syncedTaskIds: new Set(),
   syncingTaskIds: new Set(),
-  taskConversationIds: new Map(),
   terminalSyncTimers: new Map(),
   terminalSyncAttempts: new Map()
 };
@@ -120,40 +120,59 @@ function setStopTaskVisible(isVisible) {
   els.stopTask.disabled = !isVisible;
 }
 
+function isRunContextVisible(context) {
+  if (!context || !runLifecycle.isCurrentTask(context.taskId)) return false;
+  if (state.conversationRevision !== context.conversationRevision) return false;
+  return !context.conversationId || state.conversationId === context.conversationId;
+}
+
+function unlockComposerIfIdle() {
+  if (runLifecycle.isBusy()) return;
+  els.taskInput.readOnly = false;
+  els.runTask.disabled = false;
+  els.resumeTask.disabled = false;
+}
+
+function addTaskDiagnostic(taskId, source, message) {
+  const context = runLifecycle.getTaskContext(taskId);
+  if (context && isRunContextVisible(context)) addLog(source, message);
+}
+
 function clearTerminalSyncRetry(taskId) {
-  if (state.terminalSyncTimers.has(taskId)) {
-    clearTimeout(state.terminalSyncTimers.get(taskId));
-    state.terminalSyncTimers.delete(taskId);
+  if (terminalSync.terminalSyncTimers.has(taskId)) {
+    clearTimeout(terminalSync.terminalSyncTimers.get(taskId));
+    terminalSync.terminalSyncTimers.delete(taskId);
   }
-  state.terminalSyncAttempts.delete(taskId);
+  terminalSync.terminalSyncAttempts.delete(taskId);
 }
 
 function scheduleTerminalSyncRetry(taskId) {
-  if (!taskId || state.syncedTaskIds.has(taskId)) return;
-  if (state.terminalSyncTimers.has(taskId) || state.syncingTaskIds.has(taskId)) return;
+  if (!taskId || terminalSync.syncedTaskIds.has(taskId)) return;
+  if (terminalSync.terminalSyncTimers.has(taskId) || terminalSync.syncingTaskIds.has(taskId)) return;
 
-  const attempt = state.terminalSyncAttempts.get(taskId) || 0;
+  const attempt = terminalSync.terminalSyncAttempts.get(taskId) || 0;
   if (attempt >= TERMINAL_SYNC_RETRY_DELAYS.length) {
-    addLog("Sync", `任务 ${taskId} 的会话同步未完成，请稍后刷新会话。`);
+    addTaskDiagnostic(taskId, "Sync", `任务 ${taskId} 的会话同步未完成，请稍后刷新会话。`);
     return;
   }
 
   const delay = TERMINAL_SYNC_RETRY_DELAYS[attempt];
-  state.terminalSyncAttempts.set(taskId, attempt + 1);
+  terminalSync.terminalSyncAttempts.set(taskId, attempt + 1);
   const timer = setTimeout(async () => {
-    state.terminalSyncTimers.delete(taskId);
+    terminalSync.terminalSyncTimers.delete(taskId);
     await syncTerminalTask(taskId);
   }, delay);
-  state.terminalSyncTimers.set(taskId, timer);
+  terminalSync.terminalSyncTimers.set(taskId, timer);
 }
 
 async function syncTerminalTask(taskId) {
-  const conversationId = state.taskConversationIds.get(taskId);
-  if (!taskId || !state.terminalTaskIds.has(taskId) || !conversationId) return false;
-  if (state.syncedTaskIds.has(taskId)) return true;
-  if (state.syncingTaskIds.has(taskId)) return false;
+  const context = runLifecycle.getTaskContext(taskId);
+  const conversationId = context && context.conversationId;
+  if (!taskId || !runLifecycle.isTerminalTask(taskId) || !conversationId) return false;
+  if (terminalSync.syncedTaskIds.has(taskId)) return true;
+  if (terminalSync.syncingTaskIds.has(taskId)) return false;
 
-  state.syncingTaskIds.add(taskId);
+  terminalSync.syncingTaskIds.add(taskId);
   let shouldRetry = false;
   try {
     const result = await callApi("sync_chat_result", conversationId, taskId);
@@ -162,15 +181,15 @@ async function syncTerminalTask(taskId) {
       return false;
     }
     clearTerminalSyncRetry(taskId);
-    state.syncedTaskIds.add(taskId);
+    terminalSync.syncedTaskIds.add(taskId);
     await loadConversationSidebar();
     return true;
   } catch (error) {
     shouldRetry = true;
-    showToast("会话同步失败", error.message);
+    if (context && isRunContextVisible(context)) showToast("会话同步失败", error.message);
     return false;
   } finally {
-    state.syncingTaskIds.delete(taskId);
+    terminalSync.syncingTaskIds.delete(taskId);
     if (shouldRetry) scheduleTerminalSyncRetry(taskId);
   }
 }
@@ -205,7 +224,6 @@ function setStatus(kind, text) {
 function advanceConversationRevision() {
   state.conversationRevision += 1;
   state.messages = [];
-  state.pendingAssistantId = null;
   els.taskInput.value = "";
   resetRunSurface();
   setStatus("ready", "就绪");
@@ -232,15 +250,9 @@ function addChatMessage(role, content, status = "completed", taskId = null) {
   return message;
 }
 
-function updateAssistantMessage(taskId, patch) {
-  const message = [...state.messages].reverse().find((item) => item.role === "assistant" && item.taskId === taskId);
-  if (!message) return;
-  Object.assign(message, patch);
-  renderChatMessages();
-}
-
-function updatePendingAssistant(patch) {
-  const message = state.messages.find((item) => item.id === state.pendingAssistantId);
+function updateAssistantForContext(context, patch) {
+  if (!isRunContextVisible(context)) return;
+  const message = state.messages.find((item) => item.id === context.assistantId);
   if (!message) return;
   Object.assign(message, patch);
   renderChatMessages();
@@ -430,12 +442,15 @@ function renderConversationSidebar(conversations) {
   const groups = window.UTAShell.groupConversations(visible);
   const html = Object.entries(groups).map(([label, items]) => {
     if (!items.length) return "";
-    const rows = items.map((conversation) => `
-      <button class="conversationItem" type="button" data-conversation-id="${escapeHtml(conversation.conversation_id)}">
-        <strong>${escapeHtml(conversation.title || "新对话")}</strong>
-        <small>${escapeHtml(conversation.preview || "暂无消息")}</small>
-      </button>
-    `).join("");
+    const rows = items.map((conversation) => {
+      const active = conversation.conversation_id === state.conversationId;
+      return `
+        <button class="conversationItem${active ? " active" : ""}" type="button" aria-current="${active ? "true" : "false"}" data-conversation-id="${escapeHtml(conversation.conversation_id)}">
+          <strong>${escapeHtml(conversation.title || "新对话")}</strong>
+          <small>${escapeHtml(conversation.preview || "暂无消息")}</small>
+        </button>
+      `;
+    }).join("");
     return `<section class="conversationGroup"><h2>${label}</h2>${rows}</section>`;
   }).join("");
   els.conversationList.innerHTML = html || '<div class="emptyState">暂无匹配会话</div>';
@@ -445,7 +460,7 @@ function renderConversationSidebar(conversations) {
 }
 
 async function startNewConversation() {
-  if (state.running) {
+  if (runLifecycle.isBusy()) {
     showToast("任务运行中", "请先停止当前任务");
     return;
   }
@@ -464,7 +479,7 @@ async function startNewConversation() {
 }
 
 async function openConversation(conversationId) {
-  if (state.running) {
+  if (runLifecycle.isBusy()) {
     showToast("任务运行中", "请先停止当前任务");
     return;
   }
@@ -852,7 +867,7 @@ function resetRunSurface() {
 }
 
 async function runTask() {
-  if (state.running) {
+  if (runLifecycle.isBusy()) {
     showToast("任务运行中", "当前版本一次只运行一个任务");
     return;
   }
@@ -869,7 +884,15 @@ async function runTask() {
   addChatMessage("user", text, "completed");
   const assistant = addChatMessage("assistant", "正在分析任务...", "running");
   const requestAssistant = assistant;
-  state.pendingAssistantId = assistant.id;
+  const requestContext = runLifecycle.beginRequest({
+    conversationId: requestConversationId || "",
+    conversationRevision: requestRevision,
+    assistantId: assistant.id
+  });
+  if (!requestContext) {
+    showToast("任务运行中", "当前版本一次只运行一个任务");
+    return;
+  }
   setStatus("running", "运行中");
   els.taskInput.readOnly = true;
   els.runTask.disabled = true;
@@ -878,7 +901,9 @@ async function runTask() {
   try {
     const result = await callApi("run_chat_message", requestConversationId || "", text);
     if (!result.ok) {
-      if (state.conversationRevision !== requestRevision) {
+      const requestIsCurrent = runLifecycle.isCurrentRequest(requestContext.requestId);
+      runLifecycle.finishRequest(requestContext.requestId);
+      if (!requestIsCurrent || state.conversationRevision !== requestRevision) {
         await loadConversationSidebar();
         return;
       }
@@ -889,19 +914,13 @@ async function runTask() {
       if ((result.error || "").includes("Key") || result.open_settings) openSettings();
       return;
     }
-    if (result.task_id && result.conversation_id) {
-      state.taskConversationIds.set(result.task_id, result.conversation_id);
-    }
-    if (state.conversationRevision !== requestRevision) {
-      if (result.direct) {
-        await loadConversationSidebar();
-      } else if (result.task_id && state.terminalTaskIds.has(result.task_id)) {
-        await syncTerminalTask(result.task_id);
-      }
-      return;
-    }
-    els.taskInput.value = "";
     if (result.direct) {
+      runLifecycle.finishRequest(requestContext.requestId);
+      if (state.conversationRevision !== requestRevision) {
+        await loadConversationSidebar();
+        return;
+      }
+      els.taskInput.value = "";
       setTaskPanelOpen(false);
       setStopTaskVisible(false);
       state.conversationId = result.conversation_id;
@@ -911,21 +930,40 @@ async function runTask() {
       await loadConversationSidebar();
       return;
     }
-    state.conversationId = result.conversation_id;
-    state.taskId = result.task_id;
-    requestAssistant.taskId = result.task_id;
-    renderChatMessages();
-    els.taskIdLabel.textContent = result.task_id;
-    renderTaskPanelEmptyStates();
-    if (state.terminalTaskIds.has(result.task_id)) {
-      await syncTerminalTask(state.taskId);
+
+    const binding = runLifecycle.bindTask(requestContext.requestId, {
+      taskId: result.task_id,
+      conversationId: result.conversation_id
+    });
+    if (!binding.ok) {
+      await loadConversationSidebar();
       return;
     }
-    state.running = true;
-    setTaskPanelTab("progress");
-    setTaskPanelOpen(true);
-    setStopTaskVisible(true);
+    const requestIsStale = state.conversationRevision !== requestRevision;
+    if (!requestIsStale) {
+      els.taskInput.value = "";
+      state.conversationId = binding.context.conversationId;
+      state.taskId = binding.context.taskId;
+      requestAssistant.taskId = binding.context.taskId;
+      renderChatMessages();
+      els.taskIdLabel.textContent = binding.context.taskId;
+      renderTaskPanelEmptyStates();
+      setTaskPanelTab("progress");
+      setTaskPanelOpen(true);
+    }
+    for (const earlyEvent of binding.events) {
+      await handleProgress(earlyEvent);
+    }
+    if (state.conversationRevision !== requestRevision) {
+      await loadConversationSidebar();
+      return;
+    }
+    if (!runLifecycle.isTerminalTask(binding.context.taskId)) {
+      setStopTaskVisible(true);
+    }
   } catch (error) {
+    const requestIsCurrent = runLifecycle.isCurrentRequest(requestContext.requestId);
+    if (requestIsCurrent) runLifecycle.finishRequest(requestContext.requestId);
     if (state.conversationRevision !== requestRevision) {
       await loadConversationSidebar();
       return;
@@ -935,16 +973,12 @@ async function runTask() {
     renderChatMessages();
     showToast("运行失败", error.message);
   } finally {
-    if (state.conversationRevision === requestRevision && !state.running) {
-      els.taskInput.readOnly = false;
-      els.runTask.disabled = false;
-      els.resumeTask.disabled = false;
-    }
+    if (state.conversationRevision === requestRevision) unlockComposerIfIdle();
   }
 }
 
 async function resumeTask() {
-  if (state.running) {
+  if (runLifecycle.isBusy()) {
     showToast("任务运行中", "当前版本一次只运行一个任务");
     return;
   }
@@ -952,63 +986,75 @@ async function resumeTask() {
   if (!taskId || !taskId.trim()) return;
 
   resetRunSurface();
-  state.taskId = taskId.trim();
-  addChatMessage("assistant", `正在从 checkpoint 恢复：${state.taskId}`, "running", state.taskId);
+  const resumeTaskId = taskId.trim();
+  state.taskId = resumeTaskId;
+  const assistant = addChatMessage("assistant", `正在从 checkpoint 恢复：${resumeTaskId}`, "running", resumeTaskId);
+  const requestContext = runLifecycle.beginRequest({
+    conversationId: state.conversationId || "",
+    conversationRevision: state.conversationRevision,
+    assistantId: assistant.id
+  });
+  const binding = runLifecycle.bindTask(requestContext.requestId, {
+    taskId: resumeTaskId,
+    conversationId: state.conversationId || ""
+  });
+  const context = binding.context;
   setStatus("running", "恢复中");
-  els.taskIdLabel.textContent = state.taskId;
+  els.taskIdLabel.textContent = resumeTaskId;
   els.taskInput.readOnly = true;
   els.runTask.disabled = true;
   els.resumeTask.disabled = true;
 
   try {
-    const result = await callApi("resume_task", state.taskId);
+    const result = await callApi("resume_task", resumeTaskId);
     if (!result.ok) {
-      state.running = false;
+      runLifecycle.finishTask(resumeTaskId, "failed");
       setStatus("error", "恢复失败");
-      updateAssistantMessage(state.taskId, { content: result.error || "恢复失败", status: "failed" });
+      updateAssistantForContext(context, { content: result.error || "恢复失败", status: "failed" });
       showToast("恢复失败", result.error || "checkpoint 不存在");
       return;
     }
-    state.taskId = result.task_id;
-    if (state.conversationId) state.taskConversationIds.set(result.task_id, state.conversationId);
-    els.taskIdLabel.textContent = result.task_id;
+    state.taskId = resumeTaskId;
+    els.taskIdLabel.textContent = resumeTaskId;
     renderTaskPanelEmptyStates();
-    if (state.terminalTaskIds.has(result.task_id)) {
-      await syncTerminalTask(state.taskId);
-      return;
+    if (!runLifecycle.isTerminalTask(resumeTaskId)) {
+      setTaskPanelTab("progress");
+      setTaskPanelOpen(true);
+      setStopTaskVisible(true);
     }
-    state.running = true;
-    setTaskPanelTab("progress");
-    setTaskPanelOpen(true);
-    setStopTaskVisible(true);
   } catch (error) {
-    state.running = false;
+    runLifecycle.finishTask(resumeTaskId, "failed");
     setStatus("error", "恢复失败");
-    updateAssistantMessage(state.taskId, { content: error.message, status: "failed" });
+    updateAssistantForContext(context, { content: error.message, status: "failed" });
     showToast("恢复失败", error.message);
   } finally {
-    if (!state.running) {
-      els.taskInput.readOnly = false;
-      els.runTask.disabled = false;
-      els.resumeTask.disabled = false;
-    }
+    unlockComposerIfIdle();
   }
 }
 
 async function stopTask() {
-  if (!state.running || !state.taskId) return;
+  const taskId = state.taskId;
+  if (!taskId || !runLifecycle.beginCancel(taskId)) return;
+  const context = runLifecycle.getTaskContext(taskId);
   els.stopTask.disabled = true;
+  setStatus("running", "正在停止");
   try {
-    const result = await callApi("cancel_task", state.taskId);
+    const result = await callApi("cancel_task", taskId);
     if (!result.ok) {
-      els.stopTask.disabled = false;
-      showToast("无法停止", result.error || "停止任务失败");
+      if (runLifecycle.failCancel(taskId) && isRunContextVisible(context)) {
+        setStatus("running", "运行中");
+        setStopTaskVisible(true);
+        showToast("无法停止", result.error || "停止任务失败");
+      }
       return;
     }
-    setStatus("running", "正在停止");
+    runLifecycle.confirmCancel(taskId);
   } catch (error) {
-    els.stopTask.disabled = false;
-    showToast("无法停止", error.message);
+    if (runLifecycle.failCancel(taskId) && isRunContextVisible(context)) {
+      setStatus("running", "运行中");
+      setStopTaskVisible(true);
+      showToast("无法停止", error.message);
+    }
   }
 }
 
@@ -1095,39 +1141,41 @@ function messageFor(event) {
 }
 
 async function handleProgress(event) {
+  const route = runLifecycle.routeEvent(event);
+  if (route.disposition === "buffered" || route.disposition === "ignored") return;
+  const taskId = route.taskId;
+  const context = route.context;
+  const visible = route.disposition === "visible" && isRunContextVisible(context);
+  if (!visible) {
+    if (route.terminal) {
+      await syncTerminalTask(taskId);
+      await refreshResult(taskId);
+    }
+    return;
+  }
+
   addLog(sourceFor(event), messageFor(event));
   const data = event.data || {};
 
-  if (event.task_id && !state.taskId) {
-    state.taskId = event.task_id;
-    const pending = state.messages.find((item) => item.id === state.pendingAssistantId);
-    if (pending) pending.taskId = event.task_id;
-  }
-
-  const terminalTaskId = event.task_id || state.taskId;
-  if (terminalTaskId && ["task_completed", "cancelled", "error"].includes(event.type)) {
-    state.terminalTaskIds.add(terminalTaskId);
-  }
-
   if (event.type === "task_received") {
-    appendAssistantProgress(state.taskId, "收到任务，正在解析...");
+    appendAssistantProgress(taskId, "收到任务，正在解析...");
   }
   if (event.type === "parsed") {
-    appendAssistantProgress(state.taskId, `识别任务：${data.task_type || "unknown"}`);
-    updateAssistantMessage(state.taskId, { content: "已理解任务，正在制定执行步骤...", status: "running" });
+    appendAssistantProgress(taskId, `识别任务：${data.task_type || "unknown"}`);
+    updateAssistantForContext(context, { content: "已理解任务，正在制定执行步骤...", status: "running" });
   }
   if (event.type === "skill_matched" && data.skill_id) {
-    appendAssistantProgress(state.taskId, `匹配 Skill：${data.skill_id}`);
+    appendAssistantProgress(taskId, `匹配 Skill：${data.skill_id}`);
   }
   if (event.type === "plan_created" || event.type === "plan_resumed") {
     renderPlan(data.steps || []);
     appendAssistantProgress(
-      state.taskId,
+      taskId,
       event.type === "plan_resumed"
         ? `从步骤 ${data.resume_step_id || "完成检查"} 恢复`
         : `生成 ${(data.steps || []).length} 个步骤`
     );
-    updateAssistantMessage(state.taskId, {
+    updateAssistantForContext(context, {
       content: event.type === "plan_resumed"
         ? `已从 checkpoint 恢复，正在继续执行...`
         : `已拆解为 ${(data.steps || []).length} 个步骤，正在执行...`,
@@ -1135,16 +1183,16 @@ async function handleProgress(event) {
     });
   }
   if (event.type === "step_started") {
-    appendAssistantProgress(state.taskId, `开始步骤 ${data.step_id}：${data.goal}`);
+    appendAssistantProgress(taskId, `开始步骤 ${data.step_id}：${data.goal}`);
     markStep(data.step_id, "active", "running");
   }
   if (event.type === "tool_selected") {
-    appendAssistantProgress(state.taskId, `调用工具：${data.tool_name}`);
+    appendAssistantProgress(taskId, `调用工具：${data.tool_name}`);
     markStep(data.step_id, "active", "tool", data.tool_name);
   }
   if (event.type === "authorization_required") {
-    appendAssistantProgress(state.taskId, `等待授权：${data.summary || data.tool_name || "高风险操作"}`);
-    updateAssistantMessage(state.taskId, {
+    appendAssistantProgress(taskId, `等待授权：${data.summary || data.tool_name || "高风险操作"}`);
+    updateAssistantForContext(context, {
       content: "需要你手动授权后才能继续执行这个高风险操作。",
       status: "running"
     });
@@ -1152,22 +1200,19 @@ async function handleProgress(event) {
   }
   if (event.type === "replanned") markStep(data.failed_step_id, "active", "重新规划");
   if (event.type === "verified") {
-    appendAssistantProgress(state.taskId, `校验${data.passed ? "通过" : "未通过"}：步骤 ${data.step_id}`);
+    appendAssistantProgress(taskId, `校验${data.passed ? "通过" : "未通过"}：步骤 ${data.step_id}`);
   }
   if (event.type === "step_done") {
-    appendAssistantProgress(state.taskId, `步骤 ${data.step_id}：${data.status}`);
+    appendAssistantProgress(taskId, `步骤 ${data.step_id}：${data.status}`);
     markStep(data.step_id, data.status === "completed" ? "done" : "failed", data.status);
   }
 
   if (event.type === "task_completed") {
-    state.running = false;
     setStopTaskVisible(false);
-    els.taskInput.readOnly = false;
-    els.runTask.disabled = false;
-    els.resumeTask.disabled = false;
+    unlockComposerIfIdle();
     setStatus(data.status === "completed" ? "done" : "error", data.status === "completed" ? "已完成" : "失败");
     state.reportText = data.final_output || "";
-    updateAssistantMessage(state.taskId, {
+    updateAssistantForContext(context, {
       content: state.reportText || "未生成输出",
       status: data.status === "completed" ? "completed" : "failed"
     });
@@ -1176,41 +1221,38 @@ async function handleProgress(event) {
       els.report.innerHTML = renderMarkdown(state.reportText);
     }
     els.copyReport.disabled = !state.reportText;
-    await syncTerminalTask(state.taskId);
-    await refreshResult();
+    await syncTerminalTask(taskId);
+    await refreshResult(taskId);
   }
 
   if (event.type === "error") {
-    state.running = false;
     setStopTaskVisible(false);
-    els.taskInput.readOnly = false;
-    els.runTask.disabled = false;
-    els.resumeTask.disabled = false;
+    unlockComposerIfIdle();
     setStatus("error", "失败");
-    updateAssistantMessage(state.taskId, { content: data.message || "任务失败", status: "failed" });
-    await syncTerminalTask(state.taskId);
-    await refreshResult();
+    updateAssistantForContext(context, { content: data.message || "任务失败", status: "failed" });
+    await syncTerminalTask(taskId);
+    await refreshResult(taskId);
   }
 
   if (event.type === "cancelled") {
-    state.running = false;
     setStopTaskVisible(false);
-    els.taskInput.readOnly = false;
-    els.runTask.disabled = false;
-    els.resumeTask.disabled = false;
+    unlockComposerIfIdle();
     setStatus("done", "已停止");
-    updateAssistantMessage(state.taskId, { content: "任务已停止", status: "completed" });
-    await syncTerminalTask(state.taskId);
-    await refreshResult();
+    updateAssistantForContext(context, { content: "任务已停止", status: "completed" });
+    await syncTerminalTask(taskId);
+    await refreshResult(taskId);
   }
 }
 
-async function refreshResult() {
-  if (!state.taskId) return;
+async function refreshResult(taskId) {
+  const context = runLifecycle.getTaskContext(taskId);
+  if (!taskId || !context) return;
   try {
-    const result = await callApi("get_result", state.taskId);
+    const result = await callApi("get_result", taskId);
+    if (!isRunContextVisible(context)) return;
     els.stateJson.textContent = JSON.stringify(result.state || result, null, 2);
   } catch (error) {
+    if (!isRunContextVisible(context)) return;
     els.stateJson.textContent = JSON.stringify({ error: error.message }, null, 2);
   }
 }
@@ -1312,6 +1354,10 @@ function bindEvents() {
   els.closeTaskPanel.addEventListener("click", () => setTaskPanelOpen(false));
   document.querySelectorAll("[data-task-tab]").forEach((button) => {
     button.addEventListener("click", () => setTaskPanelTab(button.dataset.taskTab));
+    button.addEventListener("keydown", (event) => {
+      const nextTab = window.UTAShell.handleTaskTabKeydown(event);
+      if (nextTab) state.taskPanelTab = nextTab;
+    });
   });
   els.taskInput.addEventListener("keydown", (event) => {
     if (event.key === "Enter" && !event.shiftKey) {

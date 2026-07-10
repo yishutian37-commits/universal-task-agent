@@ -793,8 +793,8 @@ git commit -m "feat: wire workbench navigation and task stop"
 **Interfaces:**
 - Consumes: Task 2-4 产生的 DOM 类名。
 - Produces: 1280px 以上固定三栏布局。
-- Produces: 760px-1179px 右侧任务抽屉。
-- Produces: 759px 以下可折叠会话侧栏和全宽对话区。
+- Produces: 761px-1179px 右侧任务抽屉。
+- Produces: 760px 及以下可折叠会话侧栏和全宽对话区。
 
 - [ ] **Step 1: 写视觉和布局失败测试**
 
@@ -992,7 +992,7 @@ Expected: FAIL，当前仍是深色渐变“命令甲板”主题和旧两栏布
   }
 }
 
-@media (max-width: 759px) {
+@media (max-width: 760px) {
   .app { grid-template-columns: 72px minmax(0, 1fr); }
   .sidebar .conversationSearch,
   .sidebar .conversationList,
