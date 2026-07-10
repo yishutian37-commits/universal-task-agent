@@ -23,12 +23,12 @@ def test_frontend_keeps_task_details_in_tabbed_panel():
 def test_frontend_task_panel_has_minimum_functional_layout():
     css = (FRONTEND_ROOT / "style.css").read_text(encoding="utf-8")
 
-    assert ".conversationSurface {\n  min-width: 0;\n  min-height: 0;\n  height: 100%;\n  display: grid;\n  grid-template-rows: auto minmax(0, 1fr) auto;\n  overflow: hidden;\n}" in css
-    assert ".chatWorkspace.task-panel-open {\n  grid-template-columns: minmax(0, 1fr) minmax(320px, 0.82fr);\n}" in css
-    assert ".taskPanel {\n  min-width: 0;\n  min-height: 0;\n  display: grid;\n  grid-template-rows: auto auto minmax(0, 1fr);\n  overflow: hidden;\n}" in css
+    assert ".conversationSurface {\n  min-width: 0;\n  min-height: 0;\n  height: 100%;\n  display: grid;\n  grid-template-rows: auto minmax(0, 1fr) auto;\n  background: var(--panel-bg);\n  overflow: hidden;\n}" in css
+    assert ".chatWorkspace.task-panel-open {\n  grid-template-columns: minmax(0, 1fr) 340px;\n}" in css
+    assert ".taskPanel {\n  min-width: 0;\n  min-height: 0;\n  display: grid;\n  grid-template-rows: auto auto minmax(0, 1fr);\n  border-left: 1px solid var(--border);\n  background: var(--panel-subtle);\n  overflow: hidden;\n}" in css
     assert ".taskPanel.collapsed {\n  display: none;\n}" in css
     assert ".chatMessages {\n  min-height: 0;\n  overflow-y: auto;" in css
-    assert ".chatComposer {\n  border-top: 1px solid var(--border);\n  background: var(--surface);\n  min-height: 0;\n}" in css
+    assert ".chatComposer {\n  width: min(820px, calc(100% - 48px));\n  margin: 0 auto 20px;\n  border: 1px solid var(--border-strong);\n  border-radius: var(--radius-lg);\n  background: var(--panel-bg);\n}" in css
 
 
 def test_frontend_task_tabs_have_stable_aria_relationships():
@@ -404,7 +404,7 @@ def test_frontend_chat_styles_exist():
     assert ".chatMessage.user" in css
     assert ".chatMessage.assistant" in css
     assert ".chatComposer" in css
-    assert ".detailColumn" in css
+    assert ".taskPanel" in css
 
 
 def test_frontend_hidden_report_cannot_create_extra_chat_row():
@@ -415,19 +415,20 @@ def test_frontend_hidden_report_cannot_create_extra_chat_row():
     assert ".hidden {\n  display: none !important;" in css
 
 
-def test_frontend_single_column_keeps_chat_panel_viewport_bound():
+def test_frontend_narrow_layout_keeps_chat_surface_and_drawer_viewport_bound():
     css = (FRONTEND_ROOT / "style.css").read_text(encoding="utf-8")
 
-    assert "@media (max-width: 1060px)" in css
-    assert ".chatColumn {\n    height: calc(100vh - 154px);\n    min-height: 640px;\n  }" in css
-    assert ".chatPanel {\n    height: 100%;\n    min-height: 0;\n  }" in css
-    assert ".chatPanel {\n    height: auto;" not in css
+    assert "@media (max-width: 1179px)" in css
+    assert ".taskPanel {\n    position: absolute;" in css
+    assert "bottom: 0;" in css
+    assert "@media (max-width: 759px)" in css
+    assert ".app {\n    grid-template-columns: 72px minmax(0, 1fr);\n  }" in css
 
 
 def test_frontend_chat_messages_stay_near_composer_while_running():
     css = (FRONTEND_ROOT / "style.css").read_text(encoding="utf-8")
 
-    assert ".chatMessages {\n  min-height: 0;\n  overflow-y: auto;\n  padding: 18px;\n  display: flex;" in css
+    assert ".chatMessages {\n  min-height: 0;\n  overflow-y: auto;\n  padding: 24px max(24px, calc((100% - 820px) / 2));\n  display: flex;" in css
     assert "  flex-direction: column;" in css
     assert ".chatMessages > .chatMessage:first-child" not in css
 
@@ -480,18 +481,17 @@ def test_frontend_task_completed_updates_assistant_message_not_report_panel_only
     assert "renderMarkdown(state.reportText)" in js
 
 
-def test_frontend_uses_dark_command_deck_theme_without_remote_fonts():
+def test_frontend_uses_neutral_workbench_theme_without_remote_fonts():
     html = (FRONTEND_ROOT / "index.html").read_text(encoding="utf-8")
     css = (FRONTEND_ROOT / "style.css").read_text(encoding="utf-8")
 
     assert "fonts.googleapis.com" not in html
     assert "fonts.gstatic.com" not in html
-    assert "--surface-0: #0e0e18;" in css
-    assert "--surface-1: #14141f;" in css
-    assert "--surface-2: #1a1a28;" in css
-    assert "--accent-glow: rgba(116, 123, 255, 0.12);" in css
-    assert "background: var(--bg);" in css
-    assert "--sans: -apple-system, BlinkMacSystemFont" in css
+    assert "--app-bg: #f5f5f3;" in css
+    assert "--sidebar-bg: #ecece8;" in css
+    assert "--panel-bg: #ffffff;" in css
+    assert "--action: #2f64d6;" in css
+    assert "linear-gradient" not in css
 
 
 def test_frontend_sidebar_nav_has_icons_without_breaking_ids():
@@ -507,7 +507,7 @@ def test_frontend_sidebar_nav_has_icons_without_breaking_ids():
     ]:
         assert f'id="{nav_id}"' in html
     assert html.count('class="navIcon"') >= 4
-    assert ".nav.active::before" in css
+    assert ".nav.active" in css
 
 
 def test_frontend_preserves_current_memory_nodes_during_redesign():

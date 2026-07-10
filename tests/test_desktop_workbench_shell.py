@@ -94,3 +94,35 @@ def test_shell_syncs_task_tab_aria_state():
 
     assert 'button.setAttribute("aria-selected", String(active));' in js
     assert 'panel.setAttribute("aria-hidden", String(!active));' in js
+
+
+def test_workbench_uses_neutral_tokens_without_gradients():
+    css = (FRONTEND_ROOT / "style.css").read_text(encoding="utf-8")
+
+    assert "--app-bg: #f5f5f3;" in css
+    assert "--sidebar-bg: #ecece8;" in css
+    assert "--panel-bg: #ffffff;" in css
+    assert "--action: #2f64d6;" in css
+    assert "linear-gradient" not in css
+    assert "fonts.googleapis.com" not in (FRONTEND_ROOT / "index.html").read_text(encoding="utf-8")
+
+
+def test_workbench_has_stable_three_column_and_drawer_layouts():
+    css = (FRONTEND_ROOT / "style.css").read_text(encoding="utf-8")
+
+    assert "grid-template-columns: 260px minmax(0, 1fr);" in css
+    assert "grid-template-columns: minmax(0, 1fr) 340px;" in css
+    assert ".chatWorkspace {\n  position: relative;\n  height: 100%;\n  min-height: 0;\n  padding: 0;\n  display: grid;\n  grid-template-columns: minmax(0, 1fr);\n  gap: 0;\n  overflow: hidden;\n}" in css
+    assert "@media (max-width: 1179px)" in css
+    assert ".taskPanel" in css
+    assert "position: absolute;" in css
+
+
+def test_frontend_conversation_surface_keeps_composer_at_bottom():
+    css = (FRONTEND_ROOT / "style.css").read_text(encoding="utf-8")
+
+    assert ".conversationSurface" in css
+    assert "grid-template-rows: auto minmax(0, 1fr) auto;" in css
+    assert ".chatMessages" in css
+    assert "overflow-y: auto;" in css
+    assert ".chatComposer" in css
