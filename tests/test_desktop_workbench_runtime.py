@@ -165,3 +165,119 @@ def test_completion_wins_when_cancel_promise_resolves_late():
         assert.equal(lifecycle.getTaskPhase("task-a"), "completed");
         """
     )
+
+
+def test_memory_view_helpers_cover_tabs_keyboard_and_content_organization():
+    run_node(
+        """
+        const assert = require("node:assert/strict");
+
+        function createElement(dataset) {
+          const classes = new Set();
+          return {
+            dataset,
+            attributes: {},
+            hidden: false,
+            tabIndex: -1,
+            classList: {
+              toggle(name, enabled) {
+                if (enabled) classes.add(name);
+                else classes.delete(name);
+              },
+              contains(name) {
+                return classes.has(name);
+              }
+            },
+            setAttribute(name, value) {
+              this.attributes[name] = String(value);
+            },
+            getAttribute(name) {
+              return this.attributes[name] || null;
+            },
+            focus() {
+              document.activeElement = this;
+            }
+          };
+        }
+
+        const tabs = ["long-term", "session", "learning", "archive"].map((tabName) =>
+          createElement({ memoryTab: tabName })
+        );
+        const panels = ["long-term", "session", "learning", "archive"].map((tabName) =>
+          createElement({ memoryPanel: tabName })
+        );
+        global.document = {
+          activeElement: null,
+          querySelectorAll(selector) {
+            if (selector === "[data-memory-tab]") return tabs;
+            if (selector === "[data-memory-panel]") return panels;
+            return [];
+          }
+        };
+
+        const {
+          activateMemoryTab,
+          handleMemoryTabKeydown,
+          groupMemoryFacts,
+          compactMemoryText,
+          dedupeMemoryLessons
+        } = require("./desktop/frontend/shell.js");
+
+        assert.equal(activateMemoryTab("invalid"), "long-term");
+        ["long-term", "session", "learning", "archive"].forEach((tabName) => {
+          assert.equal(activateMemoryTab(tabName), tabName);
+        });
+        assert.equal(tabs[3].classList.contains("active"), true);
+        assert.equal(tabs[3].getAttribute("aria-selected"), "true");
+        assert.equal(tabs[3].tabIndex, 0);
+        assert.equal(panels[3].hidden, false);
+        assert.equal(panels[3].getAttribute("aria-hidden"), "false");
+        assert.equal(panels[0].hidden, true);
+        assert.equal(panels[0].getAttribute("aria-hidden"), "true");
+
+        function keydown(key, currentTarget) {
+          let prevented = false;
+          const result = handleMemoryTabKeydown({
+            key,
+            currentTarget,
+            preventDefault() { prevented = true; }
+          });
+          assert.equal(prevented, true);
+          return result;
+        }
+
+        assert.equal(keydown("ArrowRight", tabs[3]), "long-term");
+        assert.equal(document.activeElement, tabs[0]);
+        assert.equal(keydown("ArrowLeft", tabs[0]), "archive");
+        assert.equal(keydown("Home", tabs[3]), "long-term");
+        assert.equal(keydown("End", tabs[0]), "archive");
+
+        assert.equal(
+          compactMemoryText("## 标题\\n- **`内容`**\\n```text\\n代码\\n```", 20),
+          "标题 内容 代码"
+        );
+        assert.equal(compactMemoryText("**一二三四五六七**", 6), "一二三...");
+        assert.deepEqual(
+          groupMemoryFacts([
+            { kind: "preference", content: "中文" },
+            { kind: "preference", content: "简洁" },
+            { kind: "fact", content: "测试" }
+          ]),
+          {
+            preference: [
+              { kind: "preference", content: "中文" },
+              { kind: "preference", content: "简洁" }
+            ],
+            fact: [{ kind: "fact", content: "测试" }]
+          }
+        );
+        assert.deepEqual(dedupeMemoryLessons([
+          { task_type: "summarize", content: "复用流程", source: "old" },
+          { task_type: "summarize", content: "复用流程", source: "new" },
+          { task_type: "review", content: "独立复查" }
+        ]), [
+          { task_type: "summarize", content: "复用流程", source: "new", occurrence_count: 2 },
+          { task_type: "review", content: "独立复查", occurrence_count: 1 }
+        ]);
+        """
+    )

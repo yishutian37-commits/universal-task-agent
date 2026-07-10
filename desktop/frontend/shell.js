@@ -1,6 +1,7 @@
 (function bootstrapShell(root) {
   const PAGE_NAMES = new Set(["conversation", "knowledge", "memory", "capabilities"]);
   const TASK_TABS = new Set(["progress", "files", "changes", "artifacts", "diagnostics"]);
+  const MEMORY_TABS = new Set(["long-term", "session", "learning", "archive"]);
   const TERMINAL_PHASES = new Set(["completed", "cancelled", "failed"]);
 
   function startOfDay(value) {
@@ -82,6 +83,79 @@
     activateTaskTab(nextTab.dataset.taskTab);
     nextTab.focus();
     return nextTab.dataset.taskTab;
+  }
+
+  function activateMemoryTab(tabName) {
+    const nextTab = MEMORY_TABS.has(tabName) ? tabName : "long-term";
+    if (!root.document) return nextTab;
+    root.document.querySelectorAll("[data-memory-tab]").forEach((button) => {
+      const active = button.dataset.memoryTab === nextTab;
+      button.classList.toggle("active", active);
+      button.setAttribute("aria-selected", String(active));
+      button.tabIndex = active ? 0 : -1;
+    });
+    root.document.querySelectorAll("[data-memory-panel]").forEach((panel) => {
+      const active = panel.dataset.memoryPanel === nextTab;
+      panel.hidden = !active;
+      panel.setAttribute("aria-hidden", String(!active));
+    });
+    return nextTab;
+  }
+
+  function handleMemoryTabKeydown(event) {
+    if (!root.document || !["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) {
+      return null;
+    }
+    const tabs = Array.from(root.document.querySelectorAll("[data-memory-tab]"));
+    const currentIndex = tabs.indexOf(event.currentTarget);
+    if (currentIndex < 0 || !tabs.length) return null;
+    let nextIndex = currentIndex;
+    if (event.key === "Home") nextIndex = 0;
+    if (event.key === "End") nextIndex = tabs.length - 1;
+    if (event.key === "ArrowLeft") nextIndex = (currentIndex - 1 + tabs.length) % tabs.length;
+    if (event.key === "ArrowRight") nextIndex = (currentIndex + 1) % tabs.length;
+    event.preventDefault();
+    const nextTab = tabs[nextIndex];
+    activateMemoryTab(nextTab.dataset.memoryTab);
+    nextTab.focus();
+    return nextTab.dataset.memoryTab;
+  }
+
+  function groupMemoryFacts(facts) {
+    const groups = {};
+    (Array.isArray(facts) ? facts : []).forEach((fact) => {
+      if (!fact || typeof fact !== "object") return;
+      const kind = typeof fact.kind === "string" && fact.kind.trim() ? fact.kind.trim() : "unknown";
+      if (!groups[kind]) groups[kind] = [];
+      groups[kind].push(fact);
+    });
+    return groups;
+  }
+
+  function compactMemoryText(value, limit = 160) {
+    const text = value === null || value === undefined ? "" : String(value);
+    const compacted = text
+      .replace(/```[^\n]*\n?/g, "")
+      .replace(/^\s{0,3}#{1,6}\s*/gm, "")
+      .replace(/^\s*[-*+]\s+/gm, "")
+      .replace(/\*\*/g, "")
+      .replace(/`/g, "")
+      .replace(/\s+/g, " ")
+      .trim();
+    const maxLength = Math.max(3, Number.isFinite(Number(limit)) ? Math.floor(Number(limit)) : 160);
+    if (compacted.length <= maxLength) return compacted;
+    return `${compacted.slice(0, maxLength - 3)}...`;
+  }
+
+  function dedupeMemoryLessons(items) {
+    const lessons = new Map();
+    (Array.isArray(items) ? items : []).forEach((item) => {
+      if (!item || typeof item !== "object") return;
+      const key = JSON.stringify([item.task_type || "", item.content || ""]);
+      const occurrenceCount = (lessons.get(key)?.occurrence_count || 0) + 1;
+      lessons.set(key, { ...item, occurrence_count: occurrenceCount });
+    });
+    return Array.from(lessons.values());
   }
 
   function createRunLifecycle() {
@@ -260,6 +334,11 @@
     setTaskPanelOpen,
     activateTaskTab,
     handleTaskTabKeydown,
+    activateMemoryTab,
+    handleMemoryTabKeydown,
+    groupMemoryFacts,
+    compactMemoryText,
+    dedupeMemoryLessons,
     createRunLifecycle
   };
   root.UTAShell = shell;
