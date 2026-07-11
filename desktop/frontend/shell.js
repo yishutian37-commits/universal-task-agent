@@ -183,6 +183,123 @@
     return Array.from(lessons.values());
   }
 
+  function createMemoryOperationLifecycle() {
+    let loadSequence = 0;
+    let activeLoad = null;
+    let compressionSequence = 0;
+    let compressionOwner = null;
+
+    function normalizeContext(input = {}, operationId) {
+      return Object.freeze({
+        operationId,
+        conversationId: String(input.conversationId || ""),
+        conversationRevision: Number(input.conversationRevision || 0)
+      });
+    }
+
+    function sameConversation(context, input = {}) {
+      return Boolean(
+        context
+        && context.conversationId === String(input.conversationId || "")
+        && context.conversationRevision === Number(input.conversationRevision || 0)
+      );
+    }
+
+    function beginLoad(input = {}) {
+      activeLoad = normalizeContext(input, `memory-load-${++loadSequence}`);
+      return activeLoad;
+    }
+
+    function isLoadCurrent(context, currentConversation = {}) {
+      return Boolean(
+        activeLoad
+        && context
+        && activeLoad.operationId === context.operationId
+        && sameConversation(context, currentConversation)
+      );
+    }
+
+    function finishLoad(context) {
+      if (!activeLoad || !context || activeLoad.operationId !== context.operationId) return false;
+      activeLoad = null;
+      return true;
+    }
+
+    function beginCompression(input = {}) {
+      if (compressionOwner) return null;
+      compressionOwner = normalizeContext(input, `memory-compression-${++compressionSequence}`);
+      return compressionOwner;
+    }
+
+    function isCompressionOwner(context) {
+      return Boolean(
+        compressionOwner
+        && context
+        && compressionOwner.operationId === context.operationId
+      );
+    }
+
+    function finishCompression(context) {
+      if (!isCompressionOwner(context)) return false;
+      compressionOwner = null;
+      return true;
+    }
+
+    return {
+      beginLoad,
+      isLoadCurrent,
+      finishLoad,
+      beginCompression,
+      isCompressionOwner,
+      finishCompression,
+      isCompressionActive: () => Boolean(compressionOwner),
+      getCompressionOwner: () => compressionOwner
+    };
+  }
+
+  const MEMORY_TASK_TYPE_LABELS = Object.freeze({
+    summarize: "文本总结",
+    data_analysis: "表格分析",
+    research: "联网调研",
+    geo_analysis: "地理分析",
+    history_query: "历史任务查询",
+    chat: "普通对话",
+    task: "通用任务"
+  });
+
+  const MEMORY_TASK_STATUS_LABELS = Object.freeze({
+    completed: "已完成",
+    failed: "失败",
+    cancelled: "已取消",
+    stopped: "已停止",
+    running: "运行中",
+    pending: "待处理"
+  });
+
+  const MEMORY_SKILL_STATUS_LABELS = Object.freeze({
+    tracking: "观察中",
+    candidate: "待创建",
+    pending: "待评估",
+    active: "已启用",
+    rejected: "已忽略"
+  });
+
+  function enumLabel(labels, value, fallback) {
+    return labels[String(value || "").trim().toLowerCase()] || fallback;
+  }
+
+  function memoryTaskTypeLabel(value) {
+    return enumLabel(MEMORY_TASK_TYPE_LABELS, value, "其他任务");
+  }
+
+  function memoryTaskStatusLabel(value) {
+    return enumLabel(MEMORY_TASK_STATUS_LABELS, value, "未知状态");
+  }
+
+  function memorySkillStatusLabel(value) {
+    return enumLabel(MEMORY_SKILL_STATUS_LABELS, value, "未知状态");
+  }
+
   function createRunLifecycle() {
     let requestSequence = 0;
     let activeRequest = null;
@@ -364,6 +481,10 @@
     groupMemoryFacts,
     compactMemoryText,
     dedupeMemoryLessons,
+    createMemoryOperationLifecycle,
+    memoryTaskTypeLabel,
+    memoryTaskStatusLabel,
+    memorySkillStatusLabel,
     createRunLifecycle
   };
   root.UTAShell = shell;

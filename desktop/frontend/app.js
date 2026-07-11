@@ -100,6 +100,7 @@ const state = {
 };
 
 const runLifecycle = window.UTAShell.createRunLifecycle();
+const memoryOperations = window.UTAShell.createMemoryOperationLifecycle();
 const terminalSync = {
   syncedTaskIds: new Set(),
   syncingTaskIds: new Set(),
@@ -237,6 +238,19 @@ function advanceConversationRevision() {
   els.taskInput.value = "";
   resetRunSurface();
   setStatus("ready", "就绪");
+}
+
+function currentMemoryConversationContext() {
+  return {
+    conversationId: state.conversationId || "",
+    conversationRevision: state.conversationRevision
+  };
+}
+
+function syncMemoryCompressionControl() {
+  const isCompressing = memoryOperations.isCompressionActive();
+  els.compressCurrentConversation.disabled = !state.conversationId || isCompressing;
+  els.compressCurrentConversation.textContent = isCompressing ? "压缩中" : "压缩当前会话";
 }
 
 function showToast(title, body) {
@@ -662,20 +676,28 @@ function renderKnowledgeResult(result, isAsk) {
 }
 
 async function loadMemoryOverview() {
+  const loadContext = memoryOperations.beginLoad(currentMemoryConversationContext());
   try {
     const result = await callApi("get_memory_overview");
+    if (!memoryOperations.isLoadCurrent(loadContext, currentMemoryConversationContext())) return;
     if (!result.ok) {
       showToast("读取记忆失败", result.error || "未知错误");
       return;
     }
     let currentConversation = null;
-    if (state.conversationId) {
-      const conversationResult = await callApi("get_conversation", state.conversationId);
+    if (loadContext.conversationId) {
+      const conversationResult = await callApi("get_conversation", loadContext.conversationId);
+      if (!memoryOperations.isLoadCurrent(loadContext, currentMemoryConversationContext())) return;
       if (conversationResult.ok) currentConversation = conversationResult.conversation || null;
     }
+    if (!memoryOperations.isLoadCurrent(loadContext, currentMemoryConversationContext())) return;
     renderMemoryOverview(result, currentConversation);
   } catch (error) {
-    showToast("读取记忆失败", error.message);
+    if (memoryOperations.isLoadCurrent(loadContext, currentMemoryConversationContext())) {
+      showToast("读取记忆失败", error.message);
+    }
+  } finally {
+    memoryOperations.finishLoad(loadContext);
   }
 }
 
@@ -689,7 +711,7 @@ function renderMemoryOverview(memory, currentConversation = null) {
 }
 
 function renderConversationShortTermMemory(conversation) {
-  els.compressCurrentConversation.disabled = !state.conversationId;
+  syncMemoryCompressionControl();
   if (!conversation) {
     els.memoryConversationShortTerm.innerHTML = '<div class="emptyState">当前没有选中的会话。先发送消息，或从会话历史中打开一条会话。</div>';
     return;
@@ -761,12 +783,14 @@ async function compressCurrentConversation() {
     showToast("没有当前会话", "先发送一条消息，或从会话历史中打开一条会话。");
     return;
   }
-  const conversationId = state.conversationId;
-  const previousText = els.compressCurrentConversation.textContent;
-  els.compressCurrentConversation.disabled = true;
-  els.compressCurrentConversation.textContent = "压缩中";
+  const compressionOwner = memoryOperations.beginCompression(currentMemoryConversationContext());
+  if (!compressionOwner) {
+    showToast("正在压缩", "已有会话正在压缩，请稍候。");
+    return;
+  }
+  syncMemoryCompressionControl();
   try {
-    const result = await callApi("compress_conversation", conversationId);
+    const result = await callApi("compress_conversation", compressionOwner.conversationId);
     if (!result.ok) {
       showToast("压缩失败", result.error || "未知错误");
       return;
@@ -776,8 +800,7 @@ async function compressCurrentConversation() {
   } catch (error) {
     showToast("压缩失败", error.message);
   } finally {
-    els.compressCurrentConversation.disabled = !state.conversationId;
-    els.compressCurrentConversation.textContent = previousText;
+    if (memoryOperations.finishCompression(compressionOwner)) syncMemoryCompressionControl();
   }
 }
 
@@ -786,7 +809,7 @@ function renderMemoryLearning(memory) {
   els.memoryLessons.innerHTML = lessons.length
     ? lessons.slice().reverse().map((lesson) => `
       <article class="memoryCard">
-        <strong>${escapeHtml(lesson.task_type || "通用经验")}</strong>
+        <strong>${escapeHtml(window.UTAShell.memoryTaskTypeLabel(lesson.task_type))}</strong>
         <p>${escapeHtml(lesson.content || "")}</p>
         <small>累计 ${escapeHtml(lesson.occurrence_count || 1)} 次 · ${escapeHtml(lesson.created_at || "")}</small>
       </article>
@@ -797,7 +820,7 @@ function renderMemoryLearning(memory) {
   els.memoryNegativeRules.innerHTML = negativeRules.length
     ? negativeRules.slice().reverse().map((rule) => `
       <article class="memoryCard">
-        <strong>${escapeHtml(rule.task_type || "通用规则")}</strong>
+        <strong>${escapeHtml(window.UTAShell.memoryTaskTypeLabel(rule.task_type))}</strong>
         <p>${escapeHtml(rule.content || "")}</p>
         <small>${escapeHtml(rule.created_at || "")}</small>
       </article>
@@ -808,9 +831,9 @@ function renderMemoryLearning(memory) {
   els.memorySkillCandidates.innerHTML = candidates.length
     ? candidates.slice().reverse().map((candidate) => `
       <article class="memoryCard">
-        <strong>${escapeHtml(candidate.task_type || "Skill 候选")}</strong>
+        <strong>${escapeHtml(window.UTAShell.memoryTaskTypeLabel(candidate.task_type))}</strong>
         <p>${escapeHtml(candidate.reason || "")}</p>
-        <small>${escapeHtml(candidate.status || "pending")} · 成功 ${escapeHtml(candidate.success_count || 0)} 次 · ${escapeHtml(candidate.updated_at || "")}</small>
+        <small>${escapeHtml(window.UTAShell.memorySkillStatusLabel(candidate.status))} · 成功 ${escapeHtml(candidate.success_count || 0)} 次 · ${escapeHtml(candidate.updated_at || "")}</small>
       </article>
     `).join("")
     : '<div class="emptyState">暂无 Skill 候选</div>';
@@ -837,7 +860,7 @@ function renderMemoryArchive(tasks) {
     return `
       <button class="memoryArchiveItem ${active ? "active" : ""}" type="button" aria-pressed="${active}" data-memory-task-id="${escapeHtml(task.task_id)}">
         <strong>${escapeHtml(window.UTAShell.compactMemoryText(preview, 72) || task.task_id)}</strong>
-        <small>${escapeHtml(task.task_type || "task")} · ${escapeHtml(task.status || "unknown")}</small>
+        <small>${escapeHtml(window.UTAShell.memoryTaskTypeLabel(task.task_type))} · ${escapeHtml(window.UTAShell.memoryTaskStatusLabel(task.status))}</small>
         <small>${escapeHtml(task.updated_at || task.created_at || "")}</small>
       </button>
     `;
@@ -847,8 +870,8 @@ function renderMemoryArchive(tasks) {
   const detailMarkdown = [
     `## ${selectedTask.user_input || selectedTask.intent || selectedTask.task_id}`,
     `**任务 ID：** ${selectedTask.task_id}`,
-    `**类型：** ${selectedTask.task_type || "unknown"}`,
-    `**状态：** ${selectedTask.status || "unknown"}`,
+    `**类型：** ${window.UTAShell.memoryTaskTypeLabel(selectedTask.task_type)}`,
+    `**状态：** ${window.UTAShell.memoryTaskStatusLabel(selectedTask.status)}`,
     `**创建时间：** ${selectedTask.created_at || ""}`,
     `**更新时间：** ${selectedTask.updated_at || ""}`,
     `### 意图\n${selectedTask.intent || "无"}`,

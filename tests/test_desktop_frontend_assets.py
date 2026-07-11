@@ -275,6 +275,11 @@ def test_frontend_calls_memory_bridge_method():
     assert "function setMemoryTab" in js
     assert "const MEMORY_KIND_GROUPS" in js
     assert "function compressCurrentConversation" in js
+    assert "createMemoryOperationLifecycle" in js
+    assert "memoryOperations.beginLoad" in js
+    assert "memoryOperations.isLoadCurrent" in js
+    assert "memoryOperations.beginCompression" in js
+    assert "memoryOperations.finishCompression" in js
 
 
 def test_frontend_groups_long_term_memory_instead_of_flat_list():
@@ -595,13 +600,16 @@ def test_frontend_memory_rendering_reuses_shell_helpers_and_keeps_controls_in_sy
         "groupMemoryFacts",
         "compactMemoryText",
         "dedupeMemoryLessons",
+        "memoryTaskTypeLabel",
+        "memoryTaskStatusLabel",
+        "memorySkillStatusLabel",
     ]:
         assert f"window.UTAShell.{helper}" in js
     assert "state.memoryOverview = memory;" in js
     assert "state.memoryTab" in js
     assert "state.memoryLongTermKind" in js
     assert "state.memoryArchiveTaskId" in js
-    assert "els.compressCurrentConversation.disabled = !state.conversationId;" in js
+    assert "memoryOperations.isCompressionActive()" in js
     assert "累计 ${escapeHtml(lesson.occurrence_count || 1)} 次" in js
     assert "els.memoryArchiveDetail.innerHTML = renderMarkdown" in js
     assert "window.UTAShell.compactMemoryText" in js

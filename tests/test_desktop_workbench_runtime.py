@@ -167,6 +167,89 @@ def test_completion_wins_when_cancel_promise_resolves_late():
     )
 
 
+def test_memory_operation_lifecycle_rejects_stale_loads_after_conversation_switch():
+    run_node(
+        """
+        const assert = require("node:assert/strict");
+        const { createMemoryOperationLifecycle } = require("./desktop/frontend/shell.js");
+        const lifecycle = createMemoryOperationLifecycle();
+
+        const loadA = lifecycle.beginLoad({
+          conversationId: "conversation-a",
+          conversationRevision: 3
+        });
+        const loadB = lifecycle.beginLoad({
+          conversationId: "conversation-b",
+          conversationRevision: 4
+        });
+
+        assert.equal(lifecycle.isLoadCurrent(loadA, {
+          conversationId: "conversation-b",
+          conversationRevision: 4
+        }), false);
+        assert.equal(lifecycle.finishLoad(loadA), false);
+        assert.equal(lifecycle.isLoadCurrent(loadB, {
+          conversationId: "conversation-b",
+          conversationRevision: 4
+        }), true);
+        assert.equal(lifecycle.isLoadCurrent(loadB, {
+          conversationId: "conversation-c",
+          conversationRevision: 5
+        }), false);
+        assert.equal(lifecycle.finishLoad(loadB), true);
+        """
+    )
+
+
+def test_memory_compression_has_one_owner_across_conversation_switches():
+    run_node(
+        """
+        const assert = require("node:assert/strict");
+        const { createMemoryOperationLifecycle } = require("./desktop/frontend/shell.js");
+        const lifecycle = createMemoryOperationLifecycle();
+
+        const ownerA = lifecycle.beginCompression({
+          conversationId: "conversation-a",
+          conversationRevision: 8
+        });
+        assert.ok(ownerA);
+        assert.equal(lifecycle.isCompressionActive(), true);
+        assert.equal(lifecycle.beginCompression({
+          conversationId: "conversation-b",
+          conversationRevision: 9
+        }), null);
+        assert.equal(lifecycle.finishCompression({ operationId: "not-the-owner" }), false);
+        assert.equal(lifecycle.isCompressionOwner(ownerA), true);
+        assert.equal(lifecycle.isCompressionActive(), true);
+        assert.equal(lifecycle.finishCompression(ownerA), true);
+        assert.equal(lifecycle.isCompressionActive(), false);
+        """
+    )
+
+
+def test_memory_enum_labels_are_chinese_and_have_safe_fallbacks():
+    run_node(
+        """
+        const assert = require("node:assert/strict");
+        const {
+          memoryTaskTypeLabel,
+          memoryTaskStatusLabel,
+          memorySkillStatusLabel
+        } = require("./desktop/frontend/shell.js");
+
+        assert.equal(memoryTaskTypeLabel("summarize"), "文本总结");
+        assert.equal(memoryTaskTypeLabel("data_analysis"), "表格分析");
+        assert.equal(memoryTaskTypeLabel("unexpected"), "其他任务");
+        assert.equal(memoryTaskStatusLabel("completed"), "已完成");
+        assert.equal(memoryTaskStatusLabel("failed"), "失败");
+        assert.equal(memoryTaskStatusLabel("unexpected"), "未知状态");
+        assert.equal(memorySkillStatusLabel("tracking"), "观察中");
+        assert.equal(memorySkillStatusLabel("candidate"), "待创建");
+        assert.equal(memorySkillStatusLabel("unexpected"), "未知状态");
+        """
+    )
+
+
 def test_memory_view_helpers_cover_tabs_keyboard_and_content_organization():
     run_node(
         """
