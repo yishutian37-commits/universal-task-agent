@@ -254,6 +254,14 @@ def test_memory_enum_labels_are_chinese_and_have_safe_fallbacks():
           localizeMemoryTaskText("complex_task 任务已成功跑通", "complex_task"),
           "复杂任务 任务已成功跑通"
         );
+        assert.equal(
+          localizeMemoryTaskText("读取 /tmp/code_reading/input.md", "code_reading"),
+          "读取 /tmp/code_reading/input.md"
+        );
+        assert.equal(
+          localizeMemoryTaskText("字段 complex_task_id 保持原样", "complex_task"),
+          "字段 complex_task_id 保持原样"
+        );
         """
     )
 

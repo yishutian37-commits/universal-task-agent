@@ -307,7 +307,9 @@
     const text = String(value || "");
     const rawTaskType = String(taskType || "").trim();
     if (!rawTaskType) return text;
-    return text.split(rawTaskType).join(memoryTaskTypeLabel(rawTaskType));
+    if (text === rawTaskType) return memoryTaskTypeLabel(rawTaskType);
+    if (!text.startsWith(`${rawTaskType} `)) return text;
+    return `${memoryTaskTypeLabel(rawTaskType)}${text.slice(rawTaskType.length)}`;
   }
 
   function createRunLifecycle() {
