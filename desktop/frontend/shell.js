@@ -263,6 +263,9 @@
     research: "联网调研",
     geo_analysis: "地理分析",
     history_query: "历史任务查询",
+    complex_task: "复杂任务",
+    code_reading: "代码阅读",
+    langchain_tool: "工具调用",
     chat: "普通对话",
     task: "通用任务"
   });
@@ -298,6 +301,13 @@
 
   function memorySkillStatusLabel(value) {
     return enumLabel(MEMORY_SKILL_STATUS_LABELS, value, "未知状态");
+  }
+
+  function localizeMemoryTaskText(value, taskType) {
+    const text = String(value || "");
+    const rawTaskType = String(taskType || "").trim();
+    if (!rawTaskType) return text;
+    return text.split(rawTaskType).join(memoryTaskTypeLabel(rawTaskType));
   }
 
   function createRunLifecycle() {
@@ -485,6 +495,7 @@
     memoryTaskTypeLabel,
     memoryTaskStatusLabel,
     memorySkillStatusLabel,
+    localizeMemoryTaskText,
     createRunLifecycle
   };
   root.UTAShell = shell;

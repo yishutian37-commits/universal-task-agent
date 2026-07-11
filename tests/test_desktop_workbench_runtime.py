@@ -234,11 +234,15 @@ def test_memory_enum_labels_are_chinese_and_have_safe_fallbacks():
         const {
           memoryTaskTypeLabel,
           memoryTaskStatusLabel,
-          memorySkillStatusLabel
+          memorySkillStatusLabel,
+          localizeMemoryTaskText
         } = require("./desktop/frontend/shell.js");
 
         assert.equal(memoryTaskTypeLabel("summarize"), "文本总结");
         assert.equal(memoryTaskTypeLabel("data_analysis"), "表格分析");
+        assert.equal(memoryTaskTypeLabel("complex_task"), "复杂任务");
+        assert.equal(memoryTaskTypeLabel("code_reading"), "代码阅读");
+        assert.equal(memoryTaskTypeLabel("langchain_tool"), "工具调用");
         assert.equal(memoryTaskTypeLabel("unexpected"), "其他任务");
         assert.equal(memoryTaskStatusLabel("completed"), "已完成");
         assert.equal(memoryTaskStatusLabel("failed"), "失败");
@@ -246,6 +250,10 @@ def test_memory_enum_labels_are_chinese_and_have_safe_fallbacks():
         assert.equal(memorySkillStatusLabel("tracking"), "观察中");
         assert.equal(memorySkillStatusLabel("candidate"), "待创建");
         assert.equal(memorySkillStatusLabel("unexpected"), "未知状态");
+        assert.equal(
+          localizeMemoryTaskText("complex_task 任务已成功跑通", "complex_task"),
+          "复杂任务 任务已成功跑通"
+        );
         """
     )
 

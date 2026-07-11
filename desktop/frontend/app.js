@@ -810,7 +810,7 @@ function renderMemoryLearning(memory) {
     ? lessons.slice().reverse().map((lesson) => `
       <article class="memoryCard">
         <strong>${escapeHtml(window.UTAShell.memoryTaskTypeLabel(lesson.task_type))}</strong>
-        <p>${escapeHtml(lesson.content || "")}</p>
+        <p>${escapeHtml(window.UTAShell.localizeMemoryTaskText(lesson.content, lesson.task_type))}</p>
         <small>累计 ${escapeHtml(lesson.occurrence_count || 1)} 次 · ${escapeHtml(lesson.created_at || "")}</small>
       </article>
     `).join("")
@@ -821,7 +821,7 @@ function renderMemoryLearning(memory) {
     ? negativeRules.slice().reverse().map((rule) => `
       <article class="memoryCard">
         <strong>${escapeHtml(window.UTAShell.memoryTaskTypeLabel(rule.task_type))}</strong>
-        <p>${escapeHtml(rule.content || "")}</p>
+        <p>${escapeHtml(window.UTAShell.localizeMemoryTaskText(rule.content, rule.task_type))}</p>
         <small>${escapeHtml(rule.created_at || "")}</small>
       </article>
     `).join("")
@@ -832,7 +832,7 @@ function renderMemoryLearning(memory) {
     ? candidates.slice().reverse().map((candidate) => `
       <article class="memoryCard">
         <strong>${escapeHtml(window.UTAShell.memoryTaskTypeLabel(candidate.task_type))}</strong>
-        <p>${escapeHtml(candidate.reason || "")}</p>
+        <p>${escapeHtml(window.UTAShell.localizeMemoryTaskText(candidate.reason, candidate.task_type))}</p>
         <small>${escapeHtml(window.UTAShell.memorySkillStatusLabel(candidate.status))} · 成功 ${escapeHtml(candidate.success_count || 0)} 次 · ${escapeHtml(candidate.updated_at || "")}</small>
       </article>
     `).join("")

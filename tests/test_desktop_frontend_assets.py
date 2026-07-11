@@ -603,6 +603,7 @@ def test_frontend_memory_rendering_reuses_shell_helpers_and_keeps_controls_in_sy
         "memoryTaskTypeLabel",
         "memoryTaskStatusLabel",
         "memorySkillStatusLabel",
+        "localizeMemoryTaskText",
     ]:
         assert f"window.UTAShell.{helper}" in js
     assert "state.memoryOverview = memory;" in js
