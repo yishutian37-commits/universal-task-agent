@@ -577,6 +577,19 @@ def test_chat_composer_can_attach_local_documents_to_current_message():
     assert "const runLifecycle = window.UTAShell.createRunLifecycle();" in js
 
 
+def test_chat_composer_can_toggle_knowledge_retrieval_and_render_sources():
+    html = (FRONTEND_ROOT / "index.html").read_text(encoding="utf-8")
+    js = (FRONTEND_ROOT / "app.js").read_text(encoding="utf-8")
+    css = (FRONTEND_ROOT / "style.css").read_text(encoding="utf-8")
+
+    assert 'id="useKnowledge"' in html
+    assert 'type="checkbox"' in html
+    assert "els.useKnowledge.checked" in js
+    assert "knowledge_sources" in js
+    assert "messageSources" in js
+    assert ".messageSources" in css
+
+
 def test_frontend_keeps_execution_progress_out_of_assistant_messages():
     js = (FRONTEND_ROOT / "app.js").read_text(encoding="utf-8")
 

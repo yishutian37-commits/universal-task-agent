@@ -34,6 +34,7 @@ const els = {
   taskInput: document.getElementById("taskInput"),
   attachFiles: document.getElementById("attachFiles"),
   attachmentList: document.getElementById("attachmentList"),
+  useKnowledge: document.getElementById("useKnowledge"),
   runTask: document.getElementById("runTask"),
   resumeTask: document.getElementById("resumeTask"),
   stopTask: document.getElementById("stopTask"),
@@ -344,13 +345,14 @@ function showToast(title, body) {
   showToast.timer = setTimeout(() => els.toast.classList.remove("show"), 2800);
 }
 
-function addChatMessage(role, content, status = "completed", taskId = null) {
+function addChatMessage(role, content, status = "completed", taskId = null, sources = []) {
   const message = {
     id: `${Date.now()}_${Math.random().toString(16).slice(2)}`,
     role,
     content,
     status,
-    taskId
+    taskId,
+    sources: Array.isArray(sources) ? sources : []
   };
   state.messages.push(message);
   renderChatMessages();
@@ -384,6 +386,12 @@ function renderChatMessages() {
     <article class="chatMessage ${escapeHtml(message.role)} ${escapeHtml(message.status || "")}" data-message-id="${escapeHtml(message.id)}">
       <div class="messageBubble" data-copy-selectable="true">
         ${message.role === "assistant" ? renderMarkdown(message.content || "") : escapeHtml(message.content || "")}
+        ${message.role === "assistant" && Array.isArray(message.sources) && message.sources.length ? `
+          <div class="messageSources">
+            <strong>知识来源</strong>
+            ${message.sources.map((source) => `<span title="${escapeHtml(source.source || "")}">${escapeHtml(source.title || source.source || "未知来源")}</span>`).join("")}
+          </div>
+        ` : ""}
       </div>
       <button class="messageCopy" type="button" data-copy-message-id="${escapeHtml(message.id)}" title="复制消息" aria-label="复制消息">⧉</button>
     </article>
@@ -781,6 +789,7 @@ async function openConversation(conversationId) {
     content: message.content || "",
     status: message.status || "completed",
     taskId: message.task_id || null,
+    sources: Array.isArray(message.sources) ? message.sources : [],
     progress: []
   }));
   els.conversationTitle.textContent = conversation.title || "新对话";
@@ -1383,7 +1392,7 @@ async function runTask(options = {}) {
   els.attachFiles.disabled = true;
 
   try {
-    const result = await callApi("run_chat_message", requestConversationId || "", text, requestContext.requestId, requestAttachments.map((item) => item.path));
+    const result = await callApi("run_chat_message", requestConversationId || "", text, requestContext.requestId, requestAttachments.map((item) => item.path), els.useKnowledge.checked);
     if (!result.ok) {
       const requestIsCurrent = runLifecycle.isCurrentRequest(requestContext.requestId);
       runLifecycle.finishRequest(requestContext.requestId);
@@ -1423,7 +1432,7 @@ async function runTask(options = {}) {
       setTaskPanelOpen(false);
       setStopTaskVisible(false);
       state.conversationId = result.conversation_id;
-      Object.assign(requestAssistant, { content: result.message || "已回复。", status: "completed" });
+      Object.assign(requestAssistant, { content: result.message || "已回复。", status: "completed", sources: result.knowledge_sources || [] });
       renderChatMessages();
       setStatus("done", "已回复");
       await loadConversationSidebar();
@@ -1446,6 +1455,7 @@ async function runTask(options = {}) {
       state.conversationId = binding.context.conversationId;
       state.taskId = binding.context.taskId;
       requestAssistant.taskId = binding.context.taskId;
+      requestAssistant.sources = result.knowledge_sources || [];
       renderChatMessages();
       els.taskIdLabel.textContent = binding.context.taskId;
       renderTaskPanelEmptyStates();

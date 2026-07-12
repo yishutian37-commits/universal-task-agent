@@ -91,6 +91,7 @@ class ConversationStore:
         content: str,
         task_id: str | None = None,
         status: str = "completed",
+        sources: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
         loaded = self.get_conversation(conversation_id)
         if not loaded.get("ok"):
@@ -105,6 +106,8 @@ class ConversationStore:
             "status": status,
             "created_at": _now(),
         }
+        if sources:
+            message["sources"] = [dict(source) for source in sources if isinstance(source, dict)]
         conversation.setdefault("messages", []).append(message)
         conversation["updated_at"] = message["created_at"]
         if role == "user" and len(conversation["messages"]) == 1:

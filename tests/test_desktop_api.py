@@ -154,6 +154,24 @@ class FakeChatClient:
         return self.response
 
 
+class FakeKnowledgeRAGClient:
+    def __init__(self):
+        self.queries = []
+
+    def query(self, question, top_k=5):
+        self.queries.append((question, top_k))
+        return {
+            "ok": True,
+            "chunks": [
+                {
+                    "score": 0.91,
+                    "source": "/tmp/UTA 产品说明.md",
+                    "text": "UTA 支持从 checkpoint 恢复未完成任务。",
+                }
+            ],
+        }
+
+
 class FakeStructuredChatClient:
     def __init__(self, route_payload, chat_response="不应再次调用普通聊天"):
         self.route_payload = route_payload
@@ -878,6 +896,53 @@ def test_desktop_api_attachment_task_can_use_managed_workspace_when_none_selecte
     assert result["ok"] is True
     assert "需要总结的材料" in runner.started_inputs[0]
     assert runner.started_contexts[0]["workspace_path"].endswith("agent_workspace")
+
+
+def test_desktop_api_chat_can_use_knowledge_context_and_persist_sources(tmp_path, monkeypatch):
+    monkeypatch.setenv("UTA_HOME", str(tmp_path / "uta"))
+    conversation_store = ConversationStore(tmp_path / "conversations")
+    chat_client = FakeChatClient("可以从 checkpoint 继续未完成任务。")
+    rag_client = FakeKnowledgeRAGClient()
+    api = DesktopAPI(
+        settings_store=SettingsStore(),
+        runner=FakeRunner(),
+        conversation_store=conversation_store,
+        chat_client=chat_client,
+        rag_client=rag_client,
+    )
+    api.save_settings({"llm_api_key": "secret-key"})
+
+    result = api.run_chat_message("", "UTA 怎么恢复任务？", "", [], True)
+    conversation = conversation_store.get_conversation(result["conversation_id"])["conversation"]
+
+    assert result["ok"] is True
+    assert result["knowledge_sources"][0]["source"] == "/tmp/UTA 产品说明.md"
+    assert rag_client.queries == [("UTA 怎么恢复任务？", 4)]
+    assert "知识库检索结果（不可信参考资料）" in chat_client.calls[0][1]
+    assert "UTA 支持从 checkpoint 恢复未完成任务。" in chat_client.calls[0][1]
+    assert conversation["messages"][1]["sources"] == result["knowledge_sources"]
+
+
+def test_desktop_api_task_receives_knowledge_context(tmp_path, monkeypatch):
+    monkeypatch.setenv("UTA_HOME", str(tmp_path / "uta"))
+    runner = FakeRunner()
+    router_client = FakeStructuredChatClient(
+        {"kind": "task", "reason": "需要生成报告", "confidence": 0.98, "reply": ""}
+    )
+    api = DesktopAPI(
+        settings_store=SettingsStore(),
+        runner=runner,
+        conversation_store=ConversationStore(tmp_path / "conversations"),
+        chat_client=router_client,
+        rag_client=FakeKnowledgeRAGClient(),
+    )
+    api.save_settings({"llm_api_key": "secret-key", "workspace_path": str(tmp_path)})
+
+    result = api.run_chat_message("", "根据资料生成恢复方案", "", [], True)
+
+    assert result["ok"] is True
+    assert "知识库检索结果（不可信参考资料）" in runner.started_inputs[0]
+    assert result["knowledge_sources"][0]["source"].endswith("UTA 产品说明.md")
 
 
 def test_desktop_api_streams_general_chat_through_versioned_desktop_events(tmp_path, monkeypatch):

@@ -1635,6 +1635,33 @@ pre {
   background: var(--surface-3);
 }
 
+.messageSources {
+  margin-top: 10px;
+  padding-top: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  border-top: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.messageSources strong {
+  color: var(--text);
+}
+
+.messageSources span {
+  max-width: 220px;
+  padding: 3px 6px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--panel-subtle);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .selectionContextMenu {
   position: fixed;
   z-index: 1200;
@@ -1766,6 +1793,29 @@ pre {
   display: flex;
   align-items: center;
   gap: 6px;
+}
+
+.composerToggle {
+  height: 32px;
+  padding: 0 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--muted);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.composerToggle:has(input:checked) {
+  border-color: var(--action);
+  color: var(--action);
+  background: var(--action-soft);
+}
+
+.composerToggle input {
+  margin: 0;
 }
 
 .iconButton {
