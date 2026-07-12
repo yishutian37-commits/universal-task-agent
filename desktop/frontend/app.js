@@ -82,6 +82,8 @@ const els = {
   kbIngestFilesBtn: document.getElementById("kbIngestFilesBtn"),
   kbIngestFolderBtn: document.getElementById("kbIngestFolderBtn"),
   kbRefreshBtn: document.getElementById("kbRefreshBtn"),
+  runRagEvaluation: document.getElementById("runRagEvaluation"),
+  ragEvaluationResult: document.getElementById("ragEvaluationResult"),
   kbDocList: document.getElementById("kbDocList"),
   kbStats: document.getElementById("kbStats"),
   kbQuestion: document.getElementById("kbQuestion"),
@@ -822,6 +824,21 @@ async function loadKnowledgeBase() {
   } catch (error) {
     els.kbMode.textContent = "错误";
     showToast("知识库加载失败", error.message);
+  }
+}
+
+async function runRagEvaluation() {
+  els.runRagEvaluation.disabled = true;
+  els.ragEvaluationResult.textContent = "正在运行检索评测";
+  try {
+    const result = await callApi("run_rag_evaluation");
+    if (!result.ok) throw new Error(result.error || "评测失败");
+    const report = result.report || {};
+    els.ragEvaluationResult.textContent = `Hit@${report.top_k || 3}：${Math.round((report.hit_at_k || 0) * 100)}% · MRR：${Number(report.mrr || 0).toFixed(2)}`;
+  } catch (error) {
+    els.ragEvaluationResult.textContent = `评测失败：${error.message}`;
+  } finally {
+    els.runRagEvaluation.disabled = false;
   }
 }
 
@@ -2048,6 +2065,7 @@ function bindEvents() {
   els.kbIngestFilesBtn.addEventListener("click", () => chooseKnowledgeSources(() => callApi("select_knowledge_files")));
   els.kbIngestFolderBtn.addEventListener("click", () => chooseKnowledgeSources(() => callApi("select_knowledge_folder")));
   els.kbRefreshBtn.addEventListener("click", loadKnowledgeBase);
+  els.runRagEvaluation.addEventListener("click", runRagEvaluation);
   els.kbAskBtn.addEventListener("click", askKnowledge);
   els.kbQueryBtn.addEventListener("click", queryKnowledge);
   els.refreshMemory.addEventListener("click", loadMemoryOverview);

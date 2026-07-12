@@ -849,6 +849,15 @@ def test_knowledge_ingest_uses_native_file_and_folder_pickers():
     assert 'callApi("rag_ingest", path)' in js
 
 
+def test_knowledge_workspace_can_run_retrieval_quality_benchmark():
+    html = (FRONTEND_ROOT / "index.html").read_text(encoding="utf-8")
+    js = (FRONTEND_ROOT / "app.js").read_text(encoding="utf-8")
+
+    assert 'id="runRagEvaluation"' in html
+    assert 'id="ragEvaluationResult"' in html
+    assert 'callApi("run_rag_evaluation")' in js
+
+
 def test_knowledge_document_titles_can_shrink_inside_their_dedicated_items():
     css = (FRONTEND_ROOT / "style.css").read_text(encoding="utf-8")
 

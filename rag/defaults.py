@@ -3,7 +3,8 @@ from __future__ import annotations
 from rag.chunkers.fixed_chunker import FixedChunker
 from rag.kb import KnowledgeBase
 from rag.loaders.base import LoaderFactory
-from rag.retrieval.vector_retriever import VectorRetriever
+from rag.retrieval.hybrid_retriever import HybridRetriever
+from rag.retrieval.reranker import KeywordDiversityReranker
 from rag.store.sqlite_store import SqliteStore
 
 
@@ -39,6 +40,7 @@ def create_default_kb(
         chunker=FixedChunker(),
         embedder=embedder,
         store=store,
-        retriever=VectorRetriever(),
+        retriever=HybridRetriever(),
         generator=generator,
+        reranker=KeywordDiversityReranker(),
     )

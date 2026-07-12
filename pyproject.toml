@@ -47,6 +47,7 @@ uta = "main:main"
 uta-api = "api.server:main"
 uta-desktop = "desktop.app:main"
 uta-eval = "evals.runner:main"
+uta-rag-eval = "rag.benchmark:main"
 
 [tool.setuptools.packages.find]
 include = ["api*", "core*", "desktop*", "evals*", "llm*", "memory_providers*", "rag*", "search_providers*", "skills*", "tools*", "weather_providers*"]

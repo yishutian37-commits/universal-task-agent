@@ -973,6 +973,14 @@ class DesktopAPI:
         except Exception as exc:
             return {"ok": False, "error": str(exc)}
 
+    def run_rag_evaluation(self) -> dict[str, Any]:
+        try:
+            from rag.benchmark import run_builtin_benchmark
+
+            return {"ok": True, "report": run_builtin_benchmark()}
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)}
+
 
 def _build_conversation_context(conversation: dict[str, Any]) -> str:
     messages = conversation.get("messages") if isinstance(conversation.get("messages"), list) else []

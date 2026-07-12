@@ -1,0 +1,12 @@
+{
+  "documents": [
+    {"source": "checkpoint.md", "content": "UTA 会保存 checkpoint。应用意外退出后，可以从未完成任务恢复并继续执行。"},
+    {"source": "memory.md", "content": "长期记忆保存用户画像、偏好、工作习惯、项目事实、约束和决策记录。"},
+    {"source": "knowledge.md", "content": "知识库支持 Markdown、TXT、PDF 和 DOCX，并使用混合检索返回引用来源。"}
+  ],
+  "queries": [
+    {"id": "checkpoint", "question": "应用退出后如何从 checkpoint 恢复任务", "expected_source": "checkpoint.md"},
+    {"id": "memory", "question": "长期记忆会保存哪些用户偏好和项目事实", "expected_source": "memory.md"},
+    {"id": "knowledge", "question": "知识库支持哪些文档格式和检索方式", "expected_source": "knowledge.md"}
+  ]
+}

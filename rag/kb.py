@@ -33,6 +33,7 @@ class KnowledgeBase:
         store: BaseVectorStore,
         retriever: BaseRetriever,
         generator: BaseGenerator,
+        reranker=None,
     ) -> None:
         self.loader_factory = loader_factory
         self.chunker = chunker
@@ -40,6 +41,11 @@ class KnowledgeBase:
         self._store = store
         self.retriever = retriever
         self.generator = generator
+        if reranker is None:
+            from rag.retrieval.reranker import KeywordDiversityReranker
+
+            reranker = KeywordDiversityReranker()
+        self.reranker = reranker
 
     @classmethod
     def from_config(cls, db_path: str = "data/knowledge.db") -> "KnowledgeBase":
@@ -88,16 +94,12 @@ class KnowledgeBase:
         if not chunks:
             raise EmptyStoreError("知识库为空，请先 ingest 文档")
         candidate_k = min(len(chunks), max(top_k, top_k * 4))
-        candidates = self.retriever.search(vectors, chunks, query_vec, candidate_k)
-        reranked = [
-            RetrievedChunk(
-                chunk=item.chunk,
-                score=float(item.score) + 0.15 * _lexical_overlap(question, item.chunk.text),
-            )
-            for item in candidates
-        ]
-        reranked.sort(key=lambda item: item.score, reverse=True)
-        return reranked[:top_k]
+        hybrid_search = getattr(self.retriever, "search_with_text", None)
+        if callable(hybrid_search):
+            candidates = hybrid_search(vectors, chunks, query_vec, question, candidate_k)
+        else:
+            candidates = self.retriever.search(vectors, chunks, query_vec, candidate_k)
+        return self.reranker.rerank(question, candidates, top_k)
 
     def ask(self, question: str, top_k: int = 5) -> Answer:
         """端到端问答：检索 → 生成，返回带来源引用的答案。"""
