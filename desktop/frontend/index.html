@@ -314,6 +314,18 @@
     </section>
   </div>
 
+  <div class="modalBackdrop" id="recoveryModal" role="dialog" aria-modal="true" aria-labelledby="recoveryTitle">
+    <section class="modal recoveryModalPanel">
+      <header>
+        <h2 id="recoveryTitle">未完成任务</h2>
+        <button class="button ghost compact" type="button" id="closeRecovery">关闭</button>
+      </header>
+      <div class="recoveryTaskList" id="recoveryTaskList">
+        <div class="emptyState">正在检查未完成任务</div>
+      </div>
+    </section>
+  </div>
+
   <div class="selectionContextMenu hidden" id="selectionContextMenu" role="menu" aria-hidden="true">
     <button type="button" id="copySelection" role="menuitem">复制</button>
   </div>

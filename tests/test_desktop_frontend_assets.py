@@ -98,6 +98,19 @@ def test_frontend_task_panel_and_stop_control_follow_run_lifecycle():
     assert 'els.stopTask.addEventListener("click", stopTask);' in js
 
 
+def test_frontend_uses_recovery_center_instead_of_manual_task_id_prompt():
+    html = (FRONTEND_ROOT / "index.html").read_text(encoding="utf-8")
+    js = (FRONTEND_ROOT / "app.js").read_text(encoding="utf-8")
+
+    assert 'id="recoveryModal"' in html
+    assert 'id="recoveryTaskList"' in html
+    assert 'callApi("list_unfinished_tasks")' in js
+    assert 'callApi("discard_unfinished_task"' in js
+    assert "data-recovery-resume" in js
+    assert "data-recovery-discard" in js
+    assert 'window.prompt("输入要恢复的 task_id")' not in js
+
+
 def test_frontend_binds_and_replays_events_that_arrive_before_api_return():
     js = (FRONTEND_ROOT / "app.js").read_text(encoding="utf-8")
     run_start = js.index("async function runTask")

@@ -1818,6 +1818,55 @@ pre {
   margin: 0;
 }
 
+.recoveryModalPanel {
+  width: min(640px, calc(100vw - 32px));
+}
+
+.recoveryTaskList {
+  max-height: min(520px, calc(100vh - 180px));
+  padding: 12px;
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  overflow-y: auto;
+}
+
+.recoveryTaskCard {
+  min-width: 0;
+  padding: 12px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--panel-subtle);
+}
+
+.recoveryTaskCard > div {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.recoveryTaskCard > div:last-child {
+  display: flex;
+}
+
+.recoveryTaskCard strong,
+.recoveryTaskCard small,
+.recoveryTaskCard code {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.recoveryTaskCard small,
+.recoveryTaskCard code {
+  color: var(--muted);
+  font-size: 11px;
+}
+
 .iconButton {
   width: 32px;
   height: 32px;

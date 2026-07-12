@@ -58,6 +58,17 @@ class CheckpointStore:
         items.sort(key=lambda item: str(item.get("updated_at") or ""), reverse=True)
         return items
 
+    def mark_cancelled(self, task_id: str) -> dict[str, Any]:
+        state = self.load(task_id)
+        if state is None:
+            return {"ok": False, "error": "checkpoint 不存在"}
+        if state.status in {"completed", "failed", "cancelled"}:
+            return {"ok": False, "error": f"任务已结束：{state.status}"}
+        state.status = "cancelled"
+        state.touch()
+        self.save(state)
+        return {"ok": True, "task_id": state.task_id, "status": state.status}
+
     def _path_for(self, task_id: str) -> Path | None:
         value = str(task_id or "")
         if not re.fullmatch(r"task_[A-Za-z0-9_.-]+", value):

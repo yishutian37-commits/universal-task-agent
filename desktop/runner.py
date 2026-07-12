@@ -178,6 +178,15 @@ class TaskRunner:
                 return {"task_id": task_id, "status": "not_found", "error": "任务不存在"}
             return dict(result)
 
+    def list_unfinished(self) -> list[dict[str, Any]]:
+        return self.checkpoint_store.list_unfinished()
+
+    def discard_unfinished(self, task_id: str) -> dict[str, Any]:
+        with self._lock:
+            if self._running_task_id == task_id:
+                return {"ok": False, "error": "任务仍在运行，请先停止任务"}
+        return self.checkpoint_store.mark_cancelled(str(task_id or ""))
+
     def cancel(self, task_id: str) -> dict[str, Any]:
         with self._lock:
             if self._running_task_id != task_id:

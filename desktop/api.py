@@ -249,6 +249,18 @@ class DesktopAPI:
     def resume_task(self, task_id: str) -> dict[str, Any]:
         return self.runner.resume(str(task_id or ""))
 
+    def list_unfinished_tasks(self) -> dict[str, Any]:
+        try:
+            return {"ok": True, "tasks": self.runner.list_unfinished()}
+        except Exception as exc:
+            return {"ok": False, "error": str(exc), "tasks": []}
+
+    def discard_unfinished_task(self, task_id: str) -> dict[str, Any]:
+        try:
+            return self.runner.discard_unfinished(str(task_id or ""))
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)}
+
     def get_resume_context(self, task_id: str) -> dict[str, Any]:
         getter = getattr(self.runner, "get_resume_context", None)
         if not callable(getter):

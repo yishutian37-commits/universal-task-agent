@@ -46,6 +46,12 @@ class FakeRunner:
     def resume(self, task_id):
         return {"ok": True, "task_id": task_id, "status": "running"}
 
+    def list_unfinished(self):
+        return [{"task_id": "task_resume", "status": "running", "preview": "继续整理项目"}]
+
+    def discard_unfinished(self, task_id):
+        return {"ok": True, "task_id": task_id, "status": "cancelled"}
+
 
 class FakeAuthorizationManager:
     def __init__(self):
@@ -393,6 +399,18 @@ def test_desktop_api_resumes_task_from_checkpoint(tmp_path, monkeypatch):
     result = api.resume_task("task_resume")
 
     assert result == {"ok": True, "task_id": "task_resume", "status": "running"}
+
+
+def test_desktop_api_lists_and_discards_unfinished_tasks(tmp_path, monkeypatch):
+    monkeypatch.setenv("UTA_HOME", str(tmp_path / "uta"))
+    api = DesktopAPI(settings_store=SettingsStore(), runner=FakeRunner())
+
+    listed = api.list_unfinished_tasks()
+    discarded = api.discard_unfinished_task("task_resume")
+
+    assert listed["ok"] is True
+    assert listed["tasks"][0]["task_id"] == "task_resume"
+    assert discarded == {"ok": True, "task_id": "task_resume", "status": "cancelled"}
 
 
 def test_desktop_api_lists_history_runs(tmp_path, monkeypatch):

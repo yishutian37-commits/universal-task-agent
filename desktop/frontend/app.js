@@ -70,6 +70,9 @@ const els = {
   authorizationDetails: document.getElementById("authorizationDetails"),
   approveAuthorization: document.getElementById("approveAuthorization"),
   rejectAuthorization: document.getElementById("rejectAuthorization"),
+  recoveryModal: document.getElementById("recoveryModal"),
+  recoveryTaskList: document.getElementById("recoveryTaskList"),
+  closeRecovery: document.getElementById("closeRecovery"),
   selectionContextMenu: document.getElementById("selectionContextMenu"),
   copySelection: document.getElementById("copySelection"),
   toast: document.getElementById("toast"),
@@ -1488,15 +1491,76 @@ async function runTask(options = {}) {
   }
 }
 
-async function resumeTask() {
+function closeRecoveryCenter() {
+  els.recoveryModal.classList.remove("open");
+}
+
+function renderRecoveryTasks(tasks) {
+  if (!tasks.length) {
+    els.recoveryTaskList.innerHTML = '<div class="emptyState">没有可恢复的任务</div>';
+    return;
+  }
+  els.recoveryTaskList.innerHTML = tasks.map((task) => `
+    <article class="recoveryTaskCard">
+      <div>
+        <strong>${escapeHtml(task.preview || "未命名任务")}</strong>
+        <small>${escapeHtml(task.status || "未完成")} · 当前步骤 ${escapeHtml(task.current_step_id || 0)} · ${escapeHtml(task.updated_at || "")}</small>
+        <code>${escapeHtml(task.task_id || "")}</code>
+      </div>
+      <div>
+        <button class="button ghost compact" type="button" data-recovery-discard="${escapeHtml(task.task_id || "")}">放弃</button>
+        <button class="button primary compact" type="button" data-recovery-resume="${escapeHtml(task.task_id || "")}">继续</button>
+      </div>
+    </article>
+  `).join("");
+  els.recoveryTaskList.querySelectorAll("[data-recovery-resume]").forEach((button) => {
+    button.addEventListener("click", () => resumeTask(button.dataset.recoveryResume));
+  });
+  els.recoveryTaskList.querySelectorAll("[data-recovery-discard]").forEach((button) => {
+    button.addEventListener("click", () => discardRecoveryTask(button.dataset.recoveryDiscard));
+  });
+}
+
+async function loadRecoveryTasks({ openWhenFound = false } = {}) {
+  const result = await callApi("list_unfinished_tasks");
+  if (!result.ok) throw new Error(result.error || "读取 checkpoint 失败");
+  const tasks = result.tasks || [];
+  renderRecoveryTasks(tasks);
+  if (openWhenFound && tasks.length) els.recoveryModal.classList.add("open");
+  return tasks;
+}
+
+async function openRecoveryCenter() {
+  try {
+    await loadRecoveryTasks();
+    els.recoveryModal.classList.add("open");
+  } catch (error) {
+    showToast("恢复中心不可用", error.message);
+  }
+}
+
+async function discardRecoveryTask(taskId) {
+  if (!taskId || !window.confirm("确定放弃这个未完成任务吗？checkpoint 会保留为已取消状态。")) return;
+  const result = await callApi("discard_unfinished_task", taskId);
+  if (!result.ok) {
+    showToast("无法放弃任务", result.error || "未知错误");
+    return;
+  }
+  await loadRecoveryTasks();
+  showToast("任务已放弃", taskId);
+}
+
+async function resumeTask(taskId = "") {
   if (runLifecycle.isBusy()) {
     showToast("任务运行中", "当前版本一次只运行一个任务");
     return;
   }
-  const taskId = window.prompt("输入要恢复的 task_id");
-  if (!taskId || !taskId.trim()) return;
-
-  const resumeTaskId = taskId.trim();
+  const resumeTaskId = String(taskId || "").trim();
+  if (!resumeTaskId) {
+    await openRecoveryCenter();
+    return;
+  }
+  closeRecoveryCenter();
   const resumeContext = await callApi("get_resume_context", resumeTaskId);
   if (!resumeContext.ok) {
     showToast("恢复失败", resumeContext.error || "checkpoint 不存在");
@@ -1908,6 +1972,10 @@ function bindEvents() {
   els.clearKey.addEventListener("click", clearKey);
   els.approveAuthorization.addEventListener("click", approveAuthorization);
   els.rejectAuthorization.addEventListener("click", rejectAuthorization);
+  els.closeRecovery.addEventListener("click", closeRecoveryCenter);
+  els.recoveryModal.addEventListener("click", (event) => {
+    if (event.target === els.recoveryModal) closeRecoveryCenter();
+  });
   els.copySelection.addEventListener("click", copySelectedMessageText);
   document.addEventListener("contextmenu", (event) => {
     const text = selectedMessageText(event.target);
@@ -1938,7 +2006,7 @@ function bindEvents() {
     els.logPanel.innerHTML = "";
   });
   els.runTask.addEventListener("click", runTask);
-  els.resumeTask.addEventListener("click", resumeTask);
+  els.resumeTask.addEventListener("click", openRecoveryCenter);
   els.stopTask.addEventListener("click", stopTask);
   els.toggleTaskPanel.addEventListener("click", () => setTaskPanelOpen(!state.taskPanelOpen));
   els.closeTaskPanel.addEventListener("click", () => setTaskPanelOpen(false));
@@ -1989,6 +2057,11 @@ renderChatMessages();
 async function initializeDesktop() {
   await loadSettings();
   await loadConversationSidebar();
+  try {
+    await loadRecoveryTasks({ openWhenFound: true });
+  } catch (error) {
+    showToast("检查未完成任务失败", error.message);
+  }
 }
 
 window.addEventListener("pywebviewready", initializeDesktop);

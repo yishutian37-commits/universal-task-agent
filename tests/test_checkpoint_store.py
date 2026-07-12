@@ -70,3 +70,25 @@ def test_checkpoint_store_rejects_unsafe_task_id(tmp_path):
     store = CheckpointStore(tmp_path)
 
     assert store.load("../bad") is None
+
+
+def test_checkpoint_store_lists_and_cancels_unfinished_tasks(tmp_path):
+    store = CheckpointStore(tmp_path)
+    running = AgentState(
+        task_id="task_running",
+        user_input="整理当前项目",
+        status="running",
+        current_step_id=2,
+    )
+    completed = AgentState(task_id="task_completed", user_input="已经完成", status="completed")
+    store.save(running)
+    store.save(completed)
+
+    unfinished = store.list_unfinished()
+    cancelled = store.mark_cancelled("task_running")
+
+    assert [item["task_id"] for item in unfinished] == ["task_running"]
+    assert unfinished[0]["current_step_id"] == 2
+    assert cancelled["ok"] is True
+    assert store.load("task_running").status == "cancelled"
+    assert store.list_unfinished() == []
