@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from desktop.credential_store import create_credential_store
 from desktop.paths import uta_home
 
 
@@ -27,25 +28,39 @@ DEFAULT_SETTINGS = {
 
 
 class SettingsStore:
-    def __init__(self, config_path: Path | str | None = None):
+    def __init__(self, config_path: Path | str | None = None, credential_store=None):
         self.config_path = Path(config_path) if config_path is not None else uta_home() / "config.json"
+        self.credential_store = credential_store or create_credential_store(self.config_path)
 
     def load(self) -> dict[str, Any]:
         if not self.config_path.exists():
-            return dict(DEFAULT_SETTINGS)
+            settings = dict(DEFAULT_SETTINGS)
+            settings["llm_api_key"] = self.credential_store.get_password()
+            return settings
 
         try:
             payload = json.loads(self.config_path.read_text(encoding="utf-8"))
         except json.JSONDecodeError:
-            return dict(DEFAULT_SETTINGS)
+            settings = dict(DEFAULT_SETTINGS)
+            settings["llm_api_key"] = self.credential_store.get_password()
+            return settings
 
         if not isinstance(payload, dict):
-            return dict(DEFAULT_SETTINGS)
+            settings = dict(DEFAULT_SETTINGS)
+            settings["llm_api_key"] = self.credential_store.get_password()
+            return settings
 
         settings = dict(DEFAULT_SETTINGS)
         for key in DEFAULT_SETTINGS:
             if key in payload:
                 settings[key] = payload[key]
+        legacy_key = str(payload.get("llm_api_key") or "").strip()
+        stored_key = self.credential_store.get_password()
+        if legacy_key:
+            self.credential_store.set_password(legacy_key)
+            stored_key = legacy_key
+            self._write_settings(settings)
+        settings["llm_api_key"] = stored_key
         settings["llm_ssl_verify"] = self._to_bool(settings["llm_ssl_verify"])
         settings["memory_compression_enabled"] = self._to_bool(settings["memory_compression_enabled"])
         settings["memory_context_window_tokens"] = self._to_int(settings["memory_context_window_tokens"], 400_000)
@@ -72,10 +87,12 @@ class SettingsStore:
                 settings[key] = value.strip()
 
         if payload.get("clear_api_key") is True:
+            self.credential_store.delete_password()
             settings["llm_api_key"] = ""
         else:
             api_key = payload.get("llm_api_key")
             if isinstance(api_key, str) and api_key.strip():
+                self.credential_store.set_password(api_key.strip())
                 settings["llm_api_key"] = api_key.strip()
 
         if "llm_ssl_verify" in payload:
@@ -122,11 +139,7 @@ class SettingsStore:
                     raise ValueError("工作区目录不存在")
                 settings["workspace_path"] = str(workspace)
 
-        self.config_path.parent.mkdir(parents=True, exist_ok=True)
-        self.config_path.write_text(
-            json.dumps(settings, ensure_ascii=False, indent=2) + "\n",
-            encoding="utf-8",
-        )
+        self._write_settings(settings)
         return settings
 
     def public_settings(self) -> dict[str, Any]:
@@ -136,6 +149,7 @@ class SettingsStore:
             "llm_model": settings["llm_model"],
             "llm_ssl_verify": settings["llm_ssl_verify"],
             "has_api_key": bool(settings["llm_api_key"]),
+            "credential_backend": str(getattr(self.credential_store, "backend_name", "unknown")),
             "memory_compression_enabled": settings["memory_compression_enabled"],
             "memory_context_window_tokens": settings["memory_context_window_tokens"],
             "memory_compression_trigger_ratio": settings["memory_compression_trigger_ratio"],
@@ -183,3 +197,11 @@ class SettingsStore:
             return ""
         workspace = Path(text).expanduser().resolve()
         return str(workspace) if workspace.is_dir() else ""
+
+    def _write_settings(self, settings: dict[str, Any]) -> None:
+        public_settings = {key: value for key, value in settings.items() if key != "llm_api_key"}
+        self.config_path.parent.mkdir(parents=True, exist_ok=True)
+        self.config_path.write_text(
+            json.dumps(public_settings, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )

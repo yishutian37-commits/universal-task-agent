@@ -650,7 +650,7 @@ async function saveSettings(event) {
   els.apiKey.value = "";
   closeSettings();
   await loadSettings();
-  showToast("设置已保存", "配置已写入 ~/.uta/config.json");
+  showToast("设置已保存", "API Key 已保存到 macOS 钥匙串");
 }
 
 async function clearKey() {

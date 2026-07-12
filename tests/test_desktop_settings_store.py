@@ -4,6 +4,22 @@ import os
 from desktop.settings_store import SettingsStore
 
 
+class FakeCredentialStore:
+    backend_name = "fake-keychain"
+
+    def __init__(self, password=""):
+        self.password = password
+
+    def get_password(self):
+        return self.password
+
+    def set_password(self, password):
+        self.password = password
+
+    def delete_password(self):
+        self.password = ""
+
+
 def test_settings_store_saves_public_settings_without_exposing_key(tmp_path, monkeypatch):
     monkeypatch.setenv("UTA_HOME", str(tmp_path / "uta"))
     store = SettingsStore()
@@ -20,7 +36,7 @@ def test_settings_store_saves_public_settings_without_exposing_key(tmp_path, mon
     saved = json.loads((tmp_path / "uta" / "config.json").read_text(encoding="utf-8"))
     public = store.public_settings()
 
-    assert saved["llm_api_key"] == "secret-key"
+    assert "llm_api_key" not in saved
     assert public["llm_base_url"] == "https://token-plan-cn.xiaomimimo.com/v1/chat/completions"
     assert public["llm_model"] == "mimo-v2.5-pro"
     assert public["llm_ssl_verify"] is False
@@ -33,6 +49,7 @@ def test_settings_store_saves_public_settings_without_exposing_key(tmp_path, mon
     assert public["desktop_access_enabled"] is False
     assert public["workspace_path"] == ""
     assert "llm_api_key" not in public
+    assert public["credential_backend"] == "memory"
 
 
 def test_settings_store_preserves_and_clears_existing_key(tmp_path, monkeypatch):
@@ -143,3 +160,21 @@ def test_settings_store_drops_workspace_path_that_no_longer_exists(tmp_path, mon
     settings = SettingsStore().load()
 
     assert settings["workspace_path"] == ""
+
+
+def test_settings_store_migrates_legacy_plaintext_key_to_credential_store(tmp_path):
+    config_path = tmp_path / "config.json"
+    config_path.write_text(
+        json.dumps({"llm_api_key": "legacy-secret", "llm_model": "legacy-model"}),
+        encoding="utf-8",
+    )
+    credentials = FakeCredentialStore()
+    store = SettingsStore(config_path=config_path, credential_store=credentials)
+
+    settings = store.load()
+    saved = json.loads(config_path.read_text(encoding="utf-8"))
+
+    assert settings["llm_api_key"] == "legacy-secret"
+    assert credentials.password == "legacy-secret"
+    assert "llm_api_key" not in saved
+    assert saved["llm_model"] == "legacy-model"

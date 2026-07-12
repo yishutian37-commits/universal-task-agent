@@ -13,6 +13,11 @@ from rag.retrieval.base import BaseRetriever
 from rag.store.base import BaseVectorStore
 
 
+@pytest.fixture(autouse=True)
+def use_in_memory_credentials(monkeypatch):
+    monkeypatch.setenv("UTA_CREDENTIAL_BACKEND", "memory")
+
+
 class FakeLoader(BaseLoader):
     def __init__(self, text: str = "示例文本内容") -> None:
         self._text = text
