@@ -7,27 +7,32 @@
   <script src="https://unpkg.com/cytoscape@3.26.0/dist/cytoscape.min.js"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif; }
     #app { display: flex; flex-direction: column; height: 100vh; }
     #toolbar { display: flex; gap: 8px; padding: 12px 16px; background: #f5f5f7; border-bottom: 1px solid #ddd; align-items: center; }
-    #toolbar button { padding: 6px 14px; border: 1px solid #ccc; background: #fff; border-radius: 6px; cursor: pointer; font-size: 14px; }
+    #toolbar button { padding: 8px 16px; border: 1px solid #ccc; background: #fff; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 500; transition: all 0.15s; }
+    #toolbar button:hover { background: #eef; }
     #toolbar button.active { background: #007aff; color: #fff; border-color: #007aff; }
     #toolbar .spacer { flex: 1; }
     #main { display: flex; flex: 1; overflow: hidden; }
-    #cy { flex: 1; background: #fafafa; }
-    #details-panel { width: 320px; border-left: 1px solid #ddd; background: #fff; padding: 16px; overflow-y: auto; }
-    #details-panel h2 { font-size: 16px; margin-bottom: 12px; }
-    #details-panel .field { margin-bottom: 12px; }
-    #details-panel .field-label { font-size: 12px; color: #666; margin-bottom: 4px; }
-    #details-panel .field-value { font-size: 14px; color: #111; }
-    #details-panel code { background: #f2f2f2; padding: 2px 4px; border-radius: 4px; font-size: 12px; }
+    #cy { flex: 1; background: #f8f9fa; }
+    #details-panel { width: 340px; border-left: 1px solid #ddd; background: #fff; padding: 18px; overflow-y: auto; box-shadow: -2px 0 8px rgba(0,0,0,0.04); }
+    #details-panel h2 { font-size: 17px; margin-bottom: 14px; color: #111; }
+    #details-panel .field { margin-bottom: 14px; }
+    #details-panel .field-label { font-size: 12px; color: #888; margin-bottom: 5px; text-transform: uppercase; letter-spacing: 0.3px; }
+    #details-panel .field-value { font-size: 14px; color: #222; line-height: 1.5; }
+    #details-panel code { background: #f2f2f2; padding: 2px 5px; border-radius: 4px; font-size: 12px; color: #333; }
+    #details-panel .empty { color: #999; font-size: 14px; }
+    .legend { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 20px; padding-top: 16px; border-top: 1px solid #eee; }
+    .legend-item { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #555; }
+    .legend-dot { width: 10px; height: 10px; border-radius: 2px; }
   </style>
 </head>
 <body>
   <div id="app">
     <div id="toolbar">
       <button id="btn-overview" class="active">整体模块</button>
-      <button id="btn-loop">Agent Loop</button>
+      <button id="btn-loop">执行链路</button>
       <button id="btn-desktop">桌面端交互</button>
       <button id="btn-data">数据流转</button>
       <div class="spacer"></div>
@@ -37,126 +42,145 @@
       <div id="cy"></div>
       <div id="details-panel">
         <h2>节点详情</h2>
-        <p style="color:#888;font-size:14px;">点击节点或边查看详情</p>
+        <p class="empty">点击节点或连线查看详情</p>
       </div>
     </div>
   </div>
   <script>
+    const COLORS = {
+      core: "#2563eb",
+      tool: "#16a34a",
+      memory: "#9333ea",
+      rag: "#ea580c",
+      desktop: "#0891b2",
+      api: "#6b7280",
+      llm: "#dc2626",
+      provider: "#ca8a04",
+      skill: "#db2777",
+      storage: "#4b5563",
+      user: "#111827",
+      step: "#4f46e5"
+    };
+
     const VIEWS = {
       overview: {
         label: "整体模块",
+        layout: { name: "cose", padding: 40, nodeRepulsion: 800000, idealEdgeLength: 120, componentSpacing: 120, nestingFactor: 1.2 },
         nodes: [
-          { data: { id: "user", label: "用户", type: "user", description: "通过 CLI、API 或桌面端输入任务。" } },
-          { data: { id: "main", label: "main.py (CLI)", type: "api", files: ["main.py"], description: "命令行入口，组装 Agent 组件并启动任务。" } },
-          { data: { id: "api_server", label: "api/server.py", type: "api", files: ["api/server.py"], description: "FastAPI 服务入口，暴露 HTTP 接口。" } },
-          { data: { id: "desktop_api", label: "desktop/api.py", type: "desktop", files: ["desktop/api.py"], description: "桌面端后端桥接 API。" } },
-          { data: { id: "core", label: "core/ 核心", type: "core", files: ["core/loop.py", "core/router.py", "core/executor.py", "core/planner.py", "core/verifier.py", "core/reflection.py", "core/task_parser.py", "core/skill_loader.py"], description: "Agent 核心：解析、规划、循环、路由、执行、校验、反思、Skill 加载。" } },
-          { data: { id: "tools", label: "tools/ 工具层", type: "tool", files: ["tools/file_tool.py", "tools/text_tool.py", "tools/table_tool.py", "tools/search_tool.py", "tools/code_tool.py", "tools/geo_tool.py", "tools/history_tool.py", "tools/report_tool.py"], description: "各类任务工具：文件读取、文本总结、表格分析、搜索、代码阅读、GEO、历史查询、报告生成。" } },
-          { data: { id: "memory", label: "memory_providers/ 长期记忆", type: "memory", files: ["memory_providers/json_memory_provider.py"], description: "跨任务 JSON 记忆存储。" } },
-          { data: { id: "rag", label: "rag/ 知识库", type: "rag", files: ["rag/kb.py", "rag/api.py", "rag/cli.py", "rag/store/sqlite_store.py"], description: "文档摄入、向量存储、检索、问答。" } },
-          { data: { id: "llm", label: "llm/ LLMClient", type: "llm", files: ["llm/llm_client.py"], description: "统一封装大模型调用。" } },
-          { data: { id: "search_providers", label: "search_providers/ 搜索", type: "provider", files: ["search_providers/bing_search_provider.py", "search_providers/duckduckgo_search_provider.py"], description: "可插拔搜索提供者。" } },
-          { data: { id: "weather_providers", label: "weather_providers/ 天气", type: "provider", files: ["weather_providers/open_meteo_weather_provider.py"], description: "实时天气数据提供者。" } },
-          { data: { id: "skills", label: "skills/ Skill 包", type: "skill", files: ["skills/summarize_article.md", "skills/analyze_table.md", "skills/geo_analysis.md", "skills/vendor/"], description: "本地 Markdown Skill 和 vendor 规则包。" } },
-          { data: { id: "desktop", label: "desktop/ 桌面端", type: "desktop", files: ["desktop/app.py", "desktop/runner.py", "desktop/chat_router.py", "desktop/frontend/"], description: "桌面应用：前端、API、runner、对话路由。" } },
-          { data: { id: "outputs", label: "outputs/ 状态与日志", type: "storage", files: ["outputs/states/", "outputs/logs/"], description: "单次任务的 state 和 log 输出。" } }
+          { data: { id: "user", label: "用户", type: "user", description: "通过命令行、API 或桌面端输入任务。" } },
+          { data: { id: "main", label: "命令行入口\nmain.py", type: "api", files: ["main.py"], description: "命令行入口，组装 Agent 组件并启动任务。" } },
+          { data: { id: "api_server", label: "API 服务\napi/server.py", type: "api", files: ["api/server.py"], description: "FastAPI 服务入口，暴露 HTTP 接口。" } },
+          { data: { id: "desktop_api", label: "桌面后端\ndesktop/api.py", type: "desktop", files: ["desktop/api.py"], description: "桌面端后端桥接 API。" } },
+          { data: { id: "core", label: "Agent 核心\ncore/", type: "core", files: ["core/loop.py", "core/router.py", "core/executor.py", "core/planner.py", "core/verifier.py", "core/reflection.py", "core/task_parser.py", "core/skill_loader.py"], description: "任务解析、规划、循环、路由、执行、校验、反思、Skill 加载。" } },
+          { data: { id: "tools", label: "工具层\ntools/", type: "tool", files: ["tools/file_tool.py", "tools/text_tool.py", "tools/table_tool.py", "tools/search_tool.py", "tools/code_tool.py", "tools/geo_tool.py", "tools/history_tool.py", "tools/report_tool.py"], description: "文件读取、文本总结、表格分析、搜索、代码阅读、GEO、历史查询、报告生成。" } },
+          { data: { id: "memory", label: "长期记忆\nmemory_providers/", type: "memory", files: ["memory_providers/json_memory_provider.py"], description: "跨任务 JSON 记忆存储。" } },
+          { data: { id: "rag", label: "知识库\nrag/", type: "rag", files: ["rag/kb.py", "rag/api.py", "rag/cli.py", "rag/store/sqlite_store.py"], description: "文档摄入、向量存储、检索、问答。" } },
+          { data: { id: "llm", label: "大模型客户端\nllm/", type: "llm", files: ["llm/llm_client.py"], description: "统一封装大模型调用。" } },
+          { data: { id: "search_providers", label: "搜索服务", type: "provider", files: ["search_providers/bing_search_provider.py", "search_providers/duckduckgo_search_provider.py"], description: "可插拔搜索提供者。" } },
+          { data: { id: "weather_providers", label: "天气服务", type: "provider", files: ["weather_providers/open_meteo_weather_provider.py"], description: "实时天气数据提供者。" } },
+          { data: { id: "skills", label: "Skill 包\nskills/", type: "skill", files: ["skills/summarize_article.md", "skills/analyze_table.md", "skills/geo_analysis.md", "skills/vendor/"], description: "本地 Markdown Skill 和 vendor 规则包。" } },
+          { data: { id: "desktop", label: "桌面端\ndesktop/", type: "desktop", files: ["desktop/app.py", "desktop/runner.py", "desktop/chat_router.py", "desktop/frontend/"], description: "桌面应用：前端、API、runner、对话路由。" } },
+          { data: { id: "outputs", label: "状态与日志\noutputs/", type: "storage", files: ["outputs/states/", "outputs/logs/"], description: "单次任务的 state 和 log 输出。" } }
         ],
         edges: [
-          { data: { source: "user", target: "main", description: "用户通过 CLI 输入任务" } },
-          { data: { source: "user", target: "api_server", description: "用户通过 HTTP API 输入任务" } },
-          { data: { source: "user", target: "desktop", description: "用户通过桌面端输入任务" } },
-          { data: { source: "main", target: "core", description: "CLI 启动 Agent 核心" } },
-          { data: { source: "api_server", target: "core", description: "API 调用 Agent 核心" } },
-          { data: { source: "desktop_api", target: "core", description: "桌面端调用 Agent 核心" } },
-          { data: { source: "core", target: "tools", description: "Router 选择并执行工具" } },
-          { data: { source: "core", target: "llm", description: "调用 LLM 进行解析、规划、生成" } },
+          { data: { source: "user", target: "main", description: "命令行输入" } },
+          { data: { source: "user", target: "api_server", description: "HTTP API 输入" } },
+          { data: { source: "user", target: "desktop", description: "桌面端输入" } },
+          { data: { source: "main", target: "core", description: "启动 Agent" } },
+          { data: { source: "api_server", target: "core", description: "调用 Agent" } },
+          { data: { source: "desktop_api", target: "core", description: "桌面端调用 Agent" } },
+          { data: { source: "core", target: "tools", description: "选择并执行工具" } },
+          { data: { source: "core", target: "llm", description: "调用大模型" } },
           { data: { source: "core", target: "memory", description: "保存长期记忆", classes: "data" } },
           { data: { source: "tools", target: "search_providers", description: "调研搜索" } },
           { data: { source: "tools", target: "weather_providers", description: "天气查询" } },
-          { data: { source: "skills", target: "core", description: "Skill 注入 workflow", classes: "data" } },
-          { data: { source: "rag", target: "core", description: "RAG 检索结果供 Agent 使用", classes: "data" } },
-          { data: { source: "core", target: "outputs", description: "保存 state 和 log", classes: "data" } },
-          { data: { source: "desktop", target: "desktop_api", description: "桌面端前端调用后端 API" } },
-          { data: { source: "desktop", target: "rag", description: "桌面端知识库 Tab" } },
-          { data: { source: "desktop", target: "memory", description: "桌面端读取长期记忆" } }
+          { data: { source: "skills", target: "core", description: "注入工作流", classes: "data" } },
+          { data: { source: "rag", target: "core", description: "检索结果反馈", classes: "data" } },
+          { data: { source: "core", target: "outputs", description: "写入 state/log", classes: "data" } },
+          { data: { source: "desktop", target: "desktop_api", description: "前端调用后端" } },
+          { data: { source: "desktop", target: "rag", description: "知识库 Tab" } },
+          { data: { source: "desktop", target: "memory", description: "读取记忆" } }
         ]
       },
       agentLoop: {
-        label: "Agent Loop",
+        label: "执行链路",
+        layout: { name: "preset", padding: 30 },
         nodes: [
-          { data: { id: "user_input", label: "用户输入", type: "user", description: "自然语言任务描述。" } },
-          { data: { id: "task_parser", label: "TaskParser", type: "step", files: ["core/task_parser.py"], description: "识别任务类型、意图、输入类型和期望输出。" } },
-          { data: { id: "skill_loader", label: "SkillLoader", type: "step", files: ["core/skill_loader.py"], description: "匹配本地 Markdown Skill，注入 workflow。" } },
-          { data: { id: "planner", label: "Planner", type: "step", files: ["core/planner.py"], description: "生成可执行步骤计划。" } },
-          { data: { id: "agent_loop", label: "Agent Loop", type: "step", files: ["core/loop.py"], description: "按步骤推进任务，维护 AgentState。" } },
-          { data: { id: "router", label: "Router", type: "step", files: ["core/router.py"], description: "根据步骤选择合适的工具。" } },
-          { data: { id: "executor", label: "Executor", type: "step", files: ["core/executor.py"], description: "执行工具并收集结果。" } },
-          { data: { id: "verifier", label: "Verifier", type: "step", files: ["core/verifier.py"], description: "校验工具结果是否满足要求。" } },
-          { data: { id: "reflection", label: "Reflection / Replan", type: "step", files: ["core/reflection.py"], description: "失败时反思原因，必要时重新规划。" } },
-          { data: { id: "memory_writer", label: "Memory", type: "step", files: ["memory_providers/json_memory_provider.py"], description: "保存任务历史、经验、负向规则和 Skill 候选。" } },
-          { data: { id: "final_output", label: "最终输出", type: "user", description: "返回给用户的结果或报告。" } },
-          { data: { id: "agent_state", label: "AgentState", type: "storage", files: ["core/state.py"], description: "单次任务的短期记忆，贯穿整个 Loop。" } }
+          { data: { id: "user_input", label: "① 用户输入", type: "user", description: "自然语言任务描述。" }, position: { x: 400, y: 40 } },
+          { data: { id: "task_parser", label: "② 任务解析", type: "step", files: ["core/task_parser.py"], description: "识别任务类型、意图、输入类型和期望输出。" }, position: { x: 400, y: 140 } },
+          { data: { id: "skill_loader", label: "③ Skill 加载", type: "step", files: ["core/skill_loader.py"], description: "匹配本地 Markdown Skill，注入工作流。" }, position: { x: 400, y: 240 } },
+          { data: { id: "planner", label: "④ 生成计划", type: "step", files: ["core/planner.py"], description: "生成可执行步骤计划。" }, position: { x: 400, y: 340 } },
+          { data: { id: "agent_loop", label: "⑤ 执行循环", type: "step", files: ["core/loop.py"], description: "按步骤推进任务，维护任务状态。" }, position: { x: 400, y: 460 } },
+          { data: { id: "router", label: "⑥ 工具路由", type: "step", files: ["core/router.py"], description: "根据步骤选择合适的工具。" }, position: { x: 700, y: 460 } },
+          { data: { id: "executor", label: "⑦ 执行工具", type: "step", files: ["core/executor.py"], description: "执行工具并收集结果。" }, position: { x: 700, y: 560 } },
+          { data: { id: "verifier", label: "⑧ 结果校验", type: "step", files: ["core/verifier.py"], description: "校验工具结果是否满足要求。" }, position: { x: 700, y: 660 } },
+          { data: { id: "reflection", label: "⑨ 反思/重规划", type: "step", files: ["core/reflection.py"], description: "失败时反思原因，必要时重新规划。" }, position: { x: 100, y: 660 } },
+          { data: { id: "memory_writer", label: "⑩ 记忆写入", type: "step", files: ["memory_providers/json_memory_provider.py"], description: "保存任务历史、经验、负向规则和 Skill 候选。" }, position: { x: 400, y: 660 } },
+          { data: { id: "final_output", label: "⑪ 最终输出", type: "user", description: "返回给用户的结果或报告。" }, position: { x: 400, y: 780 } },
+          { data: { id: "agent_state", label: "任务状态\nAgentState", type: "storage", files: ["core/state.py"], description: "单次任务的短期记忆，贯穿整个执行链路。" }, position: { x: 100, y: 460 } }
         ],
         edges: [
           { data: { source: "user_input", target: "task_parser", description: "输入任务" } },
           { data: { source: "task_parser", target: "skill_loader", description: "解析后匹配 Skill" } },
-          { data: { source: "skill_loader", target: "planner", description: "Skill workflow 注入规划" } },
-          { data: { source: "planner", target: "agent_loop", description: "计划进入执行循环" } },
+          { data: { source: "skill_loader", target: "planner", description: "Skill 工作流注入规划" } },
+          { data: { source: "planner", target: "agent_loop", description: "计划进入循环" } },
           { data: { source: "agent_loop", target: "router", description: "取出当前步骤" } },
-          { data: { source: "router", target: "executor", description: "选择工具并执行" } },
-          { data: { source: "executor", target: "verifier", description: "执行结果待校验" } },
-          { data: { source: "verifier", target: "agent_loop", description: "校验通过继续下一步" } },
-          { data: { source: "verifier", target: "reflection", description: "校验失败进入反思" } },
-          { data: { source: "reflection", target: "agent_loop", description: "重试或 Replan 后继续" } },
-          { data: { source: "agent_loop", target: "memory_writer", description: "任务完成后写入记忆", classes: "data" } },
-          { data: { source: "agent_loop", target: "final_output", description: "返回最终结果" } },
-          { data: { source: "agent_state", target: "agent_loop", description: "状态在循环中传递", classes: "data" } }
+          { data: { source: "router", target: "executor", description: "选择并执行工具" } },
+          { data: { source: "executor", target: "verifier", description: "结果待校验" } },
+          { data: { source: "verifier", target: "agent_loop", description: "校验通过继续" } },
+          { data: { source: "verifier", target: "reflection", description: "校验失败反思" } },
+          { data: { source: "reflection", target: "agent_loop", description: "重试或重规划" } },
+          { data: { source: "agent_loop", target: "memory_writer", description: "任务完成写入记忆", classes: "data" } },
+          { data: { source: "agent_loop", target: "final_output", description: "返回结果" } },
+          { data: { source: "agent_state", target: "agent_loop", description: "状态传递", classes: "data" } }
         ]
       },
       desktop: {
         label: "桌面端交互",
+        layout: { name: "breadthfirst", padding: 40, directed: true, roots: ["desktop_user"], spacingFactor: 1.2 },
         nodes: [
           { data: { id: "desktop_user", label: "桌面端用户", type: "user", description: "通过 macOS 应用与 UTA 交互。" } },
           { data: { id: "desktop_frontend", label: "桌面前端", type: "desktop", files: ["desktop/frontend/"], description: "HTML/JS 聊天消息流和右侧详情区。" } },
-          { data: { id: "desktop_api", label: "desktop/api.py", type: "desktop", files: ["desktop/api.py"], description: "FastAPI 桥接层，暴露给前端调用。" } },
-          { data: { id: "chat_router", label: "desktop/chat_router.py", type: "desktop", files: ["desktop/chat_router.py"], description: "对话路由，管理聊天消息。" } },
-          { data: { id: "conversation_store", label: "conversation_store", type: "storage", files: ["desktop/conversation_store.py"], description: "会话历史存储。" } },
-          { data: { id: "desktop_runner", label: "desktop/runner.py", type: "desktop", files: ["desktop/runner.py"], description: "后台任务执行器，调用 Agent 核心。" } },
-          { data: { id: "desktop_memory", label: "desktop/memory_store.py", type: "memory", files: ["desktop/memory_store.py"], description: "桌面端长期记忆读写。" } },
-          { data: { id: "desktop_rag", label: "desktop/rag_client.py", type: "rag", files: ["desktop/rag_client.py"], description: "桌面端 RAG 客户端。" } },
-          { data: { id: "core", label: "core/ 核心", type: "core", files: ["core/loop.py"], description: "Agent 执行核心。" } },
+          { data: { id: "desktop_api", label: "桌面后端 API", type: "desktop", files: ["desktop/api.py"], description: "FastAPI 桥接层，暴露给前端调用。" } },
+          { data: { id: "chat_router", label: "对话路由", type: "desktop", files: ["desktop/chat_router.py"], description: "对话路由，管理聊天消息。" } },
+          { data: { id: "conversation_store", label: "会话存储", type: "storage", files: ["desktop/conversation_store.py"], description: "会话历史存储。" } },
+          { data: { id: "desktop_runner", label: "任务执行器", type: "desktop", files: ["desktop/runner.py"], description: "后台任务执行器，调用 Agent 核心。" } },
+          { data: { id: "desktop_memory", label: "桌面记忆", type: "memory", files: ["desktop/memory_store.py"], description: "桌面端长期记忆读写。" } },
+          { data: { id: "desktop_rag", label: "桌面知识库", type: "rag", files: ["desktop/rag_client.py"], description: "桌面端 RAG 客户端。" } },
+          { data: { id: "core", label: "Agent 核心", type: "core", files: ["core/loop.py"], description: "Agent 执行核心。" } },
           { data: { id: "dist_app", label: "UTA Desktop.app", type: "storage", files: ["dist/UTA Desktop.app"], description: "打包后的桌面应用产物。" } }
         ],
         edges: [
           { data: { source: "desktop_user", target: "desktop_frontend", description: "使用桌面应用" } },
           { data: { source: "desktop_frontend", target: "desktop_api", description: "HTTP 请求", classes: "bidirectional" } },
-          { data: { source: "desktop_api", target: "chat_router", description: "路由对话请求" } },
+          { data: { source: "desktop_api", target: "chat_router", description: "路由对话" } },
           { data: { source: "chat_router", target: "conversation_store", description: "读写会话", classes: "data" } },
-          { data: { source: "desktop_api", target: "desktop_runner", description: "派发任务执行" } },
-          { data: { source: "desktop_runner", target: "core", description: "调用 Agent Loop" } },
-          { data: { source: "desktop_api", target: "desktop_memory", description: "读取/写入记忆", classes: "bidirectional" } },
+          { data: { source: "desktop_api", target: "desktop_runner", description: "派发任务" } },
+          { data: { source: "desktop_runner", target: "core", description: "调用 Agent" } },
+          { data: { source: "desktop_api", target: "desktop_memory", description: "读写记忆", classes: "bidirectional" } },
           { data: { source: "desktop_api", target: "desktop_rag", description: "知识库问答", classes: "bidirectional" } },
-          { data: { source: "dist_app", target: "desktop_frontend", description: "打包包含前端资源", classes: "data" } }
+          { data: { source: "dist_app", target: "desktop_frontend", description: "打包包含前端", classes: "data" } }
         ]
       },
       dataFlow: {
         label: "数据流转",
+        layout: { name: "breadthfirst", padding: 40, directed: true, roots: ["agent_state", "documents"], spacingFactor: 1.3 },
         nodes: [
-          { data: { id: "agent_state", label: "AgentState", type: "storage", files: ["core/state.py"], description: "单次任务内的短期记忆。" } },
-          { data: { id: "state_files", label: "outputs/states/", type: "storage", files: ["outputs/states/"], description: "任务 state 持久化文件。" } },
-          { data: { id: "log_files", label: "outputs/logs/", type: "storage", files: ["outputs/logs/"], description: "任务日志文件。" } },
-          { data: { id: "task_history", label: "task_history.json", type: "storage", files: ["memory/task_history.json"], description: "历史任务记录。" } },
-          { data: { id: "lessons", label: "lessons.json", type: "storage", files: ["memory/lessons.json"], description: "成功任务沉淀的可复用经验。" } },
-          { data: { id: "negative_rules", label: "negative_rules.json", type: "storage", files: ["memory/negative_rules.json"], description: "失败任务沉淀的负向规则。" } },
-          { data: { id: "skill_candidates", label: "skill_candidates.json", type: "storage", files: ["memory/skill_candidates.json"], description: "可能固化为 Skill 的候选。" } },
-          { data: { id: "user_profile", label: "user_profile.json", type: "storage", files: ["memory/user_profile.json"], description: "用户画像和偏好预留。" } },
+          { data: { id: "agent_state", label: "任务状态\nAgentState", type: "storage", files: ["core/state.py"], description: "单次任务内的短期记忆。" } },
+          { data: { id: "state_files", label: "state 文件\noutputs/states/", type: "storage", files: ["outputs/states/"], description: "任务 state 持久化文件。" } },
+          { data: { id: "log_files", label: "日志文件\noutputs/logs/", type: "storage", files: ["outputs/logs/"], description: "任务日志文件。" } },
+          { data: { id: "task_history", label: "任务历史\ntask_history.json", type: "storage", files: ["memory/task_history.json"], description: "历史任务记录。" } },
+          { data: { id: "lessons", label: "经验\nlessons.json", type: "storage", files: ["memory/lessons.json"], description: "成功任务沉淀的可复用经验。" } },
+          { data: { id: "negative_rules", label: "负向规则\nnegative_rules.json", type: "storage", files: ["memory/negative_rules.json"], description: "失败任务沉淀的负向规则。" } },
+          { data: { id: "skill_candidates", label: "Skill 候选\nskill_candidates.json", type: "storage", files: ["memory/skill_candidates.json"], description: "可能固化为 Skill 的候选。" } },
+          { data: { id: "user_profile", label: "用户画像\nuser_profile.json", type: "storage", files: ["memory/user_profile.json"], description: "用户画像和偏好预留。" } },
           { data: { id: "documents", label: "原始文档", type: "user", description: "用户提供的本地文档。" } },
-          { data: { id: "chunker", label: "rag/chunkers", type: "rag", files: ["rag/chunkers/"], description: "文档切片。" } },
-          { data: { id: "embedder", label: "rag/embeddings", type: "rag", files: ["rag/embeddings/"], description: "文本向量化。" } },
-          { data: { id: "sqlite_store", label: "SQLite 向量存储", type: "storage", files: ["rag/store/sqlite_store.py"], description: "向量持久化存储。" } },
-          { data: { id: "retrieval", label: "rag/retrieval", type: "rag", files: ["rag/retrieval/"], description: "向量检索。" } },
-          { data: { id: "generation", label: "rag/generation", type: "rag", files: ["rag/generation/"], description: "基于检索结果生成答案。" } },
-          { data: { id: "desktop_data", label: "~/.uta/", type: "storage", files: ["~/.uta/"], description: "桌面端运行数据目录。" } }
+          { data: { id: "chunker", label: "文档切片", type: "rag", files: ["rag/chunkers/"], description: "文档切片。" } },
+          { data: { id: "embedder", label: "文本向量化", type: "rag", files: ["rag/embeddings/"], description: "文本向量化。" } },
+          { data: { id: "sqlite_store", label: "向量存储\nSQLite", type: "storage", files: ["rag/store/sqlite_store.py"], description: "向量持久化存储。" } },
+          { data: { id: "retrieval", label: "向量检索", type: "rag", files: ["rag/retrieval/"], description: "向量检索。" } },
+          { data: { id: "generation", label: "答案生成", type: "rag", files: ["rag/generation/"], description: "基于检索结果生成答案。" } },
+          { data: { id: "desktop_data", label: "桌面数据目录\n~/.uta/", type: "storage", files: ["~/.uta/"], description: "桌面端运行数据目录。" } }
         ],
         edges: [
           { data: { source: "agent_state", target: "state_files", description: "保存任务 state", classes: "data" } },
@@ -171,8 +195,8 @@
           { data: { source: "embedder", target: "sqlite_store", description: "向量入库", classes: "data" } },
           { data: { source: "sqlite_store", target: "retrieval", description: "检索向量", classes: "data" } },
           { data: { source: "retrieval", target: "generation", description: "检索结果生成答案" } },
-          { data: { source: "state_files", target: "desktop_data", description: "桌面端 state 存放到 ~/.uta/", classes: "data" } },
-          { data: { source: "log_files", target: "desktop_data", description: "桌面端日志存放到 ~/.uta/", classes: "data" } }
+          { data: { source: "state_files", target: "desktop_data", description: "桌面端 state 存放", classes: "data" } },
+          { data: { source: "log_files", target: "desktop_data", description: "桌面端日志存放", classes: "data" } }
         ]
       }
     };
@@ -180,23 +204,23 @@
     let cy = cytoscape({
       container: document.getElementById("cy"),
       style: [
-        { selector: "node", style: { "label": "data(label)", "text-valign": "center", "text-halign": "center", "font-size": "12px", "color": "#fff", "text-outline-color": "#555", "text-outline-width": 1, "width": "label", "height": "label", "padding": "10px" } },
-        { selector: "node.core", style: { "background-color": "#007aff", "shape": "roundrectangle" } },
-        { selector: "node.tool", style: { "background-color": "#34c759", "shape": "roundrectangle" } },
-        { selector: "node.memory", style: { "background-color": "#af52de", "shape": "roundrectangle" } },
-        { selector: "node.rag", style: { "background-color": "#ff9500", "shape": "roundrectangle" } },
-        { selector: "node.desktop", style: { "background-color": "#5ac8fa", "shape": "roundrectangle" } },
-        { selector: "node.api", style: { "background-color": "#8e8e93", "shape": "roundrectangle" } },
-        { selector: "node.llm", style: { "background-color": "#ff3b30", "shape": "roundrectangle" } },
-        { selector: "node.provider", style: { "background-color": "#ffcc00", "shape": "roundrectangle", "color": "#333", "text-outline-color": "#fff" } },
-        { selector: "node.skill", style: { "background-color": "#ff2d55", "shape": "roundrectangle" } },
-        { selector: "node.storage", style: { "background-color": "#c7c7cc", "shape": "cylinder", "color": "#333", "text-outline-color": "#fff" } },
-        { selector: "node.user", style: { "background-color": "#1c1c1e", "shape": "diamond" } },
-        { selector: "node.step", style: { "background-color": "#5856d6", "shape": "hexagon" } },
-        { selector: "edge", style: { "width": 2, "target-arrow-shape": "triangle", "curve-style": "bezier", "line-color": "#999", "target-arrow-color": "#999" } },
-        { selector: "edge.data", style: { "line-style": "dashed" } },
+        { selector: "node", style: { "label": "data(label)", "text-valign": "center", "text-halign": "center", "font-size": "13px", "font-weight": "500", "color": "#fff", "text-outline-color": "rgba(0,0,0,0.4)", "text-outline-width": 1.5, "width": "label", "height": "label", "padding": "14px", "text-wrap": "wrap", "text-max-width": "120px", "border-width": 2, "border-color": "#fff", "shadow-blur": 6, "shadow-color": "rgba(0,0,0,0.15)", "shadow-offset-y": 2 } },
+        { selector: "node.core", style: { "background-color": COLORS.core, "shape": "roundrectangle" } },
+        { selector: "node.tool", style: { "background-color": COLORS.tool, "shape": "roundrectangle" } },
+        { selector: "node.memory", style: { "background-color": COLORS.memory, "shape": "roundrectangle" } },
+        { selector: "node.rag", style: { "background-color": COLORS.rag, "shape": "roundrectangle" } },
+        { selector: "node.desktop", style: { "background-color": COLORS.desktop, "shape": "roundrectangle" } },
+        { selector: "node.api", style: { "background-color": COLORS.api, "shape": "roundrectangle" } },
+        { selector: "node.llm", style: { "background-color": COLORS.llm, "shape": "roundrectangle" } },
+        { selector: "node.provider", style: { "background-color": COLORS.provider, "shape": "roundrectangle", "color": "#1f2937", "text-outline-color": "#fff" } },
+        { selector: "node.skill", style: { "background-color": COLORS.skill, "shape": "roundrectangle" } },
+        { selector: "node.storage", style: { "background-color": COLORS.storage, "shape": "cylinder", "color": "#fff", "text-outline-color": "rgba(0,0,0,0.4)" } },
+        { selector: "node.user", style: { "background-color": COLORS.user, "shape": "diamond" } },
+        { selector: "node.step", style: { "background-color": COLORS.step, "shape": "hexagon" } },
+        { selector: "edge", style: { "width": 2.5, "target-arrow-shape": "triangle", "curve-style": "bezier", "line-color": "#94a3b8", "target-arrow-color": "#94a3b8", "label": "data(description)", "font-size": "11px", "color": "#475569", "text-background-color": "#f8f9fa", "text-background-opacity": 0.9, "text-background-padding": "3px", "text-background-shape": "roundrectangle" } },
+        { selector: "edge.data", style: { "line-style": "dashed", "line-color": "#64748b", "target-arrow-color": "#64748b" } },
         { selector: "edge.bidirectional", style: { "target-arrow-shape": "triangle", "source-arrow-shape": "triangle" } },
-        { selector: ":selected", style: { "border-width": 3, "border-color": "#007aff" } }
+        { selector: ":selected", style: { "border-width": 4, "border-color": "#f59e0b" } }
       ],
       layout: { name: "cose", padding: 20 }
     });
@@ -205,8 +229,11 @@
       const data = VIEWS[viewName];
       if (!data) return;
       cy.elements().remove();
-      cy.add([...data.nodes, ...data.edges]);
-      cy.layout({ name: "cose", padding: 20, animate: true, animationDuration: 300 }).run();
+      const nodes = data.nodes.map(n => ({ ...n, classes: [n.data.type, n.classes || ""].join(" ").trim() }));
+      const edges = data.edges.map(e => ({ ...e, classes: e.classes || "" }));
+      cy.add([...nodes, ...edges]);
+      const layout = data.layout || { name: "cose", padding: 20 };
+      cy.layout({ ...layout, animate: true, animationDuration: 350 }).run();
       document.querySelectorAll("#toolbar button").forEach(b => b.classList.remove("active"));
       document.getElementById("btn-" + viewName).classList.add("active");
     }
@@ -223,13 +250,19 @@
     cy.on("tap", "edge", function(evt) {
       showEdgeDetails(evt.target);
     });
+    cy.on("tap", function(evt) {
+      if (evt.target === cy) {
+        document.getElementById("details-panel").innerHTML = `<h2>节点详情</h2><p class="empty">点击节点或连线查看详情</p>`;
+      }
+    });
 
     function showNodeDetails(node) {
       const data = node.data();
+      const typeNames = { core: "核心模块", tool: "工具", memory: "记忆", rag: "知识库", desktop: "桌面端", api: "API 入口", llm: "大模型", provider: "外部服务", skill: "Skill", storage: "存储", user: "用户/输出", step: "执行步骤" };
       const panel = document.getElementById("details-panel");
       const fields = [
-        { label: "名称", value: data.label || data.id },
-        { label: "类型", value: data.type || "-" },
+        { label: "名称", value: (data.label || data.id).replace(/\n/g, " ") },
+        { label: "类型", value: typeNames[data.type] || data.type },
         { label: "职责", value: data.description || "-" },
         { label: "关键文件", value: (data.files || []).map(f => `<code>${f}</code>`).join("<br>") || "-" },
         { label: "输入", value: data.inputs || "-" },
@@ -241,7 +274,7 @@
           <div class="field-label">${f.label}</div>
           <div class="field-value">${f.value}</div>
         </div>
-      `).join("");
+      `).join("") + renderLegend();
     }
 
     function showEdgeDetails(edge) {
@@ -249,10 +282,19 @@
       const panel = document.getElementById("details-panel");
       panel.innerHTML = `
         <h2>关系详情</h2>
-        <div class="field"><div class="field-label">从</div><div class="field-value">${data.source}</div></div>
-        <div class="field"><div class="field-label">到</div><div class="field-value">${data.target}</div></div>
+        <div class="field"><div class="field-label">从</div><div class="field-value">${cy.getElementById(data.source).data("label") || data.source}</div></div>
+        <div class="field"><div class="field-label">到</div><div class="field-value">${cy.getElementById(data.target).data("label") || data.target}</div></div>
         <div class="field"><div class="field-label">说明</div><div class="field-value">${data.description || "-"}</div></div>
-      `;
+      ` + renderLegend();
+    }
+
+    function renderLegend() {
+      const items = [
+        ["核心模块", COLORS.core], ["工具", COLORS.tool], ["记忆", COLORS.memory], ["知识库", COLORS.rag],
+        ["桌面端", COLORS.desktop], ["API 入口", COLORS.api], ["大模型", COLORS.llm], ["外部服务", COLORS.provider],
+        ["Skill", COLORS.skill], ["存储", COLORS.storage], ["用户/输出", COLORS.user], ["执行步骤", COLORS.step]
+      ];
+      return `<div class="legend">${items.map(([name, color]) => `<div class="legend-item"><span class="legend-dot" style="background:${color}"></span>${name}</div>`).join("")}</div>`;
     }
 
     renderView("overview");

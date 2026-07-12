@@ -10,7 +10,7 @@ def test_architecture_html_exists_and_has_required_structure():
     assert 'id="toolbar"' in content
     assert 'id="details-panel"' in content
     assert "整体模块" in content
-    assert "Agent Loop" in content
+    assert "执行链路" in content
     assert "桌面端交互" in content
     assert "数据流转" in content
 
