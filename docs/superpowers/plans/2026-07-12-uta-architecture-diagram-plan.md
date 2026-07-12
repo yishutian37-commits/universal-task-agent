@@ -1,0 +1,727 @@
+# UTA 整体架构可视化实现计划
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** 为 UTA 项目生成一个本地可打开的 HTML 交互式架构图，使用 Cytoscape.js 展示四个视图，并支持节点详情查看。
+
+**Architecture:** 单个纯 HTML 文件，通过 CDN 引入 Cytoscape.js，内嵌节点/边数据与视图切换逻辑，右侧固定详情面板，顶部工具栏切换视图。
+
+**Tech Stack:** HTML5、CSS3、JavaScript、Cytoscape.js 3.26.0（CDN）
+
+## Global Constraints
+
+- 输出产物为单个 HTML 文件：`docs/uta-architecture.html`。
+- 所有资源通过 CDN 加载，不引入 npm 依赖或构建步骤。
+- 节点/边数据直接内嵌在 HTML 的 `<script>` 中，便于手动维护。
+- 颜色、形状与 `docs/superpowers/specs/2026-07-12-uta-architecture-diagram-design.md` 中的视觉编码一致。
+- 必须覆盖四个视图：整体模块全景、核心 Agent Loop 执行链路、桌面端与后端交互、数据/记忆流转。
+
+---
+
+### Task 1: HTML 骨架与 Cytoscape 基础布局
+
+**Files:**
+- Create: `docs/uta-architecture.html`
+- Test: `tests/test_architecture_html.py`
+
+**Interfaces:**
+- Produces: `docs/uta-architecture.html` 作为最终产物；测试验证文件存在且包含 Cytoscape CDN、画布容器、工具栏和详情面板容器。
+
+- [ ] **Step 1: Write the failing test**
+
+```python
+def test_architecture_html_exists_and_has_required_structure():
+    from pathlib import Path
+    html_path = Path("docs/uta-architecture.html")
+    assert html_path.exists(), "architecture html should exist"
+    content = html_path.read_text(encoding="utf-8")
+    assert "cytoscape" in content.lower()
+    assert 'id="cy"' in content
+    assert 'id="toolbar"' in content
+    assert 'id="details-panel"' in content
+    assert "整体模块" in content
+    assert "Agent Loop" in content
+    assert "桌面端交互" in content
+    assert "数据流转" in content
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `pytest tests/test_architecture_html.py::test_architecture_html_exists_and_has_required_structure -v`
+
+Expected: FAIL with "architecture html should exist"
+
+- [ ] **Step 3: Write minimal implementation**
+
+Create `docs/uta-architecture.html` with the following content:
+
+```html
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>UTA 整体架构图</title>
+  <script src="https://unpkg.com/cytoscape@3.26.0/dist/cytoscape.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    #app { display: flex; flex-direction: column; height: 100vh; }
+    #toolbar { display: flex; gap: 8px; padding: 12px 16px; background: #f5f5f7; border-bottom: 1px solid #ddd; align-items: center; }
+    #toolbar button { padding: 6px 14px; border: 1px solid #ccc; background: #fff; border-radius: 6px; cursor: pointer; font-size: 14px; }
+    #toolbar button.active { background: #007aff; color: #fff; border-color: #007aff; }
+    #toolbar .spacer { flex: 1; }
+    #main { display: flex; flex: 1; overflow: hidden; }
+    #cy { flex: 1; background: #fafafa; }
+    #details-panel { width: 320px; border-left: 1px solid #ddd; background: #fff; padding: 16px; overflow-y: auto; }
+    #details-panel h2 { font-size: 16px; margin-bottom: 12px; }
+    #details-panel .field { margin-bottom: 12px; }
+    #details-panel .field-label { font-size: 12px; color: #666; margin-bottom: 4px; }
+    #details-panel .field-value { font-size: 14px; color: #111; }
+    #details-panel code { background: #f2f2f2; padding: 2px 4px; border-radius: 4px; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <div id="toolbar">
+      <button id="btn-overview" class="active">整体模块</button>
+      <button id="btn-loop">Agent Loop</button>
+      <button id="btn-desktop">桌面端交互</button>
+      <button id="btn-data">数据流转</button>
+      <div class="spacer"></div>
+      <button id="btn-fit">适应屏幕</button>
+    </div>
+    <div id="main">
+      <div id="cy"></div>
+      <div id="details-panel">
+        <h2>节点详情</h2>
+        <p style="color:#888;font-size:14px;">点击节点或边查看详情</p>
+      </div>
+    </div>
+  </div>
+  <script>
+    // Placeholder: implementation in later tasks
+    console.log("UTA architecture diagram loaded");
+  </script>
+</body>
+</html>
+```
+
+- [ ] **Step 4: Run test to verify it passes**
+
+Run: `pytest tests/test_architecture_html.py::test_architecture_html_exists_and_has_required_structure -v`
+
+Expected: PASS
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add docs/uta-architecture.html tests/test_architecture_html.py
+git commit -m "feat(arch): add architecture diagram html skeleton and structure test"
+```
+
+---
+
+### Task 2: Cytoscape 初始化、布局与视图切换框架
+
+**Files:**
+- Modify: `docs/uta-architecture.html`
+- Test: `tests/test_architecture_html.py`
+
+**Interfaces:**
+- Consumes: `#cy` container, `#toolbar` buttons, Cytoscape.js CDN.
+- Produces: `renderView(viewName)` function, `cy` Cytoscape instance, active button styling on view switch.
+
+- [ ] **Step 1: Write the failing test**
+
+```python
+def test_architecture_html_has_render_view_function():
+    from pathlib import Path
+    content = Path("docs/uta-architecture.html").read_text(encoding="utf-8")
+    assert "function renderView" in content
+    assert "var cy = cytoscape" in content or "let cy = cytoscape" in content or "const cy = cytoscape" in content
+    assert '"overview"' in content
+    assert '"agentLoop"' in content
+    assert '"desktop"' in content
+    assert '"dataFlow"' in content
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `pytest tests/test_architecture_html.py::test_architecture_html_has_render_view_function -v`
+
+Expected: FAIL with "function renderView" not found
+
+- [ ] **Step 3: Write minimal implementation**
+
+Replace the `<script>` placeholder in `docs/uta-architecture.html` with:
+
+```html
+  <script>
+    const VIEWS = {
+      overview: { label: "整体模块", nodes: [], edges: [] },
+      agentLoop: { label: "Agent Loop", nodes: [], edges: [] },
+      desktop: { label: "桌面端交互", nodes: [], edges: [] },
+      dataFlow: { label: "数据流转", nodes: [], edges: [] },
+    };
+
+    let cy = cytoscape({
+      container: document.getElementById("cy"),
+      style: [
+        { selector: "node", style: { "label": "data(label)", "text-valign": "center", "text-halign": "center", "font-size": "12px", "color": "#fff", "text-outline-color": "#555", "text-outline-width": 1 } },
+        { selector: "edge", style: { "width": 2, "target-arrow-shape": "triangle", "curve-style": "bezier", "line-color": "#999", "target-arrow-color": "#999" } },
+        { selector: ":selected", style: { "border-width": 3, "border-color": "#007aff" } }
+      ],
+      layout: { name: "cose", padding: 20 }
+    });
+
+    function renderView(viewName) {
+      const data = VIEWS[viewName];
+      if (!data) return;
+      cy.elements().remove();
+      cy.add([...data.nodes, ...data.edges]);
+      cy.layout({ name: "cose", padding: 20, animate: true, animationDuration: 300 }).run();
+      document.querySelectorAll("#toolbar button").forEach(b => b.classList.remove("active"));
+      document.getElementById("btn-" + viewName).classList.add("active");
+    }
+
+    document.getElementById("btn-overview").onclick = () => renderView("overview");
+    document.getElementById("btn-loop").onclick = () => renderView("agentLoop");
+    document.getElementById("btn-desktop").onclick = () => renderView("desktop");
+    document.getElementById("btn-data").onclick = () => renderView("dataFlow");
+    document.getElementById("btn-fit").onclick = () => cy.fit();
+
+    cy.on("tap", "node", function(evt) {
+      showNodeDetails(evt.target);
+    });
+    cy.on("tap", "edge", function(evt) {
+      showEdgeDetails(evt.target);
+    });
+
+    function showNodeDetails(node) {}
+    function showEdgeDetails(edge) {}
+
+    renderView("overview");
+  </script>
+```
+
+- [ ] **Step 4: Run test to verify it passes**
+
+Run: `pytest tests/test_architecture_html.py::test_architecture_html_has_render_view_function -v`
+
+Expected: PASS
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add docs/uta-architecture.html tests/test_architecture_html.py
+git commit -m "feat(arch): add cytoscape init, layout, and view switching framework"
+```
+
+---
+
+### Task 3: 节点/边类型样式与详情面板骨架
+
+**Files:**
+- Modify: `docs/uta-architecture.html`
+- Test: `tests/test_architecture_html.py`
+
+**Interfaces:**
+- Consumes: `cy` instance, `#details-panel` DOM.
+- Produces: `showNodeDetails(node)` and `showEdgeDetails(edge)` implementations; node classes mapped to colors/shapes per spec.
+
+- [ ] **Step 1: Write the failing test**
+
+```python
+def test_architecture_html_has_detail_functions_and_styles():
+    from pathlib import Path
+    content = Path("docs/uta-architecture.html").read_text(encoding="utf-8")
+    assert "function showNodeDetails" in content
+    assert "function showEdgeDetails" in content
+    assert "details-panel" in content
+    assert 'background-color' in content or 'backgroundColor' in content
+    assert 'shape' in content
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `pytest tests/test_architecture_html.py::test_architecture_html_has_detail_functions_and_styles -v`
+
+Expected: FAIL
+
+- [ ] **Step 3: Write minimal implementation**
+
+In `docs/uta-architecture.html`, update the Cytoscape `style` array to include node type styles:
+
+```javascript
+style: [
+  { selector: "node", style: { "label": "data(label)", "text-valign": "center", "text-halign": "center", "font-size": "12px", "color": "#fff", "text-outline-color": "#555", "text-outline-width": 1, "width": "label", "height": "label", "padding": "10px" } },
+  { selector: "node.core", style: { "background-color": "#007aff", "shape": "roundrectangle" } },
+  { selector: "node.tool", style: { "background-color": "#34c759", "shape": "roundrectangle" } },
+  { selector: "node.memory", style: { "background-color": "#af52de", "shape": "roundrectangle" } },
+  { selector: "node.rag", style: { "background-color": "#ff9500", "shape": "roundrectangle" } },
+  { selector: "node.desktop", style: { "background-color": "#5ac8fa", "shape": "roundrectangle" } },
+  { selector: "node.api", style: { "background-color": "#8e8e93", "shape": "roundrectangle" } },
+  { selector: "node.llm", style: { "background-color": "#ff3b30", "shape": "roundrectangle" } },
+  { selector: "node.provider", style: { "background-color": "#ffcc00", "shape": "roundrectangle", "color": "#333", "text-outline-color": "#fff" } },
+  { selector: "node.skill", style: { "background-color": "#ff2d55", "shape": "roundrectangle" } },
+  { selector: "node.storage", style: { "background-color": "#c7c7cc", "shape": "cylinder", "color": "#333", "text-outline-color": "#fff" } },
+  { selector: "node.user", style: { "background-color": "#1c1c1e", "shape": "diamond" } },
+  { selector: "node.step", style: { "background-color": "#5856d6", "shape": "hexagon" } },
+  { selector: "edge", style: { "width": 2, "target-arrow-shape": "triangle", "curve-style": "bezier", "line-color": "#999", "target-arrow-color": "#999" } },
+  { selector: "edge.data", style: { "line-style": "dashed" } },
+  { selector: "edge.bidirectional", style: { "target-arrow-shape": "triangle", "source-arrow-shape": "triangle" } },
+  { selector: ":selected", style: { "border-width": 3, "border-color": "#007aff" } }
+]
+```
+
+Implement `showNodeDetails` and `showEdgeDetails`:
+
+```javascript
+function showNodeDetails(node) {
+  const data = node.data();
+  const panel = document.getElementById("details-panel");
+  const fields = [
+    { label: "名称", value: data.label || data.id },
+    { label: "类型", value: data.type || "-" },
+    { label: "职责", value: data.description || "-" },
+    { label: "关键文件", value: (data.files || []).map(f => `<code>${f}</code>`).join("<br>") || "-" },
+    { label: "输入", value: data.inputs || "-" },
+    { label: "输出", value: data.outputs || "-" },
+    { label: "依赖", value: (data.dependencies || []).join(", ") || "-" }
+  ];
+  panel.innerHTML = "<h2>节点详情</h2>" + fields.map(f => `
+    <div class="field">
+      <div class="field-label">${f.label}</div>
+      <div class="field-value">${f.value}</div>
+    </div>
+  `).join("");
+}
+
+function showEdgeDetails(edge) {
+  const data = edge.data();
+  const panel = document.getElementById("details-panel");
+  panel.innerHTML = `
+    <h2>关系详情</h2>
+    <div class="field"><div class="field-label">从</div><div class="field-value">${data.source}</div></div>
+    <div class="field"><div class="field-label">到</div><div class="field-value">${data.target}</div></div>
+    <div class="field"><div class="field-label">说明</div><div class="field-value">${data.description || "-"}</div></div>
+  `;
+}
+```
+
+- [ ] **Step 4: Run test to verify it passes**
+
+Run: `pytest tests/test_architecture_html.py::test_architecture_html_has_detail_functions_and_styles -v`
+
+Expected: PASS
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add docs/uta-architecture.html tests/test_architecture_html.py
+git commit -m "feat(arch): add node/edge styles and details panel"
+```
+
+---
+
+### Task 4: 整体模块全景视图数据
+
+**Files:**
+- Modify: `docs/uta-architecture.html`
+- Test: `tests/test_architecture_html.py`
+
+**Interfaces:**
+- Consumes: `VIEWS.overview` data structure, node classes defined in Task 3.
+- Produces: Populated `VIEWS.overview.nodes` and `VIEWS.overview.edges`.
+
+- [ ] **Step 1: Write the failing test**
+
+```python
+def test_overview_view_has_key_nodes():
+    from pathlib import Path
+    import re
+    content = Path("docs/uta-architecture.html").read_text(encoding="utf-8")
+    required_ids = ["user", "main", "api_server", "desktop_api", "core", "tools", "memory", "rag", "llm", "search_providers", "weather_providers", "skills", "desktop", "outputs"]
+    for nid in required_ids:
+        assert re.search(rf'"id"\s*:\s*"{nid}"', content), f"missing node {nid}"
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `pytest tests/test_architecture_html.py::test_overview_view_has_key_nodes -v`
+
+Expected: FAIL
+
+- [ ] **Step 3: Write minimal implementation**
+
+Populate `VIEWS.overview` in `docs/uta-architecture.html`:
+
+```javascript
+VIEWS.overview = {
+  label: "整体模块",
+  nodes: [
+    { data: { id: "user", label: "用户", type: "user", description: "通过 CLI、API 或桌面端输入任务。" } },
+    { data: { id: "main", label: "main.py (CLI)", type: "api", files: ["main.py"], description: "命令行入口，组装 Agent 组件并启动任务。" } },
+    { data: { id: "api_server", label: "api/server.py", type: "api", files: ["api/server.py"], description: "FastAPI 服务入口，暴露 HTTP 接口。" } },
+    { data: { id: "desktop_api", label: "desktop/api.py", type: "desktop", files: ["desktop/api.py"], description: "桌面端后端桥接 API。" } },
+    { data: { id: "core", label: "core/ 核心", type: "core", files: ["core/loop.py", "core/router.py", "core/executor.py", "core/planner.py", "core/verifier.py", "core/reflection.py", "core/task_parser.py", "core/skill_loader.py"], description: "Agent 核心：解析、规划、循环、路由、执行、校验、反思、Skill 加载。" } },
+    { data: { id: "tools", label: "tools/ 工具层", type: "tool", files: ["tools/file_tool.py", "tools/text_tool.py", "tools/table_tool.py", "tools/search_tool.py", "tools/code_tool.py", "tools/geo_tool.py", "tools/history_tool.py", "tools/report_tool.py"], description: "各类任务工具：文件读取、文本总结、表格分析、搜索、代码阅读、GEO、历史查询、报告生成。" } },
+    { data: { id: "memory", label: "memory_providers/ 长期记忆", type: "memory", files: ["memory_providers/json_memory_provider.py"], description: "跨任务 JSON 记忆存储。" } },
+    { data: { id: "rag", label: "rag/ 知识库", type: "rag", files: ["rag/kb.py", "rag/api.py", "rag/cli.py", "rag/store/sqlite_store.py"], description: "文档摄入、向量存储、检索、问答。" } },
+    { data: { id: "llm", label: "llm/ LLMClient", type: "llm", files: ["llm/llm_client.py"], description: "统一封装大模型调用。" } },
+    { data: { id: "search_providers", label: "search_providers/ 搜索", type: "provider", files: ["search_providers/bing_search_provider.py", "search_providers/duckduckgo_search_provider.py"], description: "可插拔搜索提供者。" } },
+    { data: { id: "weather_providers", label: "weather_providers/ 天气", type: "provider", files: ["weather_providers/open_meteo_weather_provider.py"], description: "实时天气数据提供者。" } },
+    { data: { id: "skills", label: "skills/ Skill 包", type: "skill", files: ["skills/summarize_article.md", "skills/analyze_table.md", "skills/geo_analysis.md", "skills/vendor/"], description: "本地 Markdown Skill 和 vendor 规则包。" } },
+    { data: { id: "desktop", label: "desktop/ 桌面端", type: "desktop", files: ["desktop/app.py", "desktop/runner.py", "desktop/chat_router.py", "desktop/frontend/"], description: "桌面应用：前端、API、runner、对话路由。" } },
+    { data: { id: "outputs", label: "outputs/ 状态与日志", type: "storage", files: ["outputs/states/", "outputs/logs/"], description: "单次任务的 state 和 log 输出。" } }
+  ],
+  edges: [
+    { data: { source: "user", target: "main", description: "用户通过 CLI 输入任务" } },
+    { data: { source: "user", target: "api_server", description: "用户通过 HTTP API 输入任务" } },
+    { data: { source: "user", target: "desktop", description: "用户通过桌面端输入任务" } },
+    { data: { source: "main", target: "core", description: "CLI 启动 Agent 核心" } },
+    { data: { source: "api_server", target: "core", description: "API 调用 Agent 核心" } },
+    { data: { source: "desktop_api", target: "core", description: "桌面端调用 Agent 核心" } },
+    { data: { source: "core", target: "tools", description: "Router 选择并执行工具" } },
+    { data: { source: "core", target: "llm", description: "调用 LLM 进行解析、规划、生成" } },
+    { data: { source: "core", target: "memory", description: "保存长期记忆", classes: "data" } },
+    { data: { source: "tools", target: "search_providers", description: "调研搜索" } },
+    { data: { source: "tools", target: "weather_providers", description: "天气查询" } },
+    { data: { source: "skills", target: "core", description: "Skill 注入 workflow", classes: "data" } },
+    { data: { source: "rag", target: "core", description: "RAG 检索结果供 Agent 使用", classes: "data" } },
+    { data: { source: "core", target: "outputs", description: "保存 state 和 log", classes: "data" } },
+    { data: { source: "desktop", target: "desktop_api", description: "桌面端前端调用后端 API" } },
+    { data: { source: "desktop", target: "rag", description: "桌面端知识库 Tab" } },
+    { data: { source: "desktop", target: "memory", description: "桌面端读取长期记忆" } }
+  ]
+};
+```
+
+- [ ] **Step 4: Run test to verify it passes**
+
+Run: `pytest tests/test_architecture_html.py::test_overview_view_has_key_nodes -v`
+
+Expected: PASS
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add docs/uta-architecture.html tests/test_architecture_html.py
+git commit -m "feat(arch): populate overview module view data"
+```
+
+---
+
+### Task 5: 核心 Agent Loop 执行链路视图数据
+
+**Files:**
+- Modify: `docs/uta-architecture.html`
+- Test: `tests/test_architecture_html.py`
+
+**Interfaces:**
+- Consumes: `VIEWS.agentLoop` data structure, `step` node class.
+- Produces: Linear flow nodes and edges for the Agent Loop.
+
+- [ ] **Step 1: Write the failing test**
+
+```python
+def test_agent_loop_view_has_flow():
+    from pathlib import Path
+    import re
+    content = Path("docs/uta-architecture.html").read_text(encoding="utf-8")
+    required = ["user_input", "task_parser", "skill_loader", "planner", "agent_loop", "router", "executor", "verifier", "reflection", "memory_writer", "final_output"]
+    for nid in required:
+        assert re.search(rf'"id"\s*:\s*"{nid}"', content), f"missing agent loop node {nid}"
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `pytest tests/test_architecture_html.py::test_agent_loop_view_has_flow -v`
+
+Expected: FAIL
+
+- [ ] **Step 3: Write minimal implementation**
+
+Populate `VIEWS.agentLoop` in `docs/uta-architecture.html`:
+
+```javascript
+VIEWS.agentLoop = {
+  label: "Agent Loop",
+  nodes: [
+    { data: { id: "user_input", label: "用户输入", type: "user", description: "自然语言任务描述。" } },
+    { data: { id: "task_parser", label: "TaskParser", type: "step", files: ["core/task_parser.py"], description: "识别任务类型、意图、输入类型和期望输出。" } },
+    { data: { id: "skill_loader", label: "SkillLoader", type: "step", files: ["core/skill_loader.py"], description: "匹配本地 Markdown Skill，注入 workflow。" } },
+    { data: { id: "planner", label: "Planner", type: "step", files: ["core/planner.py"], description: "生成可执行步骤计划。" } },
+    { data: { id: "agent_loop", label: "Agent Loop", type: "step", files: ["core/loop.py"], description: "按步骤推进任务，维护 AgentState。" } },
+    { data: { id: "router", label: "Router", type: "step", files: ["core/router.py"], description: "根据步骤选择合适的工具。" } },
+    { data: { id: "executor", label: "Executor", type: "step", files: ["core/executor.py"], description: "执行工具并收集结果。" } },
+    { data: { id: "verifier", label: "Verifier", type: "step", files: ["core/verifier.py"], description: "校验工具结果是否满足要求。" } },
+    { data: { id: "reflection", label: "Reflection / Replan", type: "step", files: ["core/reflection.py"], description: "失败时反思原因，必要时重新规划。" } },
+    { data: { id: "memory_writer", label: "Memory", type: "step", files: ["memory_providers/json_memory_provider.py"], description: "保存任务历史、经验、负向规则和 Skill 候选。" } },
+    { data: { id: "final_output", label: "最终输出", type: "user", description: "返回给用户的结果或报告。" } },
+    { data: { id: "agent_state", label: "AgentState", type: "storage", files: ["core/state.py"], description: "单次任务的短期记忆，贯穿整个 Loop。" } }
+  ],
+  edges: [
+    { data: { source: "user_input", target: "task_parser", description: "输入任务" } },
+    { data: { source: "task_parser", target: "skill_loader", description: "解析后匹配 Skill" } },
+    { data: { source: "skill_loader", target: "planner", description: "Skill workflow 注入规划" } },
+    { data: { source: "planner", target: "agent_loop", description: "计划进入执行循环" } },
+    { data: { source: "agent_loop", target: "router", description: "取出当前步骤" } },
+    { data: { source: "router", target: "executor", description: "选择工具并执行" } },
+    { data: { source: "executor", target: "verifier", description: "执行结果待校验" } },
+    { data: { source: "verifier", target: "agent_loop", description: "校验通过继续下一步" } },
+    { data: { source: "verifier", target: "reflection", description: "校验失败进入反思" } },
+    { data: { source: "reflection", target: "agent_loop", description: "重试或 Replan 后继续" } },
+    { data: { source: "agent_loop", target: "memory_writer", description: "任务完成后写入记忆", classes: "data" } },
+    { data: { source: "agent_loop", target: "final_output", description: "返回最终结果" } },
+    { data: { source: "agent_state", target: "agent_loop", description: "状态在循环中传递", classes: "data" } }
+  ]
+};
+```
+
+- [ ] **Step 4: Run test to verify it passes**
+
+Run: `pytest tests/test_architecture_html.py::test_agent_loop_view_has_flow -v`
+
+Expected: PASS
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add docs/uta-architecture.html tests/test_architecture_html.py
+git commit -m "feat(arch): populate agent loop execution flow view"
+```
+
+---
+
+### Task 6: 桌面端与后端交互视图数据
+
+**Files:**
+- Modify: `docs/uta-architecture.html`
+- Test: `tests/test_architecture_html.py`
+
+**Interfaces:**
+- Consumes: `VIEWS.desktop` data structure.
+- Produces: Desktop frontend-to-backend interaction nodes and edges.
+
+- [ ] **Step 1: Write the failing test**
+
+```python
+def test_desktop_view_has_components():
+    from pathlib import Path
+    import re
+    content = Path("docs/uta-architecture.html").read_text(encoding="utf-8")
+    required = ["desktop_frontend", "desktop_api", "desktop_runner", "chat_router", "conversation_store", "desktop_memory", "desktop_rag", "core", "dist_app"]
+    for nid in required:
+        assert re.search(rf'"id"\s*:\s*"{nid}"', content), f"missing desktop node {nid}"
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `pytest tests/test_architecture_html.py::test_desktop_view_has_components -v`
+
+Expected: FAIL
+
+- [ ] **Step 3: Write minimal implementation**
+
+Populate `VIEWS.desktop` in `docs/uta-architecture.html`:
+
+```javascript
+VIEWS.desktop = {
+  label: "桌面端交互",
+  nodes: [
+    { data: { id: "desktop_user", label: "桌面端用户", type: "user", description: "通过 macOS 应用与 UTA 交互。" } },
+    { data: { id: "desktop_frontend", label: "桌面前端", type: "desktop", files: ["desktop/frontend/"], description: "HTML/JS 聊天消息流和右侧详情区。" } },
+    { data: { id: "desktop_api", label: "desktop/api.py", type: "desktop", files: ["desktop/api.py"], description: "FastAPI 桥接层，暴露给前端调用。" } },
+    { data: { id: "chat_router", label: "desktop/chat_router.py", type: "desktop", files: ["desktop/chat_router.py"], description: "对话路由，管理聊天消息。" } },
+    { data: { id: "conversation_store", label: "conversation_store", type: "storage", files: ["desktop/conversation_store.py"], description: "会话历史存储。" } },
+    { data: { id: "desktop_runner", label: "desktop/runner.py", type: "desktop", files: ["desktop/runner.py"], description: "后台任务执行器，调用 Agent 核心。" } },
+    { data: { id: "desktop_memory", label: "desktop/memory_store.py", type: "memory", files: ["desktop/memory_store.py"], description: "桌面端长期记忆读写。" } },
+    { data: { id: "desktop_rag", label: "desktop/rag_client.py", type: "rag", files: ["desktop/rag_client.py"], description: "桌面端 RAG 客户端。" } },
+    { data: { id: "core", label: "core/ 核心", type: "core", files: ["core/loop.py"], description: "Agent 执行核心。" } },
+    { data: { id: "dist_app", label: "UTA Desktop.app", type: "storage", files: ["dist/UTA Desktop.app"], description: "打包后的桌面应用产物。" } }
+  ],
+  edges: [
+    { data: { source: "desktop_user", target: "desktop_frontend", description: "使用桌面应用" } },
+    { data: { source: "desktop_frontend", target: "desktop_api", description: "HTTP 请求", classes: "bidirectional" } },
+    { data: { source: "desktop_api", target: "chat_router", description: "路由对话请求" } },
+    { data: { source: "chat_router", target: "conversation_store", description: "读写会话", classes: "data" } },
+    { data: { source: "desktop_api", target: "desktop_runner", description: "派发任务执行" } },
+    { data: { source: "desktop_runner", target: "core", description: "调用 Agent Loop" } },
+    { data: { source: "desktop_api", target: "desktop_memory", description: "读取/写入记忆", classes: "bidirectional" } },
+    { data: { source: "desktop_api", target: "desktop_rag", description: "知识库问答", classes: "bidirectional" } },
+    { data: { source: "dist_app", target: "desktop_frontend", description: "打包包含前端资源", classes: "data" } }
+  ]
+};
+```
+
+- [ ] **Step 4: Run test to verify it passes**
+
+Run: `pytest tests/test_architecture_html.py::test_desktop_view_has_components -v`
+
+Expected: PASS
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add docs/uta-architecture.html tests/test_architecture_html.py
+git commit -m "feat(arch): populate desktop interaction view"
+```
+
+---
+
+### Task 7: 数据/记忆流转视图数据
+
+**Files:**
+- Modify: `docs/uta-architecture.html`
+- Test: `tests/test_architecture_html.py`
+
+**Interfaces:**
+- Consumes: `VIEWS.dataFlow` data structure.
+- Produces: Data and memory flow nodes and edges.
+
+- [ ] **Step 1: Write the failing test**
+
+```python
+def test_data_flow_view_has_storage_nodes():
+    from pathlib import Path
+    import re
+    content = Path("docs/uta-architecture.html").read_text(encoding="utf-8")
+    required = ["agent_state", "state_files", "log_files", "task_history", "lessons", "negative_rules", "skill_candidates", "user_profile", "documents", "chunker", "embedder", "sqlite_store", "retrieval", "generation", "desktop_data"]
+    for nid in required:
+        assert re.search(rf'"id"\s*:\s*"{nid}"', content), f"missing data flow node {nid}"
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `pytest tests/test_architecture_html.py::test_data_flow_view_has_storage_nodes -v`
+
+Expected: FAIL
+
+- [ ] **Step 3: Write minimal implementation**
+
+Populate `VIEWS.dataFlow` in `docs/uta-architecture.html`:
+
+```javascript
+VIEWS.dataFlow = {
+  label: "数据流转",
+  nodes: [
+    { data: { id: "agent_state", label: "AgentState", type: "storage", files: ["core/state.py"], description: "单次任务内的短期记忆。" } },
+    { data: { id: "state_files", label: "outputs/states/", type: "storage", files: ["outputs/states/"], description: "任务 state 持久化文件。" } },
+    { data: { id: "log_files", label: "outputs/logs/", type: "storage", files: ["outputs/logs/"], description: "任务日志文件。" } },
+    { data: { id: "task_history", label: "task_history.json", type: "storage", files: ["memory/task_history.json"], description: "历史任务记录。" } },
+    { data: { id: "lessons", label: "lessons.json", type: "storage", files: ["memory/lessons.json"], description: "成功任务沉淀的可复用经验。" } },
+    { data: { id: "negative_rules", label: "negative_rules.json", type: "storage", files: ["memory/negative_rules.json"], description: "失败任务沉淀的负向规则。" } },
+    { data: { id: "skill_candidates", label: "skill_candidates.json", type: "storage", files: ["memory/skill_candidates.json"], description: "可能固化为 Skill 的候选。" } },
+    { data: { id: "user_profile", label: "user_profile.json", type: "storage", files: ["memory/user_profile.json"], description: "用户画像和偏好预留。" } },
+    { data: { id: "documents", label: "原始文档", type: "user", description: "用户提供的本地文档。" } },
+    { data: { id: "chunker", label: "rag/chunkers", type: "rag", files: ["rag/chunkers/"], description: "文档切片。" } },
+    { data: { id: "embedder", label: "rag/embeddings", type: "rag", files: ["rag/embeddings/"], description: "文本向量化。" } },
+    { data: { id: "sqlite_store", label: "SQLite 向量存储", type: "storage", files: ["rag/store/sqlite_store.py"], description: "向量持久化存储。" } },
+    { data: { id: "retrieval", label: "rag/retrieval", type: "rag", files: ["rag/retrieval/"], description: "向量检索。" } },
+    { data: { id: "generation", label: "rag/generation", type: "rag", files: ["rag/generation/"], description: "基于检索结果生成答案。" } },
+    { data: { id: "desktop_data", label: "~/.uta/", type: "storage", files: ["~/.uta/"], description: "桌面端运行数据目录。" } }
+  ],
+  edges: [
+    { data: { source: "agent_state", target: "state_files", description: "保存任务 state", classes: "data" } },
+    { data: { source: "agent_state", target: "log_files", description: "保存任务日志", classes: "data" } },
+    { data: { source: "agent_state", target: "task_history", description: "写入历史任务", classes: "data" } },
+    { data: { source: "agent_state", target: "lessons", description: "沉淀成功经验", classes: "data" } },
+    { data: { source: "agent_state", target: "negative_rules", description: "沉淀失败规则", classes: "data" } },
+    { data: { source: "agent_state", target: "skill_candidates", description: "生成 Skill 候选", classes: "data" } },
+    { data: { source: "agent_state", target: "user_profile", description: "更新用户画像", classes: "data" } },
+    { data: { source: "documents", target: "chunker", description: "文档进入切片" } },
+    { data: { source: "chunker", target: "embedder", description: "切片后嵌入" } },
+    { data: { source: "embedder", target: "sqlite_store", description: "向量入库", classes: "data" } },
+    { data: { source: "sqlite_store", target: "retrieval", description: "检索向量", classes: "data" } },
+    { data: { source: "retrieval", target: "generation", description: "检索结果生成答案" } },
+    { data: { source: "state_files", target: "desktop_data", description: "桌面端 state 存放到 ~/.uta/", classes: "data" } },
+    { data: { source: "log_files", target: "desktop_data", description: "桌面端日志存放到 ~/.uta/", classes: "data" } }
+  ]
+};
+```
+
+- [ ] **Step 4: Run test to verify it passes**
+
+Run: `pytest tests/test_architecture_html.py::test_data_flow_view_has_storage_nodes -v`
+
+Expected: PASS
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add docs/uta-architecture.html tests/test_architecture_html.py
+git commit -m "feat(arch): populate data and memory flow view"
+```
+
+---
+
+### Task 8: 本地打开验证与最终测试
+
+**Files:**
+- Modify: `docs/uta-architecture.html` (only if visual validation reveals issues)
+- Test: `tests/test_architecture_html.py`
+
+**Interfaces:**
+- Consumes: Final `docs/uta-architecture.html`.
+- Produces: Green test suite and manually verified browser rendering.
+
+- [ ] **Step 1: Run the full test suite**
+
+Run: `pytest tests/test_architecture_html.py -v`
+
+Expected: All tests PASS.
+
+- [ ] **Step 2: Open the HTML in the default browser**
+
+Run: `open docs/uta-architecture.html`
+
+Expected: Browser opens, Cytoscape canvas renders, toolbar buttons visible, default view is "整体模块".
+
+- [ ] **Step 3: Manual smoke checks**
+
+Verify in the browser:
+1. 点击 "Agent Loop" 按钮，视图切换为线性流程。
+2. 点击 "桌面端交互" 按钮，视图切换为桌面端相关节点。
+3. 点击 "数据流转" 按钮，视图切换为存储相关节点。
+4. 点击任意节点，右侧详情面板出现对应字段。
+5. 滚轮缩放、拖拽画布、拖拽节点正常工作。
+6. 点击 "适应屏幕" 按钮，图重置为完整可见。
+
+- [ ] **Step 4: Fix any issues found during smoke check**
+
+If layout is too cramped, adjust `cose` layout padding or add `minNodeSpacing`. If labels overlap, increase font size threshold or use `text-wrap: wrap`. If a node is missing from a view, add it to the corresponding `VIEWS` entry.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add docs/uta-architecture.html tests/test_architecture_html.py
+git commit -m "feat(arch): finalize interactive architecture diagram"
+```
+
+---
+
+## Self-Review
+
+**1. Spec coverage:**
+- 单个 HTML 文件输出 → Task 1。
+- 4 个视图切换 → Task 2 框架 + Tasks 4-7 数据。
+- 节点详情侧边栏 → Task 3。
+- 视觉编码（颜色/形状） → Task 3。
+- 无需 npm 依赖，CDN 加载 → Task 1。
+- 本地可打开 → Task 8。
+
+无遗漏。
+
+**2. Placeholder scan:**
+- 无 "TBD"、"TODO"。
+- 每个任务包含完整代码片段、测试命令和 commit 命令。
+- 节点数据在 Tasks 4-7 中完整给出。
+
+**3. Type consistency:**
+- `VIEWS` 结构在所有视图中一致：`{ label, nodes, edges }`。
+- `renderView(viewName)` 使用统一的视图键：`overview`、`agentLoop`、`desktop`、`dataFlow`。
+- 节点类名与 Task 3 样式选择器一致：`core`、`tool`、`memory`、`rag`、`desktop`、`api`、`llm`、`provider`、`skill`、`storage`、`user`、`step`。
+
+计划完整，可以进入执行阶段。
