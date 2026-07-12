@@ -52,9 +52,11 @@
             <div class="chatMessages" id="chatMessages"></div>
             <article class="report empty hidden" id="report">等待任务运行</article>
             <div class="chatComposer">
+              <div class="attachmentList hidden" id="attachmentList"></div>
               <textarea id="taskInput" spellcheck="false" rows="3" placeholder="继续提问或安排下一项任务"></textarea>
               <div class="composerToolbar">
                 <div>
+                  <button class="button ghost compact" type="button" id="attachFiles" title="添加附件">添加文件</button>
                   <button class="iconButton" type="button" id="loadExample" title="载入示例" aria-label="载入示例">＋</button>
                   <button class="iconButton" type="button" id="clearTask" title="清空输入" aria-label="清空输入">×</button>
                 </div>
@@ -178,7 +180,7 @@
                 <button class="button primary compact" type="button" id="kbIngestFilesBtn">导入文档</button>
                 <button class="button secondary compact" type="button" id="kbIngestFolderBtn">导入文件夹</button>
                 <button class="button secondary compact" type="button" id="kbRefreshBtn">刷新</button>
-                <span class="knowledgeIngestHint">支持 Markdown 和纯文本，可多选</span>
+                <span class="knowledgeIngestHint">支持 MD、TXT、PDF、DOCX，可多选</span>
               </div>
               <div class="knowledgeDocList" id="kbDocList"></div>
             </section>

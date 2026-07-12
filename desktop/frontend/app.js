@@ -32,6 +32,8 @@ const els = {
   statusText: document.getElementById("statusText"),
   taskIdLabel: document.getElementById("taskIdLabel"),
   taskInput: document.getElementById("taskInput"),
+  attachFiles: document.getElementById("attachFiles"),
+  attachmentList: document.getElementById("attachmentList"),
   runTask: document.getElementById("runTask"),
   resumeTask: document.getElementById("resumeTask"),
   stopTask: document.getElementById("stopTask"),
@@ -110,6 +112,7 @@ const state = {
   memoryArchiveTaskId: null,
   workspacePath: "",
   selectedText: "",
+  chatAttachments: [],
   taskEvidence: window.UTAShell.normalizeTaskEvidence({})
 };
 
@@ -219,6 +222,7 @@ function unlockComposerIfIdle() {
   els.taskInput.readOnly = false;
   els.runTask.disabled = false;
   els.resumeTask.disabled = false;
+  els.attachFiles.disabled = false;
 }
 
 function addTaskDiagnostic(taskId, source, message) {
@@ -313,6 +317,8 @@ function advanceConversationRevision() {
   state.conversationRevision += 1;
   state.messages = [];
   els.taskInput.value = "";
+  state.chatAttachments = [];
+  renderChatAttachments();
   resetRunSurface();
   setStatus("ready", "就绪");
 }
@@ -496,6 +502,43 @@ async function selectWorkspace() {
   } catch (error) {
     showToast("选择失败", error.message);
     return false;
+  }
+}
+
+function renderChatAttachments() {
+  const attachments = state.chatAttachments || [];
+  els.attachmentList.classList.toggle("hidden", !attachments.length);
+  els.attachmentList.innerHTML = attachments.map((item, index) => `
+    <span class="attachmentChip" title="${escapeHtml(item.path)}">
+      <span>${escapeHtml(item.name)}</span>
+      <button type="button" data-remove-attachment="${index}" title="移除附件" aria-label="移除附件 ${escapeHtml(item.name)}">×</button>
+    </span>
+  `).join("");
+  els.attachmentList.querySelectorAll("[data-remove-attachment]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.chatAttachments.splice(Number(button.dataset.removeAttachment), 1);
+      renderChatAttachments();
+    });
+  });
+}
+
+async function selectChatAttachments() {
+  if (runLifecycle.isBusy()) return;
+  try {
+    const result = await callApi("select_chat_files");
+    if (!result.ok) {
+      if (!result.cancelled) showToast("添加失败", result.error || "无法选择附件");
+      return;
+    }
+    for (const path of result.paths || []) {
+      if (state.chatAttachments.some((item) => item.path === path)) continue;
+      const normalized = String(path).replace(/\\/g, "/");
+      state.chatAttachments.push({ path, name: normalized.split("/").pop() || normalized });
+    }
+    state.chatAttachments = state.chatAttachments.slice(0, 5);
+    renderChatAttachments();
+  } catch (error) {
+    showToast("添加失败", error.message);
   }
 }
 
@@ -1268,6 +1311,7 @@ function resetRunSurface() {
   els.taskInput.readOnly = false;
   els.runTask.disabled = false;
   els.resumeTask.disabled = false;
+  els.attachFiles.disabled = false;
   state.taskId = null;
   state.taskEvidence = window.UTAShell.normalizeTaskEvidence({});
   els.planList.innerHTML = "";
@@ -1293,7 +1337,9 @@ async function runTask(options = {}) {
     return;
   }
 
-  const text = els.taskInput.value.trim();
+  const requestAttachments = (state.chatAttachments || []).map((item) => ({ ...item }));
+  let text = els.taskInput.value.trim();
+  if (!text && requestAttachments.length) text = "请阅读并概括附件内容。";
   if (!text) {
     showToast("请输入消息", "消息不能为空");
     return;
@@ -1302,7 +1348,7 @@ async function runTask(options = {}) {
   if (!workspaceRetry) {
     try {
       const requirements = await callApi("get_message_requirements", text);
-      if (requirements.workspace_required && !state.workspacePath) {
+      if (requirements.workspace_required && !state.workspacePath && !requestAttachments.length) {
         const selected = await selectWorkspace();
         if (!selected) return;
       }
@@ -1315,7 +1361,10 @@ async function runTask(options = {}) {
   const requestRevision = state.conversationRevision;
   const requestConversationId = state.conversationId;
   resetRunSurface();
-  const requestUser = addChatMessage("user", text, "completed");
+  const attachmentLabel = requestAttachments.length
+    ? `\n\n附件：${requestAttachments.map((item) => item.name).join("、")}`
+    : "";
+  const requestUser = addChatMessage("user", `${text}${attachmentLabel}`, "completed");
   const assistant = addChatMessage("assistant", "正在分析任务...", "running");
   const requestAssistant = assistant;
   const requestContext = runLifecycle.beginRequest({
@@ -1331,9 +1380,10 @@ async function runTask(options = {}) {
   els.taskInput.readOnly = true;
   els.runTask.disabled = true;
   els.resumeTask.disabled = true;
+  els.attachFiles.disabled = true;
 
   try {
-    const result = await callApi("run_chat_message", requestConversationId || "", text, requestContext.requestId);
+    const result = await callApi("run_chat_message", requestConversationId || "", text, requestContext.requestId, requestAttachments.map((item) => item.path));
     if (!result.ok) {
       const requestIsCurrent = runLifecycle.isCurrentRequest(requestContext.requestId);
       runLifecycle.finishRequest(requestContext.requestId);
@@ -1368,6 +1418,8 @@ async function runTask(options = {}) {
         return;
       }
       els.taskInput.value = "";
+      state.chatAttachments = [];
+      renderChatAttachments();
       setTaskPanelOpen(false);
       setStopTaskVisible(false);
       state.conversationId = result.conversation_id;
@@ -1389,6 +1441,8 @@ async function runTask(options = {}) {
     const requestIsStale = state.conversationRevision !== requestRevision;
     if (!requestIsStale) {
       els.taskInput.value = "";
+      state.chatAttachments = [];
+      renderChatAttachments();
       state.conversationId = binding.context.conversationId;
       state.taskId = binding.context.taskId;
       requestAssistant.taskId = binding.context.taskId;
@@ -1865,8 +1919,11 @@ function bindEvents() {
   els.loadExample.addEventListener("click", loadExample);
   els.clearTask.addEventListener("click", () => {
     els.taskInput.value = "";
+    state.chatAttachments = [];
+    renderChatAttachments();
     els.taskInput.focus();
   });
+  els.attachFiles.addEventListener("click", selectChatAttachments);
   els.clearLogs.addEventListener("click", () => {
     els.logPanel.innerHTML = "";
   });

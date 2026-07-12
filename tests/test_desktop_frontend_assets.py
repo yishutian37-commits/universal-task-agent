@@ -554,6 +554,22 @@ def test_frontend_calls_chat_bridge_methods_and_updates_messages():
     js = (FRONTEND_ROOT / "app.js").read_text(encoding="utf-8")
 
     assert 'callApi("run_chat_message"' in js
+
+
+def test_chat_composer_can_attach_local_documents_to_current_message():
+    html = (FRONTEND_ROOT / "index.html").read_text(encoding="utf-8")
+    js = (FRONTEND_ROOT / "app.js").read_text(encoding="utf-8")
+    css = (FRONTEND_ROOT / "style.css").read_text(encoding="utf-8")
+
+    assert 'id="attachFiles"' in html
+    assert 'id="attachmentList"' in html
+    assert 'callApi("select_chat_files")' in js
+    assert "function renderChatAttachments" in js
+    assert "requestAttachments.map((item) => item.path)" in js
+    assert "requirements.workspace_required && !state.workspacePath && !requestAttachments.length" in js
+    assert 'data-remove-attachment=' in js
+    assert ".attachmentList" in css
+    assert ".attachmentChip" in css
     assert 'callApi("sync_chat_result"' in js
     assert "function addChatMessage" in js
     assert "function updateAssistantForContext" in js
@@ -800,7 +816,7 @@ def test_knowledge_ingest_uses_native_file_and_folder_pickers():
     assert 'id="kbIngestPath"' not in html
     assert 'id="kbIngestFilesBtn"' in html
     assert 'id="kbIngestFolderBtn"' in html
-    assert "支持 Markdown 和纯文本，可多选" in html
+    assert "支持 MD、TXT、PDF、DOCX，可多选" in html
     assert 'callApi("select_knowledge_files")' in js
     assert 'callApi("select_knowledge_folder")' in js
     assert "async function ingestKnowledgePaths" in js

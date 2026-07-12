@@ -1722,6 +1722,42 @@ pre {
   color: var(--text);
 }
 
+.attachmentList {
+  padding: 10px 10px 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.attachmentChip {
+  min-width: 0;
+  max-width: 240px;
+  padding: 5px 6px 5px 9px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--panel-subtle);
+  font-size: 12px;
+}
+
+.attachmentChip > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.attachmentChip button {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 20px;
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+}
+
 .composerToolbar {
   padding: 0 8px 8px;
 }
