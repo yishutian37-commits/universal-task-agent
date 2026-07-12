@@ -884,3 +884,10 @@ def test_frontend_skill_workspace_can_run_core_evaluation_suite():
     assert 'id="runCoreEvaluation"' in html
     assert 'id="evaluationSummary"' in html
     assert 'callApi("run_core_evaluation")' in js
+
+
+def test_frontend_reports_keychain_warning_without_calling_it_workspace_error():
+    js = (FRONTEND_ROOT / "app.js").read_text(encoding="utf-8")
+
+    assert "settings.credential_warning" in js
+    assert 'showToast("钥匙串提示"' in js

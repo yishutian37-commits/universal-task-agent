@@ -20,6 +20,16 @@ class FakeCredentialStore:
         self.password = ""
 
 
+class FailingCredentialStore(FakeCredentialStore):
+    backend_name = "failing-keychain"
+
+    def get_password(self):
+        raise RuntimeError("钥匙串不可用")
+
+    def set_password(self, password):
+        raise RuntimeError("钥匙串不可用")
+
+
 def test_settings_store_saves_public_settings_without_exposing_key(tmp_path, monkeypatch):
     monkeypatch.setenv("UTA_HOME", str(tmp_path / "uta"))
     store = SettingsStore()
@@ -178,3 +188,21 @@ def test_settings_store_migrates_legacy_plaintext_key_to_credential_store(tmp_pa
     assert credentials.password == "legacy-secret"
     assert "llm_api_key" not in saved
     assert saved["llm_model"] == "legacy-model"
+
+
+def test_settings_store_keeps_legacy_key_usable_when_keychain_migration_fails(tmp_path):
+    config_path = tmp_path / "config.json"
+    config_path.write_text(
+        json.dumps({"llm_api_key": "legacy-secret", "workspace_path": ""}),
+        encoding="utf-8",
+    )
+    store = SettingsStore(config_path=config_path, credential_store=FailingCredentialStore())
+
+    loaded = store.load()
+    store.save({"llm_model": "new-model"})
+    saved = json.loads(config_path.read_text(encoding="utf-8"))
+
+    assert loaded["llm_api_key"] == "legacy-secret"
+    assert store.public_settings()["has_api_key"] is True
+    assert "钥匙串不可用" in store.public_settings()["credential_warning"]
+    assert saved["llm_api_key"] == "legacy-secret"

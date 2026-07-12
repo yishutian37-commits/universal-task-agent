@@ -633,6 +633,9 @@ async function loadSettings() {
     updateKeyState(settings);
     updateDangerousToolsStatus(settings);
     els.bridgeState.textContent = "已连接";
+    if (settings.credential_warning) {
+      showToast("钥匙串提示", settings.credential_warning);
+    }
   } catch (error) {
     els.bridgeState.textContent = "未连接";
     showToast("桌面桥未就绪", error.message);

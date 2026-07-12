@@ -28,7 +28,7 @@ class MacOSKeychainCredentialStore:
             return
         self._run(
             ["add-generic-password", "-a", self.account, "-s", self.service, "-U", "-w"],
-            input_text=value + "\n",
+            input_text=f"{value}\n{value}\n",
         )
 
     def delete_password(self) -> None:

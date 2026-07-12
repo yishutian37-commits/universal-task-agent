@@ -31,23 +31,26 @@ class SettingsStore:
     def __init__(self, config_path: Path | str | None = None, credential_store=None):
         self.config_path = Path(config_path) if config_path is not None else uta_home() / "config.json"
         self.credential_store = credential_store or create_credential_store(self.config_path)
+        self._credential_warning = ""
+        self._legacy_key_pending = ""
+        self._migration_attempted = False
 
     def load(self) -> dict[str, Any]:
         if not self.config_path.exists():
             settings = dict(DEFAULT_SETTINGS)
-            settings["llm_api_key"] = self.credential_store.get_password()
+            settings["llm_api_key"] = self._read_credential_password()
             return settings
 
         try:
             payload = json.loads(self.config_path.read_text(encoding="utf-8"))
         except json.JSONDecodeError:
             settings = dict(DEFAULT_SETTINGS)
-            settings["llm_api_key"] = self.credential_store.get_password()
+            settings["llm_api_key"] = self._read_credential_password()
             return settings
 
         if not isinstance(payload, dict):
             settings = dict(DEFAULT_SETTINGS)
-            settings["llm_api_key"] = self.credential_store.get_password()
+            settings["llm_api_key"] = self._read_credential_password()
             return settings
 
         settings = dict(DEFAULT_SETTINGS)
@@ -55,12 +58,23 @@ class SettingsStore:
             if key in payload:
                 settings[key] = payload[key]
         legacy_key = str(payload.get("llm_api_key") or "").strip()
-        stored_key = self.credential_store.get_password()
+        stored_key = self._read_credential_password()
         if legacy_key:
-            self.credential_store.set_password(legacy_key)
             stored_key = legacy_key
-            if getattr(self.credential_store, "backend_name", "") != "memory":
-                self._write_settings(settings)
+            self._legacy_key_pending = legacy_key
+            if not self._migration_attempted:
+                self._migration_attempted = True
+                try:
+                    self.credential_store.set_password(legacy_key)
+                except Exception as exc:
+                    self._credential_warning = f"API Key 暂时无法迁移到 macOS 钥匙串：{exc}"
+                else:
+                    if getattr(self.credential_store, "backend_name", "") != "memory":
+                        self._legacy_key_pending = ""
+                        self._credential_warning = ""
+                        self._write_settings(settings)
+        else:
+            self._legacy_key_pending = ""
         settings["llm_api_key"] = stored_key
         settings["llm_ssl_verify"] = self._to_bool(settings["llm_ssl_verify"])
         settings["memory_compression_enabled"] = self._to_bool(settings["memory_compression_enabled"])
@@ -90,11 +104,16 @@ class SettingsStore:
         if payload.get("clear_api_key") is True:
             self.credential_store.delete_password()
             settings["llm_api_key"] = ""
+            self._legacy_key_pending = ""
+            self._credential_warning = ""
         else:
             api_key = payload.get("llm_api_key")
             if isinstance(api_key, str) and api_key.strip():
                 self.credential_store.set_password(api_key.strip())
                 settings["llm_api_key"] = api_key.strip()
+                self._legacy_key_pending = ""
+                self._migration_attempted = True
+                self._credential_warning = ""
 
         if "llm_ssl_verify" in payload:
             settings["llm_ssl_verify"] = self._to_bool(payload["llm_ssl_verify"])
@@ -151,6 +170,7 @@ class SettingsStore:
             "llm_ssl_verify": settings["llm_ssl_verify"],
             "has_api_key": bool(settings["llm_api_key"]),
             "credential_backend": str(getattr(self.credential_store, "backend_name", "unknown")),
+            "credential_warning": self._credential_warning,
             "memory_compression_enabled": settings["memory_compression_enabled"],
             "memory_context_window_tokens": settings["memory_context_window_tokens"],
             "memory_compression_trigger_ratio": settings["memory_compression_trigger_ratio"],
@@ -199,8 +219,18 @@ class SettingsStore:
         workspace = Path(text).expanduser().resolve()
         return str(workspace) if workspace.is_dir() else ""
 
+    def _read_credential_password(self) -> str:
+        try:
+            return str(self.credential_store.get_password() or "")
+        except Exception as exc:
+            if not self._legacy_key_pending:
+                self._credential_warning = f"暂时无法读取 macOS 钥匙串：{exc}"
+            return ""
+
     def _write_settings(self, settings: dict[str, Any]) -> None:
         public_settings = {key: value for key, value in settings.items() if key != "llm_api_key"}
+        if self._legacy_key_pending:
+            public_settings["llm_api_key"] = self._legacy_key_pending
         self.config_path.parent.mkdir(parents=True, exist_ok=True)
         self.config_path.write_text(
             json.dumps(public_settings, ensure_ascii=False, indent=2) + "\n",

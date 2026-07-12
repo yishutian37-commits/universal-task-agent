@@ -77,6 +77,19 @@ class FakeDialogWindow:
         return self.selected_paths
 
 
+class FailingCredentialStore:
+    backend_name = "failing-keychain"
+
+    def get_password(self):
+        raise RuntimeError("钥匙串不可用")
+
+    def set_password(self, password):
+        raise RuntimeError("钥匙串不可用")
+
+    def delete_password(self):
+        raise RuntimeError("钥匙串不可用")
+
+
 class FakeEventWindow:
     def __init__(self):
         self.scripts = []
@@ -577,6 +590,25 @@ def test_desktop_api_workspace_selection_cancel_keeps_existing_workspace(tmp_pat
 
     assert result == {"ok": False, "cancelled": True, "workspace_path": str(workspace.resolve())}
     assert api.get_settings()["workspace_path"] == str(workspace.resolve())
+
+
+def test_desktop_api_workspace_selection_survives_keychain_migration_failure(tmp_path):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    config_path = tmp_path / "config.json"
+    config_path.write_text(json.dumps({"llm_api_key": "legacy-secret"}), encoding="utf-8")
+    settings_store = SettingsStore(
+        config_path=config_path,
+        credential_store=FailingCredentialStore(),
+    )
+    api = DesktopAPI(settings_store=settings_store, runner=FakeRunner())
+    api.bind_window(FakeDialogWindow([str(workspace)]))
+
+    result = api.select_workspace()
+
+    assert result == {"ok": True, "workspace_path": str(workspace.resolve())}
+    assert api.get_settings()["has_api_key"] is True
+    assert "钥匙串不可用" in api.get_settings()["credential_warning"]
 
 
 def test_desktop_api_selects_multiple_supported_knowledge_files(tmp_path, monkeypatch):
