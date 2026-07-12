@@ -65,7 +65,27 @@
     const VIEWS = {
       overview: {
         label: "整体模块",
-        layout: { name: "cose", padding: 40, nodeRepulsion: 800000, idealEdgeLength: 120, componentSpacing: 120, nestingFactor: 1.2 },
+        layout: {
+          name: "concentric",
+          padding: 60,
+          fit: true,
+          avoidOverlap: true,
+          nodeDimensionsIncludeLabels: true,
+          concentric: function(ele) {
+            const levels = {
+              core: 10,
+              main: 6, api_server: 6, desktop: 6,
+              desktop_api: 5,
+              tools: 3, llm: 3, skills: 3, rag: 3, memory: 3, outputs: 3,
+              user: 1,
+              search_providers: 2, weather_providers: 2
+            };
+            return levels[ele.id()] || 2;
+          },
+          levelWidth: function() { return 1; },
+          animate: true,
+          animationDuration: 400
+        },
         nodes: [
           { data: { id: "user", label: "用户", type: "user", description: "通过命令行、API 或桌面端输入任务。" } },
           { data: { id: "main", label: "命令行入口\nmain.py", type: "api", files: ["main.py"], description: "命令行入口，组装 Agent 组件并启动任务。" } },
@@ -217,7 +237,7 @@
         { selector: "node.storage", style: { "background-color": COLORS.storage, "shape": "cylinder", "color": "#fff", "text-outline-color": "rgba(0,0,0,0.4)" } },
         { selector: "node.user", style: { "background-color": COLORS.user, "shape": "diamond" } },
         { selector: "node.step", style: { "background-color": COLORS.step, "shape": "hexagon" } },
-        { selector: "edge", style: { "width": 2.5, "target-arrow-shape": "triangle", "curve-style": "bezier", "line-color": "#94a3b8", "target-arrow-color": "#94a3b8", "label": "data(description)", "font-size": "11px", "color": "#475569", "text-background-color": "#f8f9fa", "text-background-opacity": 0.9, "text-background-padding": "3px", "text-background-shape": "roundrectangle" } },
+        { selector: "edge", style: { "width": 2.5, "target-arrow-shape": "triangle", "curve-style": "bezier", "line-color": "#94a3b8", "target-arrow-color": "#94a3b8", "label": "data(description)", "font-size": "11px", "font-weight": "500", "color": "#334155", "text-background-color": "#ffffff", "text-background-opacity": 1, "text-background-padding": "4px", "text-background-shape": "roundrectangle", "text-border-width": 1, "text-border-color": "#e2e8f0", "text-border-opacity": 1, "text-margin-y": -4, "z-index": 10 } },
         { selector: "edge.data", style: { "line-style": "dashed", "line-color": "#64748b", "target-arrow-color": "#64748b" } },
         { selector: "edge.bidirectional", style: { "target-arrow-shape": "triangle", "source-arrow-shape": "triangle" } },
         { selector: ":selected", style: { "border-width": 4, "border-color": "#f59e0b" } }
