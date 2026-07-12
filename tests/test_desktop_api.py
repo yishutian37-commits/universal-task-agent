@@ -70,6 +70,14 @@ class FakeDialogWindow:
         return self.selected_paths
 
 
+class FakeEventWindow:
+    def __init__(self):
+        self.scripts = []
+
+    def evaluate_js(self, script):
+        self.scripts.append(script)
+
+
 class FakeHistoryStore:
     def __init__(self):
         self.listed = False
@@ -143,6 +151,33 @@ class FakeChatClient:
         if isinstance(self.response, list):
             return self.response.pop(0)
         return self.response
+
+
+class FakeStructuredChatClient:
+    def __init__(self, route_payload, chat_response="不应再次调用普通聊天"):
+        self.route_payload = route_payload
+        self.chat_response = chat_response
+        self.structured_calls = []
+        self.chat_calls = []
+
+    def chat_json(self, system_prompt, user_prompt, schema=None):
+        self.structured_calls.append((system_prompt, user_prompt, schema))
+        return dict(self.route_payload)
+
+    def chat(self, system_prompt, user_prompt):
+        self.chat_calls.append((system_prompt, user_prompt))
+        return self.chat_response
+
+
+class FakeStreamingStructuredChatClient(FakeStructuredChatClient):
+    def __init__(self, route_payload, chunks):
+        super().__init__(route_payload)
+        self.chunks = list(chunks)
+        self.stream_calls = []
+
+    def chat_stream(self, system_prompt, user_prompt):
+        self.stream_calls.append((system_prompt, user_prompt))
+        yield from self.chunks
 
 
 def test_desktop_runner_generate_task_id_uses_microseconds_to_avoid_same_second_collisions(monkeypatch):
@@ -730,6 +765,127 @@ def test_desktop_api_general_chat_uses_llm_without_starting_runner(tmp_path, mon
     assert "学习型 Agent" in chat_client.calls[0][0]
     assert "我想学习 AI" in chat_client.calls[0][1]
     assert conversation["messages"][1]["content"] == "我的建议是先从一个小项目开始。"
+
+
+def test_desktop_api_uses_model_route_for_ambiguous_task(tmp_path, monkeypatch):
+    monkeypatch.setenv("UTA_HOME", str(tmp_path / "uta"))
+    runner = FakeRunner()
+    client = FakeStructuredChatClient(
+        {"kind": "task", "reason": "需要处理工作区材料", "confidence": 0.9, "reply": ""}
+    )
+    api = DesktopAPI(
+        settings_store=SettingsStore(),
+        runner=runner,
+        conversation_store=ConversationStore(tmp_path / "conversations"),
+        chat_client=client,
+    )
+    api.save_settings({"llm_api_key": "secret-key", "workspace_path": str(tmp_path)})
+
+    result = api.run_chat_message("", "把这些材料处理一下")
+
+    assert result["ok"] is True
+    assert result["task_id"] == "task_fake"
+    assert result["route"]["source"] == "model"
+    assert runner.started_display_inputs == ["把这些材料处理一下"]
+    assert len(client.structured_calls) == 1
+    assert client.chat_calls == []
+
+
+def test_desktop_api_reuses_model_route_reply_for_general_chat(tmp_path, monkeypatch):
+    monkeypatch.setenv("UTA_HOME", str(tmp_path / "uta"))
+    runner = FakeRunner()
+    client = FakeStructuredChatClient(
+        {"kind": "chat", "reason": "创意讨论", "confidence": 0.87, "reply": "可以叫星河计划。"}
+    )
+    conversation_store = ConversationStore(tmp_path / "conversations")
+    api = DesktopAPI(
+        settings_store=SettingsStore(),
+        runner=runner,
+        conversation_store=conversation_store,
+        chat_client=client,
+    )
+    api.save_settings({"llm_api_key": "secret-key"})
+
+    result = api.run_chat_message("", "帮我想一个项目名字")
+    conversation = conversation_store.get_conversation(result["conversation_id"])["conversation"]
+
+    assert result["ok"] is True
+    assert result["direct"] is True
+    assert result["message"] == "可以叫星河计划。"
+    assert result["route"]["kind"] == "chat"
+    assert len(client.structured_calls) == 1
+    assert client.chat_calls == []
+    assert runner.started_inputs == []
+    assert conversation["messages"][1]["content"] == "可以叫星河计划。"
+
+
+def test_desktop_api_streams_general_chat_through_versioned_desktop_events(tmp_path, monkeypatch):
+    monkeypatch.setenv("UTA_HOME", str(tmp_path / "uta"))
+    client = FakeStreamingStructuredChatClient(
+        {"kind": "chat", "reason": "普通问答", "confidence": 0.92, "reply": "完整备用回复"},
+        ["你", "好", "。"],
+    )
+    window = FakeEventWindow()
+    api = DesktopAPI(
+        settings_store=SettingsStore(),
+        runner=FakeRunner(),
+        conversation_store=ConversationStore(tmp_path / "conversations"),
+        chat_client=client,
+    )
+    api.bind_window(window)
+    api.save_settings({"llm_api_key": "secret-key"})
+
+    result = api.run_chat_message("", "你好", "request_1")
+    events = [
+        json.loads(script.split("window.onDesktopEvent(", 1)[1].rsplit(");", 1)[0])
+        for script in window.scripts
+        if "window.onDesktopEvent(" in script
+    ]
+
+    assert result["ok"] is True
+    assert result["message"] == "你好。"
+    assert len(client.structured_calls) == 1
+    assert len(client.stream_calls) == 1
+    assert client.chat_calls == []
+    assert [event["type"] for event in events] == [
+        "assistant_started",
+        "assistant_delta",
+        "assistant_delta",
+        "assistant_delta",
+        "assistant_completed",
+    ]
+    assert all(event["version"] == 1 for event in events)
+    assert all(event["conversation_id"] == result["conversation_id"] for event in events)
+    assert [event["data"].get("delta") for event in events[1:4]] == ["你", "好", "。"]
+    assert all(event["data"]["request_id"] == "request_1" for event in events)
+
+
+def test_desktop_api_safety_overrides_model_chat_for_file_delete(tmp_path, monkeypatch):
+    monkeypatch.setenv("UTA_HOME", str(tmp_path / "uta"))
+    runner = FakeRunner()
+    client = FakeStructuredChatClient(
+        {"kind": "chat", "reason": "可以直接回答", "confidence": 0.99, "reply": "已经删除。"}
+    )
+    api = DesktopAPI(
+        settings_store=SettingsStore(),
+        runner=runner,
+        conversation_store=ConversationStore(tmp_path / "conversations"),
+        chat_client=client,
+    )
+    api.save_settings(
+        {
+            "llm_api_key": "secret-key",
+            "workspace_path": str(tmp_path),
+            "dangerous_tools_enabled": True,
+        }
+    )
+
+    result = api.run_chat_message("", "删除文件 notes.txt")
+
+    assert result["ok"] is True
+    assert result["route"]["source"] == "safety"
+    assert runner.started_display_inputs == ["删除文件 notes.txt"]
+    assert client.chat_calls == []
 
 
 def test_desktop_api_general_chat_includes_same_conversation_context(tmp_path, monkeypatch):

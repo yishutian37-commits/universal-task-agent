@@ -111,6 +111,23 @@ def test_frontend_binds_and_replays_events_that_arrive_before_api_return():
     assert "terminalTaskIds" not in js
 
 
+def test_frontend_passes_request_identity_and_renders_assistant_deltas():
+    js = (FRONTEND_ROOT / "app.js").read_text(encoding="utf-8")
+
+    run_start = js.index("async function runTask")
+    run_end = js.index("async function resumeTask", run_start)
+    run = js[run_start:run_end]
+    assert '"run_chat_message"' in run
+    assert "requestConversationId || \"\"" in run
+    assert "requestContext.requestId" in run
+    assert "function handleDesktopEvent(event)" in js
+    assert "runLifecycle.routeAssistantEvent(event)" in js
+    assert 'event.type === "assistant_started"' in js
+    assert 'event.type === "assistant_delta"' in js
+    assert 'event.type === "assistant_completed"' in js
+    assert "window.onDesktopEvent = handleDesktopEvent;" in js
+
+
 def test_frontend_routes_events_before_any_visible_task_update():
     js = (FRONTEND_ROOT / "app.js").read_text(encoding="utf-8")
     progress_start = js.index("async function handleProgress")
@@ -688,6 +705,21 @@ def test_frontend_requires_workspace_for_tasks_and_can_open_native_folder_picker
     assert 'els.workspaceSelector.addEventListener("click", selectWorkspace);' in js
     assert 'showToast("任务运行中", "请先停止当前任务再切换工作区");' in js
     assert "text-overflow: ellipsis" in css_rule(css, ".workspaceSelector")
+
+
+def test_frontend_retries_once_when_model_route_discovers_workspace_requirement():
+    js = (FRONTEND_ROOT / "app.js").read_text(encoding="utf-8")
+    run_start = js.index("async function runTask")
+    run_end = js.index("async function resumeTask", run_start)
+    run = js[run_start:run_end]
+
+    assert "result.open_workspace" in run
+    assert "runLifecycle.finishRequest(requestContext.requestId)" in run
+    assert "await selectWorkspace()" in run
+    assert "state.messages = state.messages.filter" in run
+    assert "await runTask({ workspaceRetry: true })" in run
+    assert "const workspaceRetry" in run
+    assert "result.open_workspace && !workspaceRetry" in run
 
 
 def test_frontend_messages_are_selectable_and_have_copy_action():

@@ -38,6 +38,35 @@ def test_requesting_phase_rejects_a_second_request_before_api_return():
     )
 
 
+def test_assistant_stream_events_route_only_to_the_active_request():
+    run_node(
+        """
+        const assert = require("node:assert/strict");
+        const { createRunLifecycle } = require("./desktop/frontend/shell.js");
+        const lifecycle = createRunLifecycle();
+        const request = lifecycle.beginRequest({
+          conversationId: "conversation-a",
+          conversationRevision: 3,
+          assistantId: "assistant-a"
+        });
+
+        const routed = lifecycle.routeAssistantEvent({
+          type: "assistant_delta",
+          conversation_id: "conversation-a",
+          data: { request_id: request.requestId, delta: "你" }
+        });
+        const stale = lifecycle.routeAssistantEvent({
+          type: "assistant_delta",
+          data: { request_id: "request-stale", delta: "旧" }
+        });
+
+        assert.equal(routed.disposition, "visible");
+        assert.equal(routed.context.assistantId, "assistant-a");
+        assert.equal(stale.disposition, "ignored");
+        """
+    )
+
+
 def test_early_events_are_buffered_by_task_until_the_api_binds_context():
     run_node(
         """

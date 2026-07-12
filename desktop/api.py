@@ -8,7 +8,9 @@ from typing import Any
 from core.intent_rules import looks_like_dangerous_tool_request, looks_like_desktop_directory_request
 from desktop.chat_router import chat_route_kind
 from desktop.conversation_store import ConversationStore
+from desktop.events import desktop_event
 from desktop.history_store import HistoryStore
+from desktop.message_router import MessageRouter, RouteDecision
 from desktop.memory_compression import CompressionPolicy, estimate_tokens, parse_compression_result
 from desktop.memory_store import MemoryStore
 from desktop.paths import resource_path, uta_home
@@ -29,6 +31,7 @@ class DesktopAPI:
         skill_store: SkillStore | None = None,
         conversation_store: ConversationStore | None = None,
         chat_client=None,
+        message_router: MessageRouter | None = None,
         skills_root=None,
     ):
         self.settings_store = settings_store if settings_store is not None else SettingsStore()
@@ -41,6 +44,7 @@ class DesktopAPI:
             conversation_store if conversation_store is not None else ConversationStore(uta_home() / "conversations")
         )
         self.chat_client = chat_client
+        self.message_router = message_router if message_router is not None else MessageRouter()
         self.window = None
 
     def bind_window(self, window) -> None:
@@ -366,19 +370,47 @@ class DesktopAPI:
         except Exception as exc:
             return {"ok": False, "error": str(exc)}
 
-    def run_chat_message(self, conversation_id: str, user_input: str) -> dict[str, Any]:
+    def run_chat_message(self, conversation_id: str, user_input: str, request_id: str = "") -> dict[str, Any]:
         text = str(user_input or "").strip()
         if not text:
             return {"ok": False, "error": "请输入消息内容"}
 
-        route_kind = chat_route_kind(text)
-        if route_kind in {"chat", "direct"}:
-            if not self.settings_store.public_settings()["has_api_key"]:
-                return {"ok": False, "error": "普通聊天需要先配置 API Key"}
+        if not self.settings_store.public_settings()["has_api_key"]:
+            return {"ok": False, "error": "请先配置 API Key"}
+        try:
+            client = self._get_chat_client()
+            context = self._conversation_context_for_prompt(conversation_id)
+            route_context = self._route_context(context)
+            route = self.message_router.route(text, context=route_context, client=client)
+        except Exception:
+            route = RouteDecision(
+                kind="task" if chat_route_kind(text) == "task" else "chat",
+                reason="模型路由初始化失败，已使用本地兼容规则",
+                confidence=0.5,
+                source="fallback",
+            )
+            client = self.chat_client
+
+        route_payload = {
+            "kind": route.kind,
+            "reason": route.reason,
+            "confidence": route.confidence,
+            "source": route.source,
+        }
+        if route.kind == "chat":
             try:
                 conversation_id = self._ensure_conversation_id(conversation_id)
-                context = self._conversation_context_for_prompt(conversation_id)
-                answer = self._run_general_chat(text, context=context)
+                stream = getattr(client, "chat_stream", None)
+                if request_id and callable(stream):
+                    answer = self._run_general_chat_stream(
+                        text,
+                        context=context,
+                        client=client,
+                        conversation_id=conversation_id,
+                        request_id=request_id,
+                    )
+                else:
+                    answer = route.reply or self._run_general_chat(text, context=context, client=client)
                 self.conversation_store.append_message(conversation_id, role="user", content=text)
                 self.conversation_store.append_message(
                     conversation_id,
@@ -396,12 +428,11 @@ class DesktopAPI:
                     "task_id": None,
                     "message": answer,
                     "compression": compression,
+                    "route": route_payload,
                 }
             except Exception as exc:
                 return {"ok": False, "error": str(exc)}
 
-        if not self.settings_store.public_settings()["has_api_key"]:
-            return {"ok": False, "error": "请先配置 API Key"}
         disabled = self._dangerous_tools_disabled_response(text)
         if disabled is not None:
             return disabled
@@ -429,7 +460,12 @@ class DesktopAPI:
                 task_id=task_id,
                 status="running",
             )
-            return {"ok": True, "conversation_id": conversation_id, "task_id": task_id}
+            return {
+                "ok": True,
+                "conversation_id": conversation_id,
+                "task_id": task_id,
+                "route": route_payload,
+            }
         except Exception as exc:
             return {"ok": False, "error": str(exc)}
 
@@ -486,20 +522,77 @@ class DesktopAPI:
         except (OSError, UnicodeDecodeError, ValueError):
             return ""
 
-    def _run_general_chat(self, text: str, *, context: str = "") -> str:
+    def _get_chat_client(self):
         self.settings_store.apply_to_environment()
+        if self.chat_client is not None:
+            return self.chat_client
+        from llm.llm_client import LLMClient
+
+        return LLMClient.from_config()
+
+    def _route_context(self, context: str) -> str:
+        workspace_path = str(self.settings_store.public_settings().get("workspace_path") or "")
+        workspace_context = (
+            f"当前工作区：{workspace_path}"
+            if workspace_path
+            else "当前尚未选择工作区"
+        )
+        return "\n\n".join(part for part in (workspace_context, context) if part)
+
+    def _run_general_chat(self, text: str, *, context: str = "", client=None) -> str:
+        if client is None:
+            client = self._get_chat_client()
+        return client.chat(
+            self._general_chat_system_prompt(),
+            _with_conversation_context(text, context),
+        )
+
+    def _run_general_chat_stream(
+        self,
+        text: str,
+        *,
+        context: str,
+        client,
+        conversation_id: str,
+        request_id: str,
+    ) -> str:
+        self._emit_desktop_event(
+            "assistant_started",
+            conversation_id=conversation_id,
+            data={"request_id": request_id},
+        )
+        chunks: list[str] = []
+        for chunk in client.chat_stream(
+            self._general_chat_system_prompt(),
+            _with_conversation_context(text, context),
+        ):
+            delta = str(chunk or "")
+            if not delta:
+                continue
+            chunks.append(delta)
+            self._emit_desktop_event(
+                "assistant_delta",
+                conversation_id=conversation_id,
+                data={"request_id": request_id, "delta": delta},
+            )
+        answer = "".join(chunks).strip()
+        if not answer:
+            raise RuntimeError("模型流式回复为空")
+        self._emit_desktop_event(
+            "assistant_completed",
+            conversation_id=conversation_id,
+            data={"request_id": request_id, "content": answer},
+        )
+        return answer
+
+    def _general_chat_system_prompt(self) -> str:
         workspace_path = str(self.settings_store.public_settings().get("workspace_path") or "")
         workspace_prompt = (
             f"当前工作区：{workspace_path}。用户询问当前目录时必须准确回答这个路径。"
             if workspace_path
             else "当前尚未选择工作区。用户询问当前目录时要明确说明尚未选择。"
         )
-        client = self.chat_client
-        if client is None:
-            from llm.llm_client import LLMClient
-
-            client = LLMClient.from_config()
-        return client.chat(
+        return (
             "你是 UTA Desktop 的本地对话助手。"
             "你服务于一个学习型 Agent 应用，回答要简洁、中文、可执行。"
             "你必须诚实说明能力边界：当前版本不能控制鼠标或键盘，也不能打开或控制其他本地应用。"
@@ -509,9 +602,29 @@ class DesktopAPI:
             "项目代码阅读、RAG 知识库、GEO 分析和历史任务查询。"
             f"{workspace_prompt}"
             "如果用户要求控制桌面界面或其他未接入的本机操作，要明确说不能直接执行，并给出可替代的手动步骤或需要接入的能力。"
-            "如果用户提出明确且已支持的任务，提醒用户可以直接发送任务让 Agent 拆解执行。",
-            _with_conversation_context(text, context),
+            "如果用户提出明确且已支持的任务，提醒用户可以直接发送任务让 Agent 拆解执行。"
         )
+
+    def _emit_desktop_event(
+        self,
+        event_type: str,
+        *,
+        conversation_id: str = "",
+        task_id: str = "",
+        data: dict[str, Any] | None = None,
+    ) -> None:
+        if self.window is None:
+            return
+        event = desktop_event(
+            {"type": event_type, "task_id": task_id, "data": data or {}},
+            conversation_id=conversation_id,
+            task_id=task_id,
+        )
+        payload = json.dumps(event, ensure_ascii=False)
+        try:
+            self.window.evaluate_js(f"window.onDesktopEvent && window.onDesktopEvent({payload});")
+        except Exception:
+            return
 
     def sync_chat_result(self, conversation_id: str, task_id: str) -> dict[str, Any]:
         try:

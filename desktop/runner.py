@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from core.checkpoint_store import CheckpointStore
+from desktop.events import desktop_event
 from desktop.paths import resource_path, uta_home
 from desktop.settings_store import SettingsStore
 from tools.authorization import AuthorizationManager
@@ -55,6 +56,7 @@ class TaskRunner:
         self._running_task_id: str | None = None
         self._cancel_event = threading.Event()
         self._results: dict[str, dict[str, Any]] = {}
+        self._task_contexts: dict[str, dict[str, str]] = {}
 
     def bind_window(self, window) -> None:
         self.window = window
@@ -80,6 +82,10 @@ class TaskRunner:
                 "state": None,
                 "events": [],
                 "error": None,
+            }
+            self._task_contexts[task_id] = {
+                "conversation_id": str(conversation_id or ""),
+                "workspace_path": str(workspace_path or ""),
             }
 
         thread = threading.Thread(
@@ -115,6 +121,10 @@ class TaskRunner:
                 "state": checkpoint.to_dict(),
                 "events": [],
                 "error": None,
+            }
+            self._task_contexts[checkpoint.task_id] = {
+                "conversation_id": str(checkpoint.conversation_id or ""),
+                "workspace_path": str(checkpoint.workspace_path or ""),
             }
 
         thread = threading.Thread(
@@ -280,6 +290,12 @@ class TaskRunner:
     def _emit_progress_safely(self, event: dict[str, Any]) -> None:
         """推送事件但不检查取消标志（用于 cancelled/error 事件自身）。"""
         task_id = str(event.get("task_id", ""))
+        context = self._task_contexts.get(task_id, {})
+        event = desktop_event(
+            event,
+            task_id=task_id,
+            conversation_id=str(context.get("conversation_id") or ""),
+        )
         with self._lock:
             if task_id in self._results:
                 self._results[task_id]["events"].append(event)

@@ -48,6 +48,57 @@ def test_chat_uses_injected_transport_and_returns_content():
     assert client.chat("sys", "user") == "hello"
 
 
+def test_chat_stream_uses_injected_stream_transport_and_yields_deltas():
+    captured = {}
+
+    def fake_stream_transport(endpoint, headers, payload, timeout):
+        captured.update(endpoint=endpoint, headers=headers, payload=payload, timeout=timeout)
+        yield "你"
+        yield "好"
+
+    client = LLMClient(
+        api_key="key",
+        model="mimo-v2.5-pro",
+        base_url="http://example.com/v1",
+        stream_transport=fake_stream_transport,
+    )
+
+    assert list(client.chat_stream("sys", "user")) == ["你", "好"]
+    assert captured["payload"]["stream"] is True
+    assert captured["payload"]["messages"][1]["content"] == "user"
+
+
+def test_chat_stream_falls_back_to_complete_reply_before_any_delta():
+    def eof_stream_transport(endpoint, headers, payload, timeout):
+        del endpoint, headers, payload, timeout
+        raise LLMClientError("LLM network error: UNEXPECTED_EOF_WHILE_READING")
+        yield "unreachable"
+
+    def eof_transport(endpoint, headers, payload, timeout):
+        raise LLMClientError("LLM network error: UNEXPECTED_EOF_WHILE_READING")
+
+    def fallback_transport(endpoint, headers, payload, timeout):
+        return {"choices": [{"message": {"content": "完整回退"}}]}
+
+    client = LLMClient(
+        api_key="key",
+        model="mimo-v2.5-pro",
+        base_url="https://example.com/v1",
+        transport=eof_transport,
+        fallback_transport=fallback_transport,
+        stream_transport=eof_stream_transport,
+    )
+
+    assert list(client.chat_stream("sys", "user")) == ["完整回退"]
+
+
+def test_parse_stream_line_reads_sse_delta_and_done_marker():
+    client = LLMClient(api_key="key", model="m", base_url="http://example.com/v1")
+
+    assert client._parse_stream_line('data: {"choices":[{"delta":{"content":"片段"}}]}') == "片段"
+    assert client._parse_stream_line("data: [DONE]") is None
+
+
 def test_default_transport_can_disable_ssl_verification(monkeypatch):
     captured = {}
 

@@ -204,6 +204,12 @@ function isRunContextVisible(context) {
   return !context.conversationId || state.conversationId === context.conversationId;
 }
 
+function isRequestContextVisible(context) {
+  if (!context || !runLifecycle.isCurrentRequest(context.requestId)) return false;
+  if (state.conversationRevision !== context.conversationRevision) return false;
+  return !context.conversationId || state.conversationId === context.conversationId;
+}
+
 function unlockComposerIfIdle() {
   if (runLifecycle.isBusy()) return;
   els.taskInput.readOnly = false;
@@ -1214,7 +1220,8 @@ function resetRunSurface() {
   renderTaskEvidence();
 }
 
-async function runTask() {
+async function runTask(options = {}) {
+  const workspaceRetry = options && options.workspaceRetry === true;
   if (runLifecycle.isBusy()) {
     showToast("任务运行中", "当前版本一次只运行一个任务");
     return;
@@ -1226,21 +1233,23 @@ async function runTask() {
     return;
   }
 
-  try {
-    const requirements = await callApi("get_message_requirements", text);
-    if (requirements.workspace_required && !state.workspacePath) {
-      const selected = await selectWorkspace();
-      if (!selected) return;
+  if (!workspaceRetry) {
+    try {
+      const requirements = await callApi("get_message_requirements", text);
+      if (requirements.workspace_required && !state.workspacePath) {
+        const selected = await selectWorkspace();
+        if (!selected) return;
+      }
+    } catch (error) {
+      showToast("无法检查工作区", error.message);
+      return;
     }
-  } catch (error) {
-    showToast("无法检查工作区", error.message);
-    return;
   }
 
   const requestRevision = state.conversationRevision;
   const requestConversationId = state.conversationId;
   resetRunSurface();
-  addChatMessage("user", text, "completed");
+  const requestUser = addChatMessage("user", text, "completed");
   const assistant = addChatMessage("assistant", "正在分析任务...", "running");
   const requestAssistant = assistant;
   const requestContext = runLifecycle.beginRequest({
@@ -1258,13 +1267,26 @@ async function runTask() {
   els.resumeTask.disabled = true;
 
   try {
-    const result = await callApi("run_chat_message", requestConversationId || "", text);
+    const result = await callApi("run_chat_message", requestConversationId || "", text, requestContext.requestId);
     if (!result.ok) {
       const requestIsCurrent = runLifecycle.isCurrentRequest(requestContext.requestId);
       runLifecycle.finishRequest(requestContext.requestId);
       if (!requestIsCurrent || state.conversationRevision !== requestRevision) {
         await loadConversationSidebar();
         return;
+      }
+      if (result.open_workspace && !workspaceRetry) {
+        unlockComposerIfIdle();
+        const selected = await selectWorkspace();
+        if (selected && state.conversationRevision === requestRevision) {
+          state.messages = state.messages.filter(
+            (message) => message.id !== requestUser.id && message.id !== requestAssistant.id
+          );
+          renderChatMessages();
+          els.taskInput.value = text;
+          await runTask({ workspaceRetry: true });
+          return;
+        }
       }
       setStatus("error", "未运行");
       Object.assign(requestAssistant, { content: result.error || "未知错误", status: "failed" });
@@ -1527,6 +1549,25 @@ function messageFor(event) {
   if (event.type === "authorization_required") return data.summary || "等待用户授权";
   if (event.type === "error") return data.message || "未知错误";
   return JSON.stringify(data);
+}
+
+function handleDesktopEvent(event) {
+  const route = runLifecycle.routeAssistantEvent(event);
+  if (route.disposition !== "visible" || !isRequestContextVisible(route.context)) return;
+  const message = state.messages.find((item) => item.id === route.context.assistantId);
+  if (!message) return;
+  const data = event.data || {};
+  if (event.type === "assistant_started") {
+    Object.assign(message, { content: "", status: "running" });
+  }
+  if (event.type === "assistant_delta") {
+    message.content = `${message.content || ""}${data.delta || ""}`;
+    message.status = "running";
+  }
+  if (event.type === "assistant_completed") {
+    Object.assign(message, { content: data.content || message.content || "", status: "completed" });
+  }
+  renderChatMessages();
 }
 
 async function handleProgress(event) {
@@ -1802,6 +1843,7 @@ function bindEvents() {
 }
 
 window.onProgress = handleProgress;
+window.onDesktopEvent = handleDesktopEvent;
 bindEvents();
 resetRunSurface();
 renderChatMessages();

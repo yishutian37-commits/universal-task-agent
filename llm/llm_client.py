@@ -4,6 +4,7 @@ import json
 import re
 import shutil
 import subprocess
+from collections.abc import Iterable, Iterator
 from typing import Any, Callable
 
 import certifi
@@ -15,6 +16,7 @@ class LLMClientError(RuntimeError):
 
 
 Transport = Callable[[str, dict[str, str], dict[str, Any], int], dict[str, Any]]
+StreamTransport = Callable[[str, dict[str, str], dict[str, Any], int], Iterable[str]]
 
 
 class LLMClient:
@@ -26,6 +28,7 @@ class LLMClient:
         timeout: int = 30,
         transport: Transport | None = None,
         fallback_transport: Transport | None = None,
+        stream_transport: StreamTransport | None = None,
         ssl_verify: bool = True,
         use_curl_fallback: bool = False,
     ):
@@ -36,6 +39,7 @@ class LLMClient:
         self.ssl_verify = ssl_verify
         self.use_curl_fallback = use_curl_fallback
         self.transport = transport or self._default_transport
+        self.stream_transport = stream_transport or self._default_stream_transport
         self.fallback_transport = fallback_transport or (
             self._curl_transport if use_curl_fallback else None
         )
@@ -99,6 +103,36 @@ class LLMClient:
             raise LLMClientError("Invalid JSON from LLM: expected object")
         return parsed
 
+    def chat_stream(self, system_prompt: str, user_prompt: str) -> Iterator[str]:
+        if not self.api_key:
+            raise LLMClientError("LLM_API_KEY is required")
+
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+        }
+        payload = {
+            "model": self.model,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            "temperature": 0,
+            "stream": True,
+        }
+        emitted = False
+        try:
+            for chunk in self.stream_transport(self.endpoint, headers, payload, self.timeout):
+                text = str(chunk or "")
+                if not text:
+                    continue
+                emitted = True
+                yield text
+        except LLMClientError as exc:
+            if emitted or self.fallback_transport is None or not self._should_try_curl_fallback(exc):
+                raise
+            yield self.chat(system_prompt, user_prompt)
+
     @staticmethod
     def _normalize_endpoint(base_url: str) -> str:
         normalized = base_url.rstrip("/")
@@ -137,6 +171,57 @@ class LLMClient:
         if not isinstance(parsed, dict):
             raise LLMClientError("Invalid LLM HTTP JSON: expected object")
         return parsed
+
+    def _default_stream_transport(
+        self,
+        endpoint: str,
+        headers: dict[str, str],
+        payload: dict[str, Any],
+        timeout: int,
+    ) -> Iterator[str]:
+        verify: str | bool = certifi.where() if self.ssl_verify else False
+        try:
+            with httpx.Client(timeout=timeout, verify=verify) as client:
+                with client.stream("POST", endpoint, headers=headers, json=payload) as response:
+                    response.raise_for_status()
+                    for line in response.iter_lines():
+                        chunk = self._parse_stream_line(line)
+                        if chunk:
+                            yield chunk
+        except httpx.HTTPStatusError as exc:
+            raise LLMClientError(f"LLM HTTP error {exc.response.status_code}: {exc.response.text}") from exc
+        except httpx.RequestError as exc:
+            raise LLMClientError(f"LLM network error: {exc}") from exc
+
+    @staticmethod
+    def _parse_stream_line(line: str | bytes) -> str | None:
+        text = line.decode("utf-8") if isinstance(line, bytes) else str(line or "")
+        text = text.strip()
+        if not text or text.startswith(":"):
+            return None
+        if text.startswith("data:"):
+            text = text[5:].strip()
+        if text == "[DONE]":
+            return None
+        try:
+            payload = json.loads(text)
+        except json.JSONDecodeError as exc:
+            raise LLMClientError(f"Invalid LLM stream JSON: {exc}") from exc
+        if not isinstance(payload, dict):
+            return None
+        if isinstance(payload.get("error"), dict):
+            raise LLMClientError(f"LLM stream error: {payload['error'].get('message') or payload['error']}")
+        try:
+            choice = payload["choices"][0]
+        except (KeyError, IndexError, TypeError):
+            return None
+        delta = choice.get("delta") if isinstance(choice, dict) else None
+        if isinstance(delta, dict) and delta.get("content") is not None:
+            return str(delta.get("content") or "")
+        message = choice.get("message") if isinstance(choice, dict) else None
+        if isinstance(message, dict) and message.get("content") is not None:
+            return str(message.get("content") or "")
+        return None
 
     def _curl_transport(
         self,

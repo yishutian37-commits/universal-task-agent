@@ -471,6 +471,20 @@
       };
     }
 
+    function routeAssistantEvent(event = {}) {
+      const type = String(event.type || "");
+      const requestId = String((event.data && event.data.request_id) || "");
+      if (!type.startsWith("assistant_") || !activeRequest || activeRequest.context.requestId !== requestId) {
+        return { disposition: "ignored", context: null };
+      }
+      const eventConversationId = String(event.conversation_id || "");
+      const requestConversationId = activeRequest.context.conversationId;
+      if (requestConversationId && eventConversationId && requestConversationId !== eventConversationId) {
+        return { disposition: "ignored", context: null };
+      }
+      return { disposition: "visible", context: activeRequest.context };
+    }
+
     function beginCancel(taskId) {
       const normalizedTaskId = String(taskId || "");
       const record = tasks.get(normalizedTaskId);
@@ -515,6 +529,7 @@
       finishRequest,
       finishTask,
       routeEvent,
+      routeAssistantEvent,
       beginCancel,
       confirmCancel,
       failCancel,

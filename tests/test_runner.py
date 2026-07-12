@@ -90,6 +90,20 @@ class CapturingRegistryTask:
         return state
 
 
+class EventEnvelopeTask:
+    def __call__(self, user_input, **kwargs):
+        kwargs["on_progress"](
+            {
+                "type": "step_started",
+                "task_id": kwargs["task_id"],
+                "data": {"step_id": 1},
+            }
+        )
+        state = AgentState(task_id=kwargs["task_id"], user_input=user_input, status="completed")
+        state.final_output = "done"
+        return state
+
+
 class DangerousSettingsStore:
     def __init__(self, workspace_path=""):
         self.workspace_path = workspace_path
@@ -303,6 +317,21 @@ def test_cancel_emits_cancelled_event():
     event_types = [e["type"] for e in result["events"]]
 
     assert "cancelled" in event_types
+
+
+def test_runner_emits_versioned_events_with_conversation_ownership():
+    runner = _make_runner(EventEnvelopeTask())
+
+    task_id = runner.start("测试事件信封", conversation_id="conv_event")
+    runner.wait_for_task(task_id, timeout=5)
+    event = runner.get_result(task_id)["events"][0]
+
+    assert event["version"] == 1
+    assert event["event_id"].startswith("evt_")
+    assert event["conversation_id"] == "conv_event"
+    assert event["task_id"] == task_id
+    assert event["type"] == "step_started"
+    assert event["timestamp"]
 
 
 def test_task_cancelled_error_is_exception():
