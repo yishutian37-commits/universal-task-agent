@@ -11,7 +11,7 @@ class Planner:
             plan_id=f"plan_{task.task_id}",
             task_id=task.task_id,
             steps=[
-                PlanStep(step_id=index, goal=goal)
+                PlanStep(step_id=index, goal=goal, max_retries=self._max_retries_for_task(task.task_type))
                 for index, goal in enumerate(goals, start=1)
             ],
         )
@@ -42,7 +42,14 @@ class Planner:
             return ["读取 GEO 规则包并生成问题矩阵", "生成 GEO 分析报告"]
         if task_type == "history_query":
             return ["读取历史任务记录"]
-        return ["执行 V0.3 mock 工具"]
+        if task_type == "langchain_tool":
+            return ["调用 LangChain 工具处理请求"]
+        return ["当前任务类型不受支持，停止执行并说明能力边界"]
+
+    def _max_retries_for_task(self, task_type: str) -> int:
+        if task_type == "unknown":
+            return 0
+        return 2
 
     def _complex_task_goals(self, user_input: str) -> list[str]:
         goals = self._numbered_goals(user_input) or self._connector_goals(user_input)
@@ -54,7 +61,7 @@ class Planner:
         task_text = self._task_list_text(user_input)
         pattern = re.compile(r"(?:\[(\d+)\]|（(\d+)）|\((\d+)\)|(?<![\d.])(\d{1,2})[.、](?!\d))\s*")
         matches = list(pattern.finditer(task_text))
-        if len(matches) < 2:
+        if not matches:
             return []
 
         goals = []

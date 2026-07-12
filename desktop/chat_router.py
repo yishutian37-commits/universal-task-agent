@@ -1,12 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-
-
-@dataclass(frozen=True)
-class DirectChatResponse:
-    category: str
-    content: str
+from core.intent_rules import looks_like_langchain_tool_task, looks_like_workspace_file_request
 
 
 TASK_MARKERS = [
@@ -81,25 +75,18 @@ STATUS_MARKERS = [
     "有什么页面",
 ]
 
-
-def direct_chat_response(text: str) -> DirectChatResponse | None:
-    if chat_route_kind(text) != "direct":
-        return None
-
-    normalized = _normalize(text)
-
-    if _contains_any(normalized, GREETING_MARKERS):
-        return DirectChatResponse("greeting", _greeting_answer())
-    if _contains_any(normalized, IDENTITY_MARKERS):
-        return DirectChatResponse("identity", _identity_answer())
-    if _contains_any(normalized, CAPABILITY_MARKERS):
-        return DirectChatResponse("capability", _capability_answer())
-    if _contains_any(normalized, USAGE_MARKERS):
-        return DirectChatResponse("usage", _usage_answer())
-    if _contains_any(normalized, STATUS_MARKERS):
-        return DirectChatResponse("status", _status_answer())
-
-    return None
+CONTEXTUAL_MARKERS = [
+    "刚才",
+    "刚刚",
+    "前面",
+    "前文",
+    "上面",
+    "之前",
+    "上一条",
+    "前一条",
+    "记得我",
+    "继续刚才",
+]
 
 
 def chat_route_kind(text: str) -> str:
@@ -108,6 +95,8 @@ def chat_route_kind(text: str) -> str:
         return "empty"
     if _looks_like_task(normalized):
         return "task"
+    if _looks_like_contextual_turn(normalized):
+        return "chat"
     if _contains_any(normalized, GREETING_MARKERS):
         return "direct"
     if _contains_any(normalized, IDENTITY_MARKERS):
@@ -130,74 +119,25 @@ def _contains_any(normalized: str, markers: list[str]) -> bool:
 
 
 def _looks_like_task(normalized: str) -> bool:
-    return _contains_any(normalized, TASK_MARKERS)
-
-
-def _greeting_answer() -> str:
-    return "\n".join(
-        [
-            "你好，我是 UTA。",
-            "",
-            "你可以直接把任务发给我，我会先判断这是普通对话还是需要执行的任务。",
-            "如果是任务，我会拆解步骤、调用工具、显示过程，并把结果保存到本地历史。",
-        ]
+    if looks_like_langchain_tool_task(normalized) or looks_like_workspace_file_request(normalized):
+        return True
+    if _contains_any(normalized, TASK_MARKERS):
+        return True
+    if "读取" in normalized and any(
+        extension in normalized
+        for extension in (".txt", ".md", ".py", ".json", ".yaml", ".yml", ".toml", ".js", ".css", ".html", ".ini", ".cfg", ".log", ".csv", ".xlsx")
+    ):
+        return True
+    if any(marker in normalized for marker in ("读取", "列出", "查看", "有哪些")) and any(
+        marker in normalized
+        for marker in ("工作区", "工作文件夹", "工作目录", "当前目录", "这个文件夹", "该文件夹")
+    ):
+        return True
+    return (
+        any(marker in normalized for marker in ("创建", "新建"))
+        and any(marker in normalized for marker in ("文件夹", "目录"))
     )
 
 
-def _identity_answer() -> str:
-    return "\n".join(
-        [
-            "我是 UTA，一个本地运行的学习型 Agent 桌面应用。",
-            "",
-            "我不是只做普通聊天；更擅长把任务拆成步骤，调用文本、表格、搜索、代码阅读、RAG、GEO 等工具执行，再把过程和结果保存下来。",
-        ]
-    )
-
-
-def _capability_answer() -> str:
-    return "\n".join(
-        [
-            "## 我现在能做什么",
-            "",
-            "- 文本总结：把文章或资料整理成结构化中文总结。",
-            "- 表格分析：读取 CSV / Excel，输出字段说明、统计、异常和建议。",
-            "- 联网调研：搜索资料并生成带来源的调研报告。",
-            "- 实时天气：识别天气问题并返回当前天气。",
-            "- 代码阅读：只读分析当前项目结构、调用链和关键文件。",
-            "- RAG 知识库：摄入本地文档后做检索和问答。",
-            "- GEO 分析：基于已接入的 GEO skill 包生成问题矩阵、内容 Brief 和合规建议。",
-            "- 历史任务查询：列出你之前让我做过的任务。",
-            "- 复杂任务拆解：把复杂任务拆成步骤，逐步执行并显示进度。",
-        ]
-    )
-
-
-def _usage_answer() -> str:
-    return "\n".join(
-        [
-            "## 怎么用",
-            "",
-            "直接在底部输入框发送任务即可。",
-            "",
-            "可以试这些示例：",
-            "- 帮我总结一段文本：...",
-            "- 分析 examples/orders.csv",
-            "- 调研包头今日天气状况",
-            "- 阅读当前项目代码，说明任务链路",
-            "- 帮我执行复杂任务：[1]总结文章 [2]提炼结论 [3]改写成小白版",
-        ]
-    )
-
-
-def _status_answer() -> str:
-    return "\n".join(
-        [
-            "桌面端可以看到这些状态：",
-            "",
-            "- 对话消息流：你发的消息和我的回复。",
-            "- 执行步骤：每一步会显示 `[ ]`、`[...]`、`[x]` 或 `[!]`。",
-            "- 实时日志：解析、规划、路由、执行、校验等过程。",
-            "- state.json：当前任务的结构化状态。",
-            "- 会话历史、记忆、知识库和技能包页面。",
-        ]
-    )
+def _looks_like_contextual_turn(normalized: str) -> bool:
+    return _contains_any(normalized, CONTEXTUAL_MARKERS)

@@ -38,7 +38,7 @@ def test_planner_creates_unknown_fallback_plan():
     plan = Planner().create_plan(make_task("unknown"))
 
     assert len(plan.steps) == 1
-    assert plan.steps[0].goal == "执行 V0.3 mock 工具"
+    assert plan.steps[0].goal == "当前任务类型不受支持，停止执行并说明能力边界"
 
 
 def test_planner_uses_matched_skill_workflow():
@@ -132,6 +132,12 @@ def test_planner_creates_history_query_plan():
     plan = Planner().create_plan(make_task("history_query"))
 
     assert [step.goal for step in plan.steps] == ["读取历史任务记录"]
+
+
+def test_planner_creates_langchain_tool_plan():
+    plan = Planner().create_plan(make_task("langchain_tool"))
+
+    assert [step.goal for step in plan.steps] == ["调用 LangChain 工具处理请求"]
 
 
 def test_planner_splits_complex_task_numbered_brackets():

@@ -51,6 +51,23 @@ def test_defaults_reuses_existing_db(tmp_path: Path):
     assert kb2._store.count() == 1  # 数据持久化了
 
 
+def test_defaults_reingest_replaces_same_source_without_duplicate_document(tmp_path: Path):
+    db = str(tmp_path / "kb.db")
+    source = tmp_path / "notes.md"
+    source.write_text("第一版内容", encoding="utf-8")
+    kb = create_default_kb(db_path=db)
+    first = kb.ingest_path(str(source))
+
+    source.write_text("第二版内容", encoding="utf-8")
+    second = kb.ingest_path(str(source))
+
+    assert second["doc_id"] == first["doc_id"]
+    assert kb.stats()["documents"] == 1
+    assert kb.stats()["chunks"] == 1
+    _, chunks = kb._store.all_vectors()
+    assert [chunk.text for chunk in chunks] == ["第二版内容"]
+
+
 def test_knowledgebase_from_config_classmethod(tmp_path: Path):
     from rag.kb import KnowledgeBase
 

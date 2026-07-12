@@ -2,8 +2,9 @@ import json
 from datetime import datetime
 
 import desktop.runner as runner_module
-from desktop.api import DesktopAPI
+from desktop.api import DesktopAPI, _build_conversation_context
 from desktop.conversation_store import ConversationStore
+from desktop.memory_store import MemoryStore
 from desktop.settings_store import SettingsStore
 
 
@@ -11,13 +12,27 @@ class FakeRunner:
     def __init__(self):
         self.window = None
         self.started_inputs = []
+        self.started_display_inputs = []
+        self.started_contexts = []
         self.cancelled_task_ids = []
+        self.authorization_manager = FakeAuthorizationManager()
 
     def bind_window(self, window):
         self.window = window
 
-    def start(self, user_input):
+    def start(
+        self,
+        user_input,
+        *,
+        display_user_input=None,
+        conversation_id=None,
+        workspace_path=None,
+    ):
         self.started_inputs.append(user_input)
+        self.started_display_inputs.append(display_user_input)
+        self.started_contexts.append(
+            {"conversation_id": conversation_id, "workspace_path": workspace_path}
+        )
         return "task_fake"
 
     def get_result(self, task_id):
@@ -26,6 +41,33 @@ class FakeRunner:
     def cancel(self, task_id):
         self.cancelled_task_ids.append(task_id)
         return {"ok": False, "error": "当前版本暂不支持取消"}
+
+    def resume(self, task_id):
+        return {"ok": True, "task_id": task_id, "status": "running"}
+
+
+class FakeAuthorizationManager:
+    def __init__(self):
+        self.approved = []
+        self.rejected = []
+
+    def approve(self, request_id, approved_by="user"):
+        self.approved.append((request_id, approved_by))
+        return {"ok": True, "request_id": request_id, "status": "approved"}
+
+    def reject(self, request_id, reason=""):
+        self.rejected.append((request_id, reason))
+        return {"ok": True, "request_id": request_id, "status": "rejected"}
+
+
+class FakeDialogWindow:
+    def __init__(self, selected_paths=None):
+        self.selected_paths = selected_paths
+        self.calls = []
+
+    def create_file_dialog(self, dialog_type, **kwargs):
+        self.calls.append((dialog_type, kwargs))
+        return self.selected_paths
 
 
 class FakeHistoryStore:
@@ -191,12 +233,78 @@ def test_desktop_api_starts_runner_when_key_exists(tmp_path, monkeypatch):
     monkeypatch.setenv("UTA_HOME", str(tmp_path / "uta"))
     runner = FakeRunner()
     api = DesktopAPI(settings_store=SettingsStore(), runner=runner)
-    api.save_settings({"llm_api_key": "secret-key"})
+    api.save_settings({"llm_api_key": "secret-key", "workspace_path": str(tmp_path)})
 
     result = api.run_task("帮我总结一段文本")
 
     assert result == {"ok": True, "task_id": "task_fake"}
     assert runner.started_inputs == ["帮我总结一段文本"]
+
+
+def test_desktop_api_refuses_dangerous_task_when_tools_disabled(tmp_path, monkeypatch):
+    monkeypatch.setenv("UTA_HOME", str(tmp_path / "uta"))
+    runner = FakeRunner()
+    api = DesktopAPI(settings_store=SettingsStore(), runner=runner)
+    api.save_settings({"llm_api_key": "secret-key"})
+
+    result = api.run_task("写入文件 /tmp/uta-note.txt 内容 hello")
+
+    assert result["ok"] is False
+    assert result["reason"] == "dangerous_tools_disabled"
+    assert result["open_settings"] is True
+    assert "工具授权" in result["error"]
+    assert runner.started_inputs == []
+
+
+def test_desktop_api_starts_dangerous_task_when_tools_enabled(tmp_path, monkeypatch):
+    monkeypatch.setenv("UTA_HOME", str(tmp_path / "uta"))
+    runner = FakeRunner()
+    api = DesktopAPI(settings_store=SettingsStore(), runner=runner)
+    api.save_settings(
+        {
+            "llm_api_key": "secret-key",
+            "dangerous_tools_enabled": True,
+            "workspace_path": str(tmp_path),
+        }
+    )
+
+    result = api.run_task("写入文件 /tmp/uta-note.txt 内容 hello")
+
+    assert result == {"ok": True, "task_id": "task_fake"}
+    assert runner.started_inputs == ["写入文件 /tmp/uta-note.txt 内容 hello"]
+
+
+def test_desktop_api_requires_desktop_access_for_desktop_directory_task(tmp_path, monkeypatch):
+    monkeypatch.setenv("UTA_HOME", str(tmp_path / "uta"))
+    runner = FakeRunner()
+    api = DesktopAPI(settings_store=SettingsStore(), runner=runner)
+    api.save_settings({"llm_api_key": "secret-key", "dangerous_tools_enabled": True})
+
+    result = api.run_task("帮我在桌面创建一个名叫测试的文件夹")
+
+    assert result["ok"] is False
+    assert result["reason"] == "desktop_access_disabled"
+    assert result["open_settings"] is True
+    assert runner.started_inputs == []
+
+
+def test_desktop_api_starts_desktop_directory_task_when_access_enabled(tmp_path, monkeypatch):
+    monkeypatch.setenv("UTA_HOME", str(tmp_path / "uta"))
+    runner = FakeRunner()
+    api = DesktopAPI(settings_store=SettingsStore(), runner=runner)
+    api.save_settings(
+        {
+            "llm_api_key": "secret-key",
+            "dangerous_tools_enabled": True,
+            "desktop_access_enabled": True,
+            "workspace_path": str(tmp_path),
+        }
+    )
+
+    result = api.run_task("帮我在桌面创建一个名叫测试的文件夹")
+
+    assert result == {"ok": True, "task_id": "task_fake"}
+    assert runner.started_inputs == ["帮我在桌面创建一个名叫测试的文件夹"]
 
 
 def test_desktop_api_exposes_result_and_cancel(tmp_path, monkeypatch):
@@ -207,6 +315,30 @@ def test_desktop_api_exposes_result_and_cancel(tmp_path, monkeypatch):
     assert api.get_result("task_fake")["final_output"] == "done"
     assert api.cancel_task("task_fake")["ok"] is False
     assert runner.cancelled_task_ids == ["task_fake"]
+
+
+def test_desktop_api_authorizes_and_rejects_operations(tmp_path, monkeypatch):
+    monkeypatch.setenv("UTA_HOME", str(tmp_path / "uta"))
+    runner = FakeRunner()
+    api = DesktopAPI(settings_store=SettingsStore(), runner=runner)
+
+    approved = api.authorize_operation("auth_1")
+    rejected = api.reject_authorization("auth_2", "不允许")
+
+    assert approved == {"ok": True, "request_id": "auth_1", "status": "approved"}
+    assert rejected == {"ok": True, "request_id": "auth_2", "status": "rejected"}
+    assert runner.authorization_manager.approved == [("auth_1", "user")]
+    assert runner.authorization_manager.rejected == [("auth_2", "不允许")]
+
+
+def test_desktop_api_resumes_task_from_checkpoint(tmp_path, monkeypatch):
+    monkeypatch.setenv("UTA_HOME", str(tmp_path / "uta"))
+    runner = FakeRunner()
+    api = DesktopAPI(settings_store=SettingsStore(), runner=runner)
+
+    result = api.resume_task("task_resume")
+
+    assert result == {"ok": True, "task_id": "task_resume", "status": "running"}
 
 
 def test_desktop_api_lists_history_runs(tmp_path, monkeypatch):
@@ -324,6 +456,131 @@ def test_desktop_api_creates_and_lists_conversations(tmp_path, monkeypatch):
     assert listed["conversations"][0]["conversation_id"] == created["conversation"]["conversation_id"]
 
 
+def test_desktop_api_deletes_conversation(tmp_path, monkeypatch):
+    monkeypatch.setenv("UTA_HOME", str(tmp_path / "uta"))
+    conversation_store = ConversationStore(tmp_path / "conversations")
+    api = DesktopAPI(
+        settings_store=SettingsStore(),
+        runner=FakeRunner(),
+        conversation_store=conversation_store,
+    )
+    conversation_id = api.new_conversation()["conversation"]["conversation_id"]
+
+    result = api.delete_conversation(conversation_id)
+
+    assert result == {"ok": True, "conversation_id": conversation_id}
+    assert api.get_conversation(conversation_id) == {"ok": False, "error": "会话不存在"}
+
+
+def test_desktop_api_selects_and_persists_workspace_folder(tmp_path, monkeypatch):
+    monkeypatch.setenv("UTA_HOME", str(tmp_path / "uta"))
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    api = DesktopAPI(settings_store=SettingsStore(), runner=FakeRunner())
+    window = FakeDialogWindow([str(workspace)])
+    api.bind_window(window)
+
+    result = api.select_workspace()
+
+    assert result == {"ok": True, "workspace_path": str(workspace.resolve())}
+    assert api.get_settings()["workspace_path"] == str(workspace.resolve())
+    assert window.calls
+
+
+def test_desktop_api_workspace_selection_cancel_keeps_existing_workspace(tmp_path, monkeypatch):
+    monkeypatch.setenv("UTA_HOME", str(tmp_path / "uta"))
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    settings_store = SettingsStore()
+    settings_store.save({"workspace_path": str(workspace)})
+    api = DesktopAPI(settings_store=settings_store, runner=FakeRunner())
+    api.bind_window(FakeDialogWindow(None))
+
+    result = api.select_workspace()
+
+    assert result == {"ok": False, "cancelled": True, "workspace_path": str(workspace.resolve())}
+    assert api.get_settings()["workspace_path"] == str(workspace.resolve())
+
+
+def test_desktop_api_selects_multiple_supported_knowledge_files(tmp_path, monkeypatch):
+    monkeypatch.setenv("UTA_HOME", str(tmp_path / "uta"))
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    markdown = workspace / "notes.md"
+    text_file = workspace / "facts.txt"
+    markdown.write_text("notes", encoding="utf-8")
+    text_file.write_text("facts", encoding="utf-8")
+    settings_store = SettingsStore()
+    settings_store.save({"workspace_path": str(workspace)})
+    api = DesktopAPI(settings_store=settings_store, runner=FakeRunner())
+    window = FakeDialogWindow([str(markdown), str(text_file)])
+    api.bind_window(window)
+
+    result = api.select_knowledge_files()
+
+    assert result == {"ok": True, "paths": [str(markdown.resolve()), str(text_file.resolve())]}
+    assert window.calls[0][1]["allow_multiple"] is True
+    assert window.calls[0][1]["directory"] == str(workspace.resolve())
+    assert "*.md;*.txt" in window.calls[0][1]["file_types"][0]
+
+
+def test_desktop_api_selects_knowledge_folder(tmp_path, monkeypatch):
+    monkeypatch.setenv("UTA_HOME", str(tmp_path / "uta"))
+    folder = tmp_path / "knowledge"
+    folder.mkdir()
+    api = DesktopAPI(settings_store=SettingsStore(), runner=FakeRunner())
+    window = FakeDialogWindow([str(folder)])
+    api.bind_window(window)
+
+    result = api.select_knowledge_folder()
+
+    assert result == {"ok": True, "paths": [str(folder.resolve())]}
+    assert window.calls[0][1]["allow_multiple"] is False
+
+
+def test_desktop_api_knowledge_picker_cancel_is_not_an_error(tmp_path, monkeypatch):
+    monkeypatch.setenv("UTA_HOME", str(tmp_path / "uta"))
+    api = DesktopAPI(settings_store=SettingsStore(), runner=FakeRunner())
+    api.bind_window(FakeDialogWindow(None))
+
+    assert api.select_knowledge_files() == {"ok": False, "cancelled": True, "paths": []}
+    assert api.select_knowledge_folder() == {"ok": False, "cancelled": True, "paths": []}
+
+
+def test_desktop_api_marks_only_agent_tasks_as_requiring_workspace(tmp_path, monkeypatch):
+    monkeypatch.setenv("UTA_HOME", str(tmp_path / "uta"))
+    api = DesktopAPI(settings_store=SettingsStore(), runner=FakeRunner())
+
+    chat = api.get_message_requirements("你好")
+    task = api.get_message_requirements("帮我总结一段文本")
+
+    assert chat["workspace_required"] is False
+    assert task == {
+        "ok": True,
+        "route_kind": "task",
+        "workspace_required": True,
+        "workspace_path": "",
+    }
+
+
+def test_desktop_api_refuses_agent_task_until_workspace_is_selected(tmp_path, monkeypatch):
+    monkeypatch.setenv("UTA_HOME", str(tmp_path / "uta"))
+    runner = FakeRunner()
+    api = DesktopAPI(
+        settings_store=SettingsStore(),
+        runner=runner,
+        conversation_store=ConversationStore(tmp_path / "conversations"),
+    )
+    api.save_settings({"llm_api_key": "secret-key"})
+
+    result = api.run_chat_message("", "帮我总结一段文本")
+
+    assert result["ok"] is False
+    assert result["reason"] == "workspace_required"
+    assert result["open_workspace"] is True
+    assert runner.started_inputs == []
+
+
 def test_desktop_api_run_chat_message_refuses_without_key(tmp_path, monkeypatch):
     monkeypatch.setenv("UTA_HOME", str(tmp_path / "uta"))
     runner = FakeRunner()
@@ -340,23 +597,112 @@ def test_desktop_api_run_chat_message_refuses_without_key(tmp_path, monkeypatch)
     assert runner.started_inputs == []
 
 
-def test_desktop_api_answers_capability_question_without_key_or_runner(tmp_path, monkeypatch):
+def test_desktop_api_capability_question_requires_model_when_no_key(tmp_path, monkeypatch):
     monkeypatch.setenv("UTA_HOME", str(tmp_path / "uta"))
     runner = FakeRunner()
     conversation_store = ConversationStore(tmp_path / "conversations")
     api = DesktopAPI(settings_store=SettingsStore(), runner=runner, conversation_store=conversation_store)
 
     result = api.run_chat_message("", "你能干什么")
+
+    assert result["ok"] is False
+    assert "Key" in result["error"]
+    assert runner.started_inputs == []
+
+
+def test_desktop_api_greeting_uses_llm_when_key_is_configured(tmp_path, monkeypatch):
+    monkeypatch.setenv("UTA_HOME", str(tmp_path / "uta"))
+    runner = FakeRunner()
+    chat_client = FakeChatClient("你好，我会先理解你的问题，再决定聊天还是执行任务。")
+    conversation_store = ConversationStore(tmp_path / "conversations")
+    api = DesktopAPI(
+        settings_store=SettingsStore(),
+        runner=runner,
+        conversation_store=conversation_store,
+        chat_client=chat_client,
+    )
+    api.save_settings({"llm_api_key": "secret-key"})
+
+    result = api.run_chat_message("", "你好")
     conversation = conversation_store.get_conversation(result["conversation_id"])["conversation"]
 
     assert result["ok"] is True
     assert result["direct"] is True
+    assert result["category"] == "general_chat"
     assert result["task_id"] is None
-    assert "文本总结" in result["message"]
-    assert "复杂任务拆解" in result["message"]
+    assert result["message"] == "你好，我会先理解你的问题，再决定聊天还是执行任务。"
     assert runner.started_inputs == []
-    assert [message["role"] for message in conversation["messages"]] == ["user", "assistant"]
-    assert conversation["messages"][1]["status"] == "completed"
+    assert len(chat_client.calls) == 1
+    assert "你好" in chat_client.calls[0][1]
+    assert conversation["messages"][1]["content"] == "你好，我会先理解你的问题，再决定聊天还是执行任务。"
+
+
+def test_desktop_api_capability_question_uses_llm_when_key_is_configured(tmp_path, monkeypatch):
+    monkeypatch.setenv("UTA_HOME", str(tmp_path / "uta"))
+    runner = FakeRunner()
+    chat_client = FakeChatClient("我可以聊天，也可以把明确任务拆解执行。")
+    conversation_store = ConversationStore(tmp_path / "conversations")
+    api = DesktopAPI(
+        settings_store=SettingsStore(),
+        runner=runner,
+        conversation_store=conversation_store,
+        chat_client=chat_client,
+    )
+    api.save_settings({"llm_api_key": "secret-key"})
+
+    result = api.run_chat_message("", "你能干什么")
+    conversation = conversation_store.get_conversation(result["conversation_id"])["conversation"]
+
+    assert result["ok"] is True
+    assert result["direct"] is True
+    assert result["category"] == "general_chat"
+    assert result["task_id"] is None
+    assert result["message"] == "我可以聊天，也可以把明确任务拆解执行。"
+    assert runner.started_inputs == []
+    assert len(chat_client.calls) == 1
+    assert "你能干什么" in chat_client.calls[0][1]
+    assert conversation["messages"][1]["content"] == "我可以聊天，也可以把明确任务拆解执行。"
+
+
+def test_desktop_api_general_chat_prompt_declares_authorized_local_tool_boundary(tmp_path, monkeypatch):
+    monkeypatch.setenv("UTA_HOME", str(tmp_path / "uta"))
+    chat_client = FakeChatClient("我不能直接操作你的本地电脑。")
+    api = DesktopAPI(
+        settings_store=SettingsStore(),
+        runner=FakeRunner(),
+        conversation_store=ConversationStore(tmp_path / "conversations"),
+        chat_client=chat_client,
+    )
+    api.save_settings({"llm_api_key": "secret-key"})
+
+    result = api.run_chat_message("", "你能帮我操作本地电脑整理桌面吗？")
+
+    assert result["ok"] is True
+    system_prompt = chat_client.calls[0][0]
+    assert "受控的本地文件操作" in system_prompt
+    assert "每次操作前手动授权" in system_prompt
+    assert "授权目录" in system_prompt
+    assert "不能控制鼠标" in system_prompt
+    assert "不能打开或控制其他本地应用" in system_prompt
+
+
+def test_desktop_api_general_chat_prompt_includes_selected_workspace(tmp_path, monkeypatch):
+    monkeypatch.setenv("UTA_HOME", str(tmp_path / "uta"))
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    chat_client = FakeChatClient("当前在 workspace 工作区。")
+    api = DesktopAPI(
+        settings_store=SettingsStore(),
+        runner=FakeRunner(),
+        conversation_store=ConversationStore(tmp_path / "conversations"),
+        chat_client=chat_client,
+    )
+    api.save_settings({"llm_api_key": "secret-key", "workspace_path": str(workspace)})
+
+    result = api.run_chat_message("", "你现在在哪个文件夹工作？")
+
+    assert result["ok"] is True
+    assert f"当前工作区：{workspace.resolve()}" in chat_client.calls[0][0]
 
 
 def test_desktop_api_general_chat_uses_llm_without_starting_runner(tmp_path, monkeypatch):
@@ -412,6 +758,37 @@ def test_desktop_api_general_chat_includes_same_conversation_context(tmp_path, m
     assert "我刚才说我叫什么？" in chat_client.calls[0][1]
 
 
+def test_desktop_api_general_chat_includes_long_term_memory(tmp_path, monkeypatch):
+    monkeypatch.setenv("UTA_HOME", str(tmp_path / "uta"))
+    memory_store = MemoryStore(tmp_path / "memory")
+    memory_store.merge_long_term_candidates(
+        [
+            {
+                "kind": "preference",
+                "content": "用户明确要求始终使用中文回复。",
+                "confidence": 0.95,
+                "source_message_ids": ["msg_1"],
+            }
+        ],
+        conversation_id="conv_20260701_120000_000000",
+    )
+    chat_client = FakeChatClient("好的，我会继续使用中文。")
+    api = DesktopAPI(
+        settings_store=SettingsStore(),
+        runner=FakeRunner(),
+        memory_store=memory_store,
+        conversation_store=ConversationStore(tmp_path / "conversations"),
+        chat_client=chat_client,
+    )
+    api.save_settings({"llm_api_key": "secret-key"})
+
+    result = api.run_chat_message("", "继续聊刚才的话题")
+
+    assert result["ok"] is True
+    assert "长期记忆" in chat_client.calls[0][1]
+    assert "用户明确要求始终使用中文回复。" in chat_client.calls[0][1]
+
+
 def test_desktop_api_contextual_greeting_uses_llm_with_same_conversation_context(tmp_path, monkeypatch):
     monkeypatch.setenv("UTA_HOME", str(tmp_path / "uta"))
     runner = FakeRunner()
@@ -460,16 +837,96 @@ def test_desktop_api_run_chat_message_starts_runner_and_records_messages(tmp_pat
     runner = FakeRunner()
     conversation_store = ConversationStore(tmp_path / "conversations")
     api = DesktopAPI(settings_store=SettingsStore(), runner=runner, conversation_store=conversation_store)
-    api.save_settings({"llm_api_key": "secret-key"})
+    api.save_settings({"llm_api_key": "secret-key", "workspace_path": str(tmp_path)})
 
     result = api.run_chat_message("", "帮我总结")
     conversation = conversation_store.get_conversation(result["conversation_id"])["conversation"]
 
     assert result["ok"] is True
     assert result["task_id"] == "task_fake"
-    assert runner.started_inputs == ["帮我总结"]
+    assert len(runner.started_inputs) == 1
+    assert f"当前工作区：{tmp_path.resolve()}" in runner.started_inputs[0]
+    assert runner.started_inputs[0].endswith("帮我总结")
     assert [message["role"] for message in conversation["messages"]] == ["user", "assistant"]
     assert conversation["messages"][1]["status"] == "running"
+    assert runner.started_contexts == [
+        {
+            "conversation_id": result["conversation_id"],
+            "workspace_path": str(tmp_path.resolve()),
+        }
+    ]
+
+
+def test_desktop_api_run_chat_message_refuses_dangerous_task_when_tools_disabled(tmp_path, monkeypatch):
+    monkeypatch.setenv("UTA_HOME", str(tmp_path / "uta"))
+    runner = FakeRunner()
+    conversation_store = ConversationStore(tmp_path / "conversations")
+    api = DesktopAPI(settings_store=SettingsStore(), runner=runner, conversation_store=conversation_store)
+    api.save_settings({"llm_api_key": "secret-key"})
+
+    result = api.run_chat_message("", "写入文件 /tmp/uta-note.txt 内容 hello")
+
+    assert result["ok"] is False
+    assert result["reason"] == "dangerous_tools_disabled"
+    assert result["open_settings"] is True
+    assert "工具授权" in result["error"]
+    assert runner.started_inputs == []
+
+
+def test_desktop_api_run_chat_message_starts_dangerous_task_when_tools_enabled(tmp_path, monkeypatch):
+    monkeypatch.setenv("UTA_HOME", str(tmp_path / "uta"))
+    runner = FakeRunner()
+    conversation_store = ConversationStore(tmp_path / "conversations")
+    api = DesktopAPI(settings_store=SettingsStore(), runner=runner, conversation_store=conversation_store)
+    api.save_settings(
+        {
+            "llm_api_key": "secret-key",
+            "dangerous_tools_enabled": True,
+            "workspace_path": str(tmp_path),
+        }
+    )
+
+    result = api.run_chat_message("", "写入文件 /tmp/uta-note.txt 内容 hello")
+
+    assert result["ok"] is True
+    assert result["task_id"] == "task_fake"
+    assert runner.started_display_inputs == ["写入文件 /tmp/uta-note.txt 内容 hello"]
+
+
+def test_desktop_api_run_chat_message_requires_desktop_access_for_directory_task(tmp_path, monkeypatch):
+    monkeypatch.setenv("UTA_HOME", str(tmp_path / "uta"))
+    runner = FakeRunner()
+    conversation_store = ConversationStore(tmp_path / "conversations")
+    api = DesktopAPI(settings_store=SettingsStore(), runner=runner, conversation_store=conversation_store)
+    api.save_settings({"llm_api_key": "secret-key", "dangerous_tools_enabled": True})
+
+    result = api.run_chat_message("", "帮我在桌面创建一个名叫测试的文件夹")
+
+    assert result["ok"] is False
+    assert result["reason"] == "desktop_access_disabled"
+    assert result["open_settings"] is True
+    assert runner.started_inputs == []
+
+
+def test_desktop_api_run_chat_message_starts_desktop_directory_task_when_access_enabled(tmp_path, monkeypatch):
+    monkeypatch.setenv("UTA_HOME", str(tmp_path / "uta"))
+    runner = FakeRunner()
+    conversation_store = ConversationStore(tmp_path / "conversations")
+    api = DesktopAPI(settings_store=SettingsStore(), runner=runner, conversation_store=conversation_store)
+    api.save_settings(
+        {
+            "llm_api_key": "secret-key",
+            "dangerous_tools_enabled": True,
+            "desktop_access_enabled": True,
+            "workspace_path": str(tmp_path),
+        }
+    )
+
+    result = api.run_chat_message("", "帮我在桌面创建一个名叫测试的文件夹")
+
+    assert result["ok"] is True
+    assert result["task_id"] == "task_fake"
+    assert runner.started_display_inputs == ["帮我在桌面创建一个名叫测试的文件夹"]
 
 
 def test_desktop_api_task_includes_same_conversation_context_without_polluting_saved_message(tmp_path, monkeypatch):
@@ -477,7 +934,7 @@ def test_desktop_api_task_includes_same_conversation_context_without_polluting_s
     runner = FakeRunner()
     conversation_store = ConversationStore(tmp_path / "conversations")
     api = DesktopAPI(settings_store=SettingsStore(), runner=runner, conversation_store=conversation_store)
-    api.save_settings({"llm_api_key": "secret-key"})
+    api.save_settings({"llm_api_key": "secret-key", "workspace_path": str(tmp_path)})
     conversation_id = conversation_store.new_conversation()["conversation"]["conversation_id"]
     conversation_store.append_message(conversation_id, role="user", content="这次项目叫 UTA 桌面端记忆修复。")
     conversation_store.append_message(conversation_id, role="assistant", content="我会围绕这个项目继续。")
@@ -488,10 +945,42 @@ def test_desktop_api_task_includes_same_conversation_context_without_polluting_s
     assert result["ok"] is True
     assert len(runner.started_inputs) == 1
     assert "同一对话前文" in runner.started_inputs[0]
+    assert f"当前工作区：{tmp_path.resolve()}" in runner.started_inputs[0]
     assert "这次项目叫 UTA 桌面端记忆修复。" in runner.started_inputs[0]
     assert "帮我总结刚才提到的项目" in runner.started_inputs[0]
+    assert runner.started_display_inputs == ["帮我总结刚才提到的项目"]
     assert conversation["messages"][-2]["role"] == "user"
     assert conversation["messages"][-2]["content"] == "帮我总结刚才提到的项目"
+
+
+def test_desktop_api_task_includes_long_term_memory(tmp_path, monkeypatch):
+    monkeypatch.setenv("UTA_HOME", str(tmp_path / "uta"))
+    memory_store = MemoryStore(tmp_path / "memory")
+    memory_store.merge_long_term_candidates(
+        [
+            {
+                "kind": "project",
+                "content": "当前项目是 UTA Desktop。",
+                "confidence": 0.9,
+                "source_message_ids": [],
+            }
+        ],
+        conversation_id="conv_20260701_120000_000000",
+    )
+    runner = FakeRunner()
+    api = DesktopAPI(
+        settings_store=SettingsStore(),
+        runner=runner,
+        memory_store=memory_store,
+        conversation_store=ConversationStore(tmp_path / "conversations"),
+    )
+    api.save_settings({"llm_api_key": "secret-key", "workspace_path": str(tmp_path)})
+
+    result = api.run_chat_message("", "帮我总结当前项目")
+
+    assert result["ok"] is True
+    assert "长期记忆" in runner.started_inputs[0]
+    assert "当前项目是 UTA Desktop。" in runner.started_inputs[0]
 
 
 def test_desktop_api_sync_chat_result_updates_assistant_message(tmp_path, monkeypatch):
@@ -499,7 +988,7 @@ def test_desktop_api_sync_chat_result_updates_assistant_message(tmp_path, monkey
     runner = FakeRunner()
     conversation_store = ConversationStore(tmp_path / "conversations")
     api = DesktopAPI(settings_store=SettingsStore(), runner=runner, conversation_store=conversation_store)
-    api.save_settings({"llm_api_key": "secret-key"})
+    api.save_settings({"llm_api_key": "secret-key", "workspace_path": str(tmp_path)})
     started = api.run_chat_message("", "帮我总结")
 
     synced = api.sync_chat_result(started["conversation_id"], started["task_id"])
@@ -557,6 +1046,67 @@ def test_desktop_api_compresses_conversation_and_merges_long_term_memory(tmp_pat
     assert memory_store.merged_candidates[0]["content"] == "用户明确要求使用中文回复。"
     assert memory_store.merged_candidates[1]["kind"] == "open_question"
     assert "只输出 JSON" in chat_client.calls[0][0]
+
+
+def test_desktop_api_archives_old_messages_after_compression(tmp_path, monkeypatch):
+    monkeypatch.setenv("UTA_HOME", str(tmp_path / "uta"))
+    conversation_store = ConversationStore(tmp_path / "conversations")
+    memory_store = FakeMemoryStore()
+    chat_client = FakeChatClient(
+        json.dumps(
+            {
+                "short_term_summary": "用户正在连续测试会话归档。",
+                "long_term_candidates": [],
+                "open_questions": [],
+            },
+            ensure_ascii=False,
+        )
+    )
+    api = DesktopAPI(
+        settings_store=SettingsStore(),
+        runner=FakeRunner(),
+        memory_store=memory_store,
+        conversation_store=conversation_store,
+        chat_client=chat_client,
+    )
+    api.save_settings({"llm_api_key": "secret-key"})
+    conversation_id = conversation_store.new_conversation()["conversation"]["conversation_id"]
+    conversation_store.update_memory_state(
+        conversation_id,
+        short_term={
+            "summary": "",
+            "compressed_until_index": 0,
+            "recent_message_limit": 2,
+            "token_estimate": 0,
+            "updated_at": "",
+        },
+        compression={"last_compressed_at": "", "last_trigger_tokens": 0, "runs": []},
+    )
+    for index in range(6):
+        role = "user" if index % 2 == 0 else "assistant"
+        conversation_store.append_message(conversation_id, role=role, content=f"message-{index}")
+
+    result = api.compress_conversation(conversation_id)
+    conversation = conversation_store.get_conversation(conversation_id)["conversation"]
+    archive_path = tmp_path / "conversations" / "archives" / f"{conversation_id}.json"
+    archive_payload = json.loads(archive_path.read_text(encoding="utf-8"))
+
+    assert result["ok"] is True
+    assert result["compressed"] is True
+    assert [message["content"] for message in conversation["messages"]] == ["message-4", "message-5"]
+    assert conversation["short_term"]["compressed_until_index"] == 2
+    assert archive_payload["conversation_id"] == conversation_id
+    assert len(archive_payload["chunks"]) == 1
+    assert [message["content"] for message in archive_payload["chunks"][0]["messages"]] == [
+        "message-0",
+        "message-1",
+        "message-2",
+        "message-3",
+    ]
+    assert conversation["compression"]["runs"][0]["archived_message_count"] == 4
+    context = _build_conversation_context(conversation)
+    assert "message-4" in context
+    assert "message-5" in context
 
 
 def test_desktop_api_skips_compression_when_no_new_messages(tmp_path, monkeypatch):
@@ -633,6 +1183,51 @@ def test_desktop_api_auto_compresses_after_completed_chat_when_threshold_is_reac
     assert conversation["short_term"]["compressed_until_index"] == 2
     assert memory_store.merged_candidates[0]["kind"] == "work_habit"
     assert len(chat_client.calls) == 2
+
+
+def test_desktop_api_auto_compresses_when_message_limit_is_reached(tmp_path, monkeypatch):
+    monkeypatch.setenv("UTA_HOME", str(tmp_path / "uta"))
+    conversation_store = ConversationStore(tmp_path / "conversations")
+    memory_store = FakeMemoryStore()
+    chat_client = FakeChatClient(
+        [
+            "我可以聊天，也可以把明确任务拆解执行。",
+            json.dumps(
+                {
+                    "short_term_summary": "用户询问 UTA 能力。",
+                    "long_term_candidates": [],
+                    "open_questions": [],
+                },
+                ensure_ascii=False,
+            ),
+        ]
+    )
+    api = DesktopAPI(
+        settings_store=SettingsStore(),
+        runner=FakeRunner(),
+        memory_store=memory_store,
+        conversation_store=conversation_store,
+        chat_client=chat_client,
+    )
+    api.save_settings(
+        {
+            "llm_api_key": "secret-key",
+            "memory_context_window_tokens": 400_000,
+            "memory_compression_trigger_ratio": 0.7,
+            "memory_compression_cap_tokens": 250_000,
+            "memory_compression_message_limit": 2,
+        }
+    )
+
+    result = api.run_chat_message("", "你能干什么")
+    conversation = conversation_store.get_conversation(result["conversation_id"])["conversation"]
+
+    assert result["ok"] is True
+    assert result["compression"]["compressed"] is True
+    assert result["message"] == "我可以聊天，也可以把明确任务拆解执行。"
+    assert conversation["short_term"]["summary"] == "用户询问 UTA 能力。"
+    assert conversation["short_term"]["compressed_until_index"] == 2
+    assert result["compression"]["reason"] == "message_limit"
 
 
 def test_desktop_api_auto_compression_failure_does_not_fail_chat(tmp_path, monkeypatch):

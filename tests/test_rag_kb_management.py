@@ -53,6 +53,8 @@ def test_delete_by_source(tmp_path: Path):
 
     assert deleted == {"deleted": 1, "target": str(f)}
     assert kb.stats()["chunks"] == 0
+    assert kb.stats()["documents"] == 0
+    assert kb.list_docs() == []
 
 
 def test_delete_missing_target_returns_zero(tmp_path: Path):

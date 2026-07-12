@@ -1,7 +1,6 @@
 from core.executor import Executor
 from core.state import Action, ToolResult
 from tools.base_tool import BaseTool
-from tools.registry import TOOL_REGISTRY
 
 
 def make_action(tool_name: str = "mock_tool") -> Action:
@@ -15,14 +14,22 @@ def make_action(tool_name: str = "mock_tool") -> Action:
     )
 
 
+class EchoTool(BaseTool):
+    name = "echo_tool"
+    description = "Returns a fixed result."
+
+    def run(self, action_name, params):
+        return {"message": "echo result", "action_name": action_name, "echo": params}
+
+
 def test_executor_runs_registered_tool():
-    result = Executor(TOOL_REGISTRY).run(make_action())
+    result = Executor({"echo_tool": EchoTool()}).run(make_action("echo_tool"))
 
     assert isinstance(result, ToolResult)
     assert result.success is True
     assert result.step_id == 1
-    assert result.tool_name == "mock_tool"
-    assert result.result["message"] == "mock result"
+    assert result.tool_name == "echo_tool"
+    assert result.result["message"] == "echo result"
     assert result.error is None
 
 

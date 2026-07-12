@@ -4,6 +4,7 @@ import json
 import os
 import urllib.request
 import urllib.error
+from pathlib import Path
 from typing import Any
 
 from desktop.paths import uta_home
@@ -94,6 +95,10 @@ class RAGClient:
     def ingest(self, path: str) -> dict[str, Any]:
         if self.mode == "http":
             return self._http("POST", "/ingest", {"path": path})
+        source = Path(path).expanduser()
+        if source.is_dir():
+            files = sorted(source.rglob("*.md")) + sorted(source.rglob("*.txt"))
+            return {"ok": True, "ingested": [self._get_embedded_kb().ingest_path(str(file)) for file in files]}
         result = self._get_embedded_kb().ingest_path(path)
         return {"ok": True, **result}
 

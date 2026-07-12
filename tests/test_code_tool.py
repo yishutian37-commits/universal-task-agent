@@ -66,3 +66,30 @@ def test_code_tool_reports_syntax_errors(tmp_path):
 
     with pytest.raises(ValueError, match="代码文件无法解析：main.py"):
         CodeTool(project_root=tmp_path, key_files=["main.py"]).run("scan", {})
+
+
+def test_code_tool_discovers_generic_node_project(tmp_path):
+    write_file(tmp_path, "package.json", '{"name": "demo-app"}')
+    write_file(
+        tmp_path,
+        "src/index.js",
+        "import { start } from './server.js';\nclass App {}\nfunction main() { start(); }\n",
+    )
+    write_file(tmp_path, "node_modules/ignored.js", "function ignored() {}\n")
+
+    result = CodeTool(project_root=tmp_path).run("scan", {})
+
+    assert result["project_kind"] == "generic"
+    assert result["focus"] == "project_structure"
+    assert [item["path"] for item in result["files"]] == ["package.json", "src/index.js"]
+    index_info = result["files"][1]
+    assert index_info["classes"] == ["App"]
+    assert index_info["functions"] == ["main"]
+    assert index_info["imports"] == ["./server.js"]
+
+
+def test_code_tool_reports_when_generic_workspace_has_no_supported_project_files(tmp_path):
+    write_file(tmp_path, "notes.txt", "plain notes")
+
+    with pytest.raises(ValueError, match="未发现可分析的项目代码或清单文件"):
+        CodeTool(project_root=tmp_path).run("scan", {})

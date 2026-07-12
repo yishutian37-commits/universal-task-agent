@@ -1,5 +1,5 @@
 from core.loop import run_minimal_loop
-from core.state import AgentState
+from core.state import AgentState, Plan, PlanStep, ToolResult
 from tools.base_tool import BaseTool
 from tools.report_tool import ReportTool
 
@@ -63,7 +63,7 @@ class SequenceTextTool(BaseTool):
         return {"message": message, "summary_markdown": message}
 
 
-def test_minimal_loop_keeps_unknown_task_fallback_with_mock_result():
+def test_minimal_loop_fails_unknown_task_instead_of_claiming_mock_success():
     state = AgentState(
         task_id="task_test",
         user_input="做一个未知任务",
@@ -73,16 +73,17 @@ def test_minimal_loop_keeps_unknown_task_fallback_with_mock_result():
 
     updated = run_minimal_loop(state)
 
-    assert updated.status == "completed"
+    assert updated.status == "failed"
     assert updated.current_step_id == 1
-    assert updated.plan.status == "completed"
-    assert updated.plan.steps[0].status == "completed"
-    assert updated.current_action.tool_name == "mock_tool"
+    assert updated.plan.status == "failed"
+    assert updated.plan.steps[0].status == "failed"
+    assert updated.current_action.tool_name == "unsupported_task"
     assert len(updated.results) == 1
-    assert updated.results[0].result["message"] == "mock result"
+    assert updated.results[0].success is False
+    assert updated.results[0].error == "当前任务不支持：没有匹配到可用工具，已停止执行，避免伪完成"
     assert len(updated.checks) == 1
-    assert updated.checks[0].passed is True
-    assert updated.final_output == "mock result"
+    assert updated.checks[0].passed is False
+    assert "不支持" in updated.final_output
 
 
 def test_loop_executes_full_planned_summary_flow():
@@ -319,6 +320,69 @@ def test_loop_replans_once_without_rerunning_completed_steps():
     assert file_tool.calls == 1
     assert len(text_tool.params_seen) == 4
     assert updated.final_output == VALID_SUMMARY_REPORT
+
+
+def test_loop_resumes_existing_plan_without_rerunning_completed_steps():
+    file_tool = CountingTool("file")
+    text_tool = CountingTool(VALID_SUMMARY_REPORT)
+    report_tool = CountingTool(VALID_SUMMARY_REPORT)
+    registry = {
+        "file_tool": file_tool,
+        "text_tool": text_tool,
+        "report_tool": report_tool,
+    }
+    state = AgentState(
+        task_id="task_resume",
+        user_input="帮我总结",
+        task_type="summarize",
+        intent="summarize_article",
+        status="running",
+        current_step_id=2,
+    )
+    state.plan = Plan(
+        plan_id="plan_task_resume",
+        task_id="task_resume",
+        steps=[
+            PlanStep(
+                step_id=1,
+                goal="读取输入内容",
+                status="completed",
+            ),
+            PlanStep(
+                step_id=2,
+                goal="提取核心信息",
+                status="running",
+            ),
+            PlanStep(
+                step_id=3,
+                goal="生成结构化报告",
+                status="pending",
+            ),
+        ],
+        status="running",
+    )
+    state.results.append(
+        ToolResult(
+            success=True,
+            tool_name="file_tool",
+            action_name="read",
+            result={"message": "file"},
+            step_id=1,
+        )
+    )
+    events = []
+
+    updated = run_minimal_loop(state, tool_registry=registry, on_progress=events.append)
+
+    assert updated.status == "completed"
+    assert file_tool.calls == 0
+    assert text_tool.calls == 1
+    assert report_tool.calls == 1
+    assert updated.results[0].tool_name == "file_tool"
+    assert updated.results[1].tool_name == "text_tool"
+    assert [step.status for step in updated.plan.steps] == ["completed", "completed", "completed"]
+    assert events[0]["type"] == "plan_resumed"
+    assert events[0]["data"]["resume_step_id"] == 2
 
 
 def test_loop_fails_when_replan_budget_is_exhausted():

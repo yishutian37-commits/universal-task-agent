@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import json
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 
-from desktop.chat_router import chat_route_kind, direct_chat_response
+from core.intent_rules import looks_like_dangerous_tool_request, looks_like_desktop_directory_request
+from desktop.chat_router import chat_route_kind
 from desktop.conversation_store import ConversationStore
 from desktop.history_store import HistoryStore
 from desktop.memory_compression import CompressionPolicy, estimate_tokens, parse_compression_result
@@ -31,7 +33,7 @@ class DesktopAPI:
     ):
         self.settings_store = settings_store if settings_store is not None else SettingsStore()
         self.runner = runner if runner is not None else TaskRunner(settings_store=self.settings_store)
-        self.history_store = history_store if history_store is not None else HistoryStore(uta_home() / "outputs")
+        self.history_store = history_store if history_store is not None else HistoryStore(uta_home() / "memory")
         self.memory_store = memory_store if memory_store is not None else MemoryStore(uta_home() / "memory")
         self.rag_client = rag_client if rag_client is not None else RAGClient()
         self.skill_store = skill_store if skill_store is not None else SkillStore(skills_root or resource_path("skills"))
@@ -39,8 +41,10 @@ class DesktopAPI:
             conversation_store if conversation_store is not None else ConversationStore(uta_home() / "conversations")
         )
         self.chat_client = chat_client
+        self.window = None
 
     def bind_window(self, window) -> None:
+        self.window = window
         if hasattr(self.runner, "bind_window"):
             self.runner.bind_window(window)
 
@@ -54,6 +58,85 @@ class DesktopAPI:
             return {"ok": True}
         except Exception as exc:
             return {"ok": False, "error": str(exc)}
+
+    def select_workspace(self) -> dict[str, Any]:
+        current = str(self.settings_store.public_settings().get("workspace_path") or "")
+        if self.window is None or not hasattr(self.window, "create_file_dialog"):
+            return {"ok": False, "error": "桌面窗口尚未就绪", "workspace_path": current}
+        try:
+            import webview
+
+            selected = self.window.create_file_dialog(
+                webview.FOLDER_DIALOG,
+                directory=current or str(Path.home()),
+                allow_multiple=False,
+            )
+            if not selected:
+                return {"ok": False, "cancelled": True, "workspace_path": current}
+            workspace = Path(str(selected[0])).expanduser().resolve()
+            if not workspace.is_dir():
+                return {"ok": False, "error": "选择的工作区目录不存在", "workspace_path": current}
+            self.settings_store.save({"workspace_path": str(workspace)})
+            return {"ok": True, "workspace_path": str(workspace)}
+        except Exception as exc:
+            return {"ok": False, "error": str(exc), "workspace_path": current}
+
+    def select_knowledge_files(self) -> dict[str, Any]:
+        if self.window is None or not hasattr(self.window, "create_file_dialog"):
+            return {"ok": False, "error": "桌面窗口尚未就绪", "paths": []}
+        try:
+            import webview
+
+            selected = self.window.create_file_dialog(
+                webview.FileDialog.OPEN,
+                directory=self._knowledge_picker_directory(),
+                allow_multiple=True,
+                file_types=("支持的文档 (*.md;*.txt)",),
+            )
+            if not selected:
+                return {"ok": False, "cancelled": True, "paths": []}
+            paths = [Path(str(path)).expanduser().resolve() for path in selected]
+            invalid = [path for path in paths if not path.is_file() or path.suffix.lower() not in {".md", ".txt"}]
+            if invalid:
+                return {"ok": False, "error": f"不支持的文档：{invalid[0].name}", "paths": []}
+            return {"ok": True, "paths": [str(path) for path in paths]}
+        except Exception as exc:
+            return {"ok": False, "error": str(exc), "paths": []}
+
+    def select_knowledge_folder(self) -> dict[str, Any]:
+        if self.window is None or not hasattr(self.window, "create_file_dialog"):
+            return {"ok": False, "error": "桌面窗口尚未就绪", "paths": []}
+        try:
+            import webview
+
+            selected = self.window.create_file_dialog(
+                webview.FileDialog.FOLDER,
+                directory=self._knowledge_picker_directory(),
+                allow_multiple=False,
+            )
+            if not selected:
+                return {"ok": False, "cancelled": True, "paths": []}
+            folder = Path(str(selected[0])).expanduser().resolve()
+            if not folder.is_dir():
+                return {"ok": False, "error": "选择的知识库目录不存在", "paths": []}
+            return {"ok": True, "paths": [str(folder)]}
+        except Exception as exc:
+            return {"ok": False, "error": str(exc), "paths": []}
+
+    def _knowledge_picker_directory(self) -> str:
+        workspace = str(self.settings_store.public_settings().get("workspace_path") or "")
+        workspace_path = Path(workspace).expanduser() if workspace else None
+        return str(workspace_path.resolve()) if workspace_path and workspace_path.is_dir() else str(Path.home())
+
+    def get_message_requirements(self, user_input: str) -> dict[str, Any]:
+        route_kind = chat_route_kind(str(user_input or "").strip())
+        workspace_path = str(self.settings_store.public_settings().get("workspace_path") or "")
+        return {
+            "ok": True,
+            "route_kind": route_kind,
+            "workspace_required": route_kind == "task" and not workspace_path,
+            "workspace_path": workspace_path,
+        }
 
     def load_example(self, category: str = "summarize") -> dict[str, Any]:
         if category in {"summarize", "summary"}:
@@ -82,6 +165,12 @@ class DesktopAPI:
 
         if not self.settings_store.public_settings()["has_api_key"]:
             return {"ok": False, "error": "请先配置 API Key"}
+        disabled = self._dangerous_tools_disabled_response(text)
+        if disabled is not None:
+            return disabled
+        workspace_required = self._workspace_required_response()
+        if workspace_required is not None:
+            return workspace_required
 
         try:
             task_id = self.runner.start(text)
@@ -119,6 +208,27 @@ class DesktopAPI:
     def cancel_task(self, task_id: str) -> dict[str, Any]:
         return self.runner.cancel(task_id)
 
+    def resume_task(self, task_id: str) -> dict[str, Any]:
+        return self.runner.resume(str(task_id or ""))
+
+    def get_resume_context(self, task_id: str) -> dict[str, Any]:
+        getter = getattr(self.runner, "get_resume_context", None)
+        if not callable(getter):
+            return {"ok": False, "error": "当前运行器不支持读取 checkpoint 上下文"}
+        return getter(str(task_id or ""))
+
+    def authorize_operation(self, request_id: str) -> dict[str, Any]:
+        manager = getattr(self.runner, "authorization_manager", None)
+        if manager is None:
+            return {"ok": False, "error": "授权管理器不可用"}
+        return manager.approve(str(request_id or ""), approved_by="user")
+
+    def reject_authorization(self, request_id: str, reason: str = "") -> dict[str, Any]:
+        manager = getattr(self.runner, "authorization_manager", None)
+        if manager is None:
+            return {"ok": False, "error": "授权管理器不可用"}
+        return manager.reject(str(request_id or ""), reason=str(reason or "用户拒绝授权"))
+
     # ---- 对话 ----
 
     def list_conversations(self) -> dict[str, Any]:
@@ -136,6 +246,12 @@ class DesktopAPI:
     def get_conversation(self, conversation_id: str) -> dict[str, Any]:
         try:
             return self.conversation_store.get_conversation(str(conversation_id or ""))
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)}
+
+    def delete_conversation(self, conversation_id: str) -> dict[str, Any]:
+        try:
+            return self.conversation_store.delete_conversation(str(conversation_id or ""))
         except Exception as exc:
             return {"ok": False, "error": str(exc)}
 
@@ -185,11 +301,26 @@ class DesktopAPI:
             if not merged.get("ok"):
                 return merged
 
+            recent_message_limit = int(short_term.get("recent_message_limit") or 12)
+            if recent_message_limit <= 0:
+                recent_message_limit = 12
+            archive_result = self.conversation_store.archive_messages_for_compression(
+                str(conversation_id or ""),
+                keep_last=recent_message_limit,
+                compressed_at=timestamp,
+                from_index=start_index,
+                to_index=len(messages),
+            )
+            if not archive_result.get("ok"):
+                return archive_result
+            kept_message_count = int(archive_result.get("kept_message_count") or 0)
+            archived_message_count = int(archive_result.get("archived_message_count") or 0)
+
             short_term.update(
                 {
                     "summary": parsed["short_term_summary"],
-                    "compressed_until_index": len(messages),
-                    "recent_message_limit": int(short_term.get("recent_message_limit") or 12),
+                    "compressed_until_index": kept_message_count,
+                    "recent_message_limit": recent_message_limit,
                     "token_estimate": token_estimate,
                     "updated_at": timestamp,
                 }
@@ -203,6 +334,8 @@ class DesktopAPI:
                     "message_count": len(pending_messages),
                     "token_estimate": token_estimate,
                     "long_term_candidates": len(candidates),
+                    "archived_message_count": archived_message_count,
+                    "kept_message_count": kept_message_count,
                 }
             )
             compression.update(
@@ -224,9 +357,11 @@ class DesktopAPI:
                 "ok": True,
                 "compressed": True,
                 "conversation_id": str(conversation_id or ""),
-                "compressed_until_index": len(messages),
+                "compressed_until_index": kept_message_count,
                 "short_term_summary": parsed["short_term_summary"],
                 "long_term_candidates": len(candidates),
+                "archived_message_count": archived_message_count,
+                "kept_message_count": kept_message_count,
             }
         except Exception as exc:
             return {"ok": False, "error": str(exc)}
@@ -236,37 +371,14 @@ class DesktopAPI:
         if not text:
             return {"ok": False, "error": "请输入消息内容"}
 
-        direct_response = direct_chat_response(text)
-        if direct_response is not None:
-            try:
-                conversation_id = self._ensure_conversation_id(conversation_id)
-                self.conversation_store.append_message(conversation_id, role="user", content=text)
-                self.conversation_store.append_message(
-                    conversation_id,
-                    role="assistant",
-                    content=direct_response.content,
-                    task_id=None,
-                    status="completed",
-                )
-                compression = self._maybe_auto_compress(conversation_id)
-                return {
-                    "ok": True,
-                    "direct": True,
-                    "category": direct_response.category,
-                    "conversation_id": conversation_id,
-                    "task_id": None,
-                    "message": direct_response.content,
-                    "compression": compression,
-                }
-            except Exception as exc:
-                return {"ok": False, "error": str(exc)}
-
-        if chat_route_kind(text) == "chat":
+        route_kind = chat_route_kind(text)
+        if route_kind in {"chat", "direct"}:
             if not self.settings_store.public_settings()["has_api_key"]:
                 return {"ok": False, "error": "普通聊天需要先配置 API Key"}
             try:
                 conversation_id = self._ensure_conversation_id(conversation_id)
-                answer = self._run_general_chat(text)
+                context = self._conversation_context_for_prompt(conversation_id)
+                answer = self._run_general_chat(text, context=context)
                 self.conversation_store.append_message(conversation_id, role="user", content=text)
                 self.conversation_store.append_message(
                     conversation_id,
@@ -290,11 +402,25 @@ class DesktopAPI:
 
         if not self.settings_store.public_settings()["has_api_key"]:
             return {"ok": False, "error": "请先配置 API Key"}
+        disabled = self._dangerous_tools_disabled_response(text)
+        if disabled is not None:
+            return disabled
+        workspace_required = self._workspace_required_response()
+        if workspace_required is not None:
+            return workspace_required
 
         try:
             conversation_id = self._ensure_conversation_id(conversation_id)
+            context = self._conversation_context_for_prompt(conversation_id)
+            workspace_path = str(self.settings_store.public_settings().get("workspace_path") or "")
+            runner_input = _with_workspace_context(_with_conversation_context(text, context), workspace_path)
 
-            task_id = self.runner.start(text)
+            task_id = self.runner.start(
+                runner_input,
+                display_user_input=text,
+                conversation_id=conversation_id,
+                workspace_path=workspace_path,
+            )
             self.conversation_store.append_message(conversation_id, role="user", content=text, task_id=task_id)
             self.conversation_store.append_message(
                 conversation_id,
@@ -307,6 +433,36 @@ class DesktopAPI:
         except Exception as exc:
             return {"ok": False, "error": str(exc)}
 
+    def _dangerous_tools_disabled_response(self, text: str) -> dict[str, Any] | None:
+        settings = self.settings_store.public_settings()
+        if settings.get("dangerous_tools_enabled") is not True:
+            if not looks_like_dangerous_tool_request(text):
+                return None
+            return {
+                "ok": False,
+                "reason": "dangerous_tools_disabled",
+                "open_settings": True,
+                "error": "高风险工具未开启。请先打开“工具授权”，开启后每次高风险操作仍会弹窗确认。",
+            }
+        if looks_like_desktop_directory_request(text) and settings.get("desktop_access_enabled") is not True:
+            return {
+                "ok": False,
+                "reason": "desktop_access_disabled",
+                "open_settings": True,
+                "error": "桌面目录访问未开启。请在“设置与授权”中允许访问桌面目录。",
+            }
+        return None
+
+    def _workspace_required_response(self) -> dict[str, Any] | None:
+        if self.settings_store.public_settings().get("workspace_path"):
+            return None
+        return {
+            "ok": False,
+            "reason": "workspace_required",
+            "open_workspace": True,
+            "error": "执行任务前请先选择工作文件夹。",
+        }
+
     def _ensure_conversation_id(self, conversation_id: str) -> str:
         if conversation_id:
             loaded = self.conversation_store.get_conversation(str(conversation_id))
@@ -315,8 +471,29 @@ class DesktopAPI:
         created = self.conversation_store.new_conversation()
         return str(created["conversation"]["conversation_id"])
 
-    def _run_general_chat(self, text: str) -> str:
+    def _conversation_context_for_prompt(self, conversation_id: str) -> str:
+        loaded = self.conversation_store.get_conversation(str(conversation_id or ""))
+        conversation_context = _build_conversation_context(loaded["conversation"]) if loaded.get("ok") else ""
+        long_term_context = self._long_term_context_for_prompt()
+        return "\n\n".join(part for part in (long_term_context, conversation_context) if part)
+
+    def _long_term_context_for_prompt(self) -> str:
+        loader = getattr(self.memory_store, "load_long_term_memory", None)
+        if not callable(loader):
+            return ""
+        try:
+            return _build_long_term_memory_context(loader())
+        except (OSError, UnicodeDecodeError, ValueError):
+            return ""
+
+    def _run_general_chat(self, text: str, *, context: str = "") -> str:
         self.settings_store.apply_to_environment()
+        workspace_path = str(self.settings_store.public_settings().get("workspace_path") or "")
+        workspace_prompt = (
+            f"当前工作区：{workspace_path}。用户询问当前目录时必须准确回答这个路径。"
+            if workspace_path
+            else "当前尚未选择工作区。用户询问当前目录时要明确说明尚未选择。"
+        )
         client = self.chat_client
         if client is None:
             from llm.llm_client import LLMClient
@@ -325,8 +502,15 @@ class DesktopAPI:
         return client.chat(
             "你是 UTA Desktop 的本地对话助手。"
             "你服务于一个学习型 Agent 应用，回答要简洁、中文、可执行。"
-            "如果用户提出明确任务，提醒用户可以直接发送任务让 Agent 拆解执行。",
-            text,
+            "你必须诚实说明能力边界：当前版本不能控制鼠标或键盘，也不能打开或控制其他本地应用。"
+            "应用已经接入受控的本地文件操作，包括目录创建、文件写入和文件删除，以及受限的 Shell 和 Python REPL。"
+            "这些高风险能力只有开启工具授权后才能使用，必须限制在授权目录内，并在每次操作前手动授权。"
+            "你只能通过应用内已接入的能力处理任务，例如文本总结、表格分析、联网搜索、"
+            "项目代码阅读、RAG 知识库、GEO 分析和历史任务查询。"
+            f"{workspace_prompt}"
+            "如果用户要求控制桌面界面或其他未接入的本机操作，要明确说不能直接执行，并给出可替代的手动步骤或需要接入的能力。"
+            "如果用户提出明确且已支持的任务，提醒用户可以直接发送任务让 Agent 拆解执行。",
+            _with_conversation_context(text, context),
         )
 
     def sync_chat_result(self, conversation_id: str, task_id: str) -> dict[str, Any]:
@@ -369,17 +553,29 @@ class DesktopAPI:
             trigger_ratio=float(settings.get("memory_compression_trigger_ratio") or 0.7),
             trigger_cap_tokens=int(settings.get("memory_compression_cap_tokens") or 250_000),
         )
-        if not policy.should_compress(token_estimate):
+        message_limit = int(settings.get("memory_compression_message_limit") or 40)
+        if message_limit <= 0:
+            message_limit = 40
+        token_threshold_reached = policy.should_compress(token_estimate)
+        message_limit_reached = len(messages) >= message_limit
+        if not token_threshold_reached and not message_limit_reached:
             return {
                 "ok": True,
                 "compressed": False,
                 "reason": "below_threshold",
                 "token_estimate": token_estimate,
                 "trigger_tokens": policy.trigger_tokens,
+                "message_count": len(messages),
+                "message_limit": message_limit,
             }
 
         result = self.compress_conversation(str(conversation_id or ""))
         if result.get("ok"):
+            result["reason"] = "token_threshold" if token_threshold_reached else "message_limit"
+            result["token_estimate"] = token_estimate
+            result["trigger_tokens"] = policy.trigger_tokens
+            result["message_count"] = len(messages)
+            result["message_limit"] = message_limit
             return result
 
         error = str(result.get("error") or "自动压缩失败")
@@ -390,6 +586,8 @@ class DesktopAPI:
             "error": error,
             "token_estimate": token_estimate,
             "trigger_tokens": policy.trigger_tokens,
+            "message_count": len(messages),
+            "message_limit": message_limit,
         }
 
     def _record_compression_error(self, conversation_id: str, error: str, token_estimate: int) -> None:
@@ -463,6 +661,124 @@ class DesktopAPI:
             return self.rag_client.delete(str(target or "").strip())
         except Exception as exc:
             return {"ok": False, "error": str(exc)}
+
+
+def _build_conversation_context(conversation: dict[str, Any]) -> str:
+    messages = conversation.get("messages") if isinstance(conversation.get("messages"), list) else []
+    short_term = conversation.get("short_term") if isinstance(conversation.get("short_term"), dict) else {}
+    summary = str(short_term.get("summary") or "").strip()
+    recent_message_limit = min(_safe_nonnegative_int(short_term.get("recent_message_limit"), 12), 24)
+    if recent_message_limit <= 0:
+        recent_message_limit = 12
+
+    # 归档后 messages 已经只包含需要保留的最近消息。compressed_until_index
+    # 是下一次压缩的增量游标，不能再用它裁剪模型所见的短期上下文。
+    recent_messages = messages[-recent_message_limit:]
+
+    lines = []
+    if summary:
+        lines.append(f"短期摘要：{_compact_context_text(summary)}")
+
+    rendered_messages = []
+    for message in recent_messages:
+        role = _context_role_label(str(message.get("role") or ""))
+        content = _compact_context_text(str(message.get("content") or ""))
+        if not role or not content:
+            continue
+        rendered_messages.append(f"- {role}：{content}")
+
+    if rendered_messages:
+        lines.append("最近消息：")
+        lines.extend(rendered_messages)
+
+    if not lines:
+        return ""
+    return "\n".join(
+        [
+            "以下是同一对话前文，仅用于理解指代、延续上下文和回答用户关于前文的问题。",
+            "除非用户明确询问前文，否则不要原样复述这些内容。",
+            *lines,
+        ]
+    )
+
+
+def _build_long_term_memory_context(memory: dict[str, Any]) -> str:
+    facts = memory.get("facts") if isinstance(memory, dict) and isinstance(memory.get("facts"), list) else []
+    rendered = []
+    labels = {
+        "identity": "用户画像",
+        "preference": "偏好",
+        "work_habit": "工作习惯",
+        "project": "项目事实",
+        "constraint": "明确约束",
+        "decision": "决策记录",
+        "open_question": "待确认问题",
+    }
+    ordered = sorted(
+        (fact for fact in facts if isinstance(fact, dict)),
+        key=lambda fact: str(fact.get("last_seen_at") or fact.get("first_seen_at") or ""),
+        reverse=True,
+    )
+    for fact in ordered[:20]:
+        content = _compact_context_text(str(fact.get("content") or ""), limit=300)
+        if not content:
+            continue
+        kind = str(fact.get("kind") or "")
+        rendered.append(f"- {labels.get(kind, kind or '记忆')}：{content}")
+    if not rendered:
+        return ""
+    return "\n".join(
+        [
+            "以下是跨对话长期记忆，用于保持偏好、项目事实和已做决定的一致性。",
+            "若长期记忆与用户当前明确表达冲突，以当前表达为准。",
+            "长期记忆：",
+            *rendered,
+        ]
+    )
+
+
+def _with_conversation_context(text: str, context: str) -> str:
+    text = str(text or "").strip()
+    context = str(context or "").strip()
+    if not context:
+        return text
+    return "\n\n".join([context, f"当前用户输入：\n{text}"])
+
+
+def _with_workspace_context(text: str, workspace_path: str) -> str:
+    text = str(text or "").strip()
+    workspace_path = str(workspace_path or "").strip()
+    if not workspace_path:
+        return text
+    return "\n\n".join(
+        [
+            f"当前工作区：{workspace_path}\n所有相对文件路径都以此目录为根目录。",
+            text,
+        ]
+    )
+
+
+def _context_role_label(role: str) -> str:
+    if role == "user":
+        return "用户"
+    if role == "assistant":
+        return "助手"
+    return ""
+
+
+def _compact_context_text(value: str, limit: int = 1200) -> str:
+    compacted = " ".join(str(value or "").split())
+    if len(compacted) <= limit:
+        return compacted
+    return compacted[:limit].rstrip() + "..."
+
+
+def _safe_nonnegative_int(value: Any, fallback: int) -> int:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return fallback
+    return parsed if parsed >= 0 else fallback
 
 
 def _compression_system_prompt() -> str:

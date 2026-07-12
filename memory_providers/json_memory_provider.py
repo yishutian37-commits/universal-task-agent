@@ -18,8 +18,9 @@ DEFAULT_FILES = {
 
 
 class JsonMemoryProvider(BaseMemoryProvider):
-    def __init__(self, memory_root: Path | str = "memory"):
+    def __init__(self, memory_root: Path | str = "memory", *, recent_task_limit: int = 100):
         self.memory_root = Path(memory_root)
+        self.recent_task_limit = max(1, int(recent_task_limit))
         self.ensure_store()
 
     def ensure_store(self) -> None:
@@ -28,6 +29,7 @@ class JsonMemoryProvider(BaseMemoryProvider):
             path = self.memory_root / filename
             if not path.exists():
                 self._write_json(path, default_payload)
+        self._compact_existing_task_history()
 
     def load_context(self) -> dict[str, Any]:
         self.ensure_store()
@@ -63,6 +65,7 @@ class JsonMemoryProvider(BaseMemoryProvider):
             "updated_at": state.updated_at,
         }
         payload["tasks"] = self._upsert_by_key(payload["tasks"], "task_id", record)
+        payload["tasks"] = self._archive_excess_tasks(payload["tasks"])
         self._write_json(path, payload)
 
     def _save_lesson(self, state: AgentState) -> None:
@@ -137,6 +140,52 @@ class JsonMemoryProvider(BaseMemoryProvider):
                 return updated
         return [*records, record]
 
+    def _archive_excess_tasks(self, tasks: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        if len(tasks) <= self.recent_task_limit:
+            return tasks
+
+        archive_count = len(tasks) - self.recent_task_limit
+        archive_records = tasks[:archive_count]
+        recent_records = tasks[archive_count:]
+        archives_by_month: dict[str, list[dict[str, Any]]] = {}
+        for record in archive_records:
+            month = self._month_for_task(record)
+            archives_by_month.setdefault(month, []).append(record)
+
+        for month, records in archives_by_month.items():
+            path = self.memory_root / "archives" / f"task_history_{month}.json"
+            payload = self._read_archive_json(path)
+            archived_tasks = payload.get("tasks") if isinstance(payload.get("tasks"), list) else []
+            for record in records:
+                archived_tasks = self._upsert_by_key(archived_tasks, "task_id", record)
+            payload["tasks"] = archived_tasks
+            self._write_json(path, payload)
+
+        return recent_records
+
+    def _compact_existing_task_history(self) -> None:
+        path = self.memory_root / "task_history.json"
+        try:
+            payload = self._read_json(path)
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+            return
+        tasks = payload.get("tasks")
+        if not isinstance(tasks, list) or len(tasks) <= self.recent_task_limit:
+            return
+        payload["tasks"] = self._archive_excess_tasks(tasks)
+        self._write_json(path, payload)
+
+    def _read_archive_json(self, path: Path) -> dict[str, Any]:
+        if not path.exists():
+            return {"version": 1, "tasks": []}
+        return self._read_json(path)
+
+    def _month_for_task(self, record: dict[str, Any]) -> str:
+        value = str(record.get("updated_at") or record.get("created_at") or "")
+        if len(value) >= 7 and value[4:5] == "-" and value[:4].isdigit() and value[5:7].isdigit():
+            return value[:7]
+        return "unknown"
+
     def _preview(self, value: str | None, limit: int = 300) -> str:
         if value is None:
             return ""
@@ -153,6 +202,7 @@ class JsonMemoryProvider(BaseMemoryProvider):
         return json.loads(path.read_text(encoding="utf-8"))
 
     def _write_json(self, path: Path, payload: dict[str, Any]) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(
             json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
             encoding="utf-8",

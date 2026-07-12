@@ -210,6 +210,40 @@ def test_report_tool_generates_code_reading_report():
     assert "core/verifier.py" in report
 
 
+def test_report_tool_generates_generic_project_report_without_uta_specific_chain():
+    analysis = {
+        "message": "已完成项目代码结构扫描",
+        "code_analysis": True,
+        "project_kind": "generic",
+        "project_root": "/tmp/demo",
+        "focus": "project_structure",
+        "files": [
+            {
+                "path": "package.json",
+                "role": "项目清单与依赖配置",
+                "imports": [],
+                "classes": [],
+                "functions": [],
+            },
+            {
+                "path": "src/index.js",
+                "role": "项目入口或主要源文件",
+                "imports": ["./server.js"],
+                "classes": ["App"],
+                "functions": ["main"],
+            },
+        ],
+    }
+
+    report = ReportTool().run("generate", {"previous_result": analysis})["report_markdown"]
+
+    for section in ["任务链路", "关键文件", "模块职责", "调用顺序", "状态与记忆", "桌面端入口", "风险点", "下一步建议"]:
+        assert f"## {section}" in report
+    assert "package.json" in report
+    assert "src/index.js" in report
+    assert "main.run_task" not in report
+
+
 def test_report_tool_generates_geo_report():
     result = ReportTool().run("generate", {"previous_result": GEO_ANALYSIS})
 

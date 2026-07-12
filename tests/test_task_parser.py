@@ -1,5 +1,6 @@
 from core.task_parser import TaskParser
 from llm.llm_client import LLMClientError
+import pytest
 
 
 class FakeClient:
@@ -33,6 +34,52 @@ def test_parser_returns_summarize_task():
     assert task.intent == "summarize_article"
     assert task.input_type == "text"
     assert task.expected_output == "summary_report"
+
+
+def test_parser_dangerous_tool_detection_uses_current_input_not_conversation_history():
+    parser = TaskParser(
+        FakeClient(
+            {
+                "task_type": "summarize",
+                "intent": "summarize_article",
+                "input_type": "text",
+                "expected_output": "summary_report",
+            }
+        )
+    )
+    contextual_input = "\n\n".join(
+        [
+            "以下是同一对话前文。\n- 用户：帮我在桌面创建一个叫一个的文件夹",
+            "当前用户输入：\n帮我总结这段文本",
+        ]
+    )
+
+    task = parser.parse("task_current", contextual_input)
+
+    assert task.task_type == "summarize"
+    assert task.user_input == "帮我总结这段文本"
+
+
+@pytest.mark.parametrize("user_input", ["当前工作区有哪些文件", "读取 README.md 的内容"])
+def test_parser_routes_workspace_file_requests_to_tool_task(user_input):
+    parser = TaskParser(FakeClient(error=LLMClientError("offline")))
+
+    task = parser.parse("task_workspace", user_input)
+
+    assert task.task_type == "langchain_tool"
+
+
+def test_parser_routes_workspace_folder_summary_to_summary_flow():
+    parser = TaskParser(FakeClient(error=LLMClientError("offline")))
+
+    task = parser.parse(
+        "task_workspace_summary",
+        "读取下这个文件夹的内容，总结一下这是在干什么，不要修改",
+    )
+
+    assert task.task_type == "summarize"
+    assert task.intent == "summarize_workspace"
+    assert task.input_type == "directory"
 
 
 def test_parser_returns_data_analysis_task():
@@ -210,6 +257,61 @@ def test_task_parser_fallback_detects_geo_analysis_when_llm_fails():
 
 def test_task_parser_system_prompt_allows_geo_analysis():
     assert "geo_analysis" in TaskParser._system_prompt()
+
+
+def test_task_parser_fallback_detects_langchain_tool_task_when_llm_fails():
+    parser = TaskParser(llm_client=FailingLLMClient())
+
+    task = parser.parse("task_test", "用 LangChain 工具回显 hello")
+
+    assert task.task_type == "langchain_tool"
+    assert task.intent == "invoke_langchain_tool"
+    assert task.input_type == "text"
+    assert task.expected_output == "tool_result"
+
+
+def test_parser_overrides_llm_unknown_for_obvious_langchain_tool_task():
+    parser = TaskParser(
+        FakeClient(
+            {
+                "task_type": "unknown",
+                "intent": "unknown",
+                "input_type": "unknown",
+                "expected_output": "unknown",
+            }
+        )
+    )
+
+    task = parser.parse("task_test", "用 LangChain 工具回显 hello")
+
+    assert task.task_type == "langchain_tool"
+    assert task.intent == "invoke_langchain_tool"
+
+
+@pytest.mark.parametrize(
+    "user_input",
+    [
+        "计算 2 + 3 * 4",
+        "现在几点",
+        "格式化 JSON：{\"a\": 1}",
+        "HTTP GET https://example.com",
+        "用 LangChain 工具搜索 UTA Agent",
+        "用 LangChain 天气工具查询包头天气",
+        "执行 shell 命令 echo hello",
+        "写入文件 /tmp/uta-note.txt 内容 hello",
+        "运行 Python 代码 result = 1 + 2",
+        "删除文件 /tmp/uta-note.txt",
+        "删除本地文件 /tmp/uta-note.txt",
+        "帮我在桌面创建一个名叫测试的文件夹",
+    ],
+)
+def test_task_parser_fallback_detects_common_langchain_tool_tasks_when_llm_fails(user_input):
+    parser = TaskParser(llm_client=FailingLLMClient())
+
+    task = parser.parse("task_test", user_input)
+
+    assert task.task_type == "langchain_tool"
+    assert task.intent == "invoke_langchain_tool"
 
 
 def test_task_parser_fallback_detects_history_query_when_llm_fails():

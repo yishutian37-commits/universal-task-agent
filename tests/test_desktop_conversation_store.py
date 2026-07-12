@@ -144,9 +144,47 @@ def test_conversation_store_lists_newest_first_and_skips_bad_json(tmp_path):
     assert "conv_bad" not in ids
 
 
+def test_conversation_store_lists_at_most_100_recent_conversations(tmp_path):
+    store = ConversationStore(tmp_path)
+    for index in range(105):
+        store.new_conversation(title=f"会话 {index}")
+
+    listed = store.list_conversations()
+
+    assert listed["ok"] is True
+    assert len(listed["conversations"]) == 100
+    assert listed["conversations"][0]["title"] == "会话 104"
+    assert listed["conversations"][-1]["title"] == "会话 5"
+
+
 def test_conversation_store_rejects_unsafe_ids(tmp_path):
     store = ConversationStore(tmp_path)
 
     result = store.get_conversation("../secret")
 
     assert result == {"ok": False, "error": "会话不存在"}
+
+
+def test_conversation_store_deletes_conversation_and_compression_archive(tmp_path):
+    store = ConversationStore(tmp_path)
+    conversation_id = store.new_conversation(title="待删除")['conversation']["conversation_id"]
+    archive_path = tmp_path / "archives" / f"{conversation_id}.json"
+    archive_path.parent.mkdir(parents=True)
+    archive_path.write_text('{"version": 1, "chunks": []}', encoding="utf-8")
+
+    result = store.delete_conversation(conversation_id)
+
+    assert result == {"ok": True, "conversation_id": conversation_id}
+    assert not (tmp_path / f"{conversation_id}.json").exists()
+    assert not archive_path.exists()
+    assert store.get_conversation(conversation_id) == {"ok": False, "error": "会话不存在"}
+
+
+def test_conversation_store_delete_rejects_missing_or_unsafe_conversation(tmp_path):
+    store = ConversationStore(tmp_path)
+
+    assert store.delete_conversation("../secret") == {"ok": False, "error": "会话不存在"}
+    assert store.delete_conversation("conv_20260701_120000_000000") == {
+        "ok": False,
+        "error": "会话不存在",
+    }

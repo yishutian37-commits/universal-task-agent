@@ -950,7 +950,19 @@ pre {
   padding: 12px 16px;
 }
 
-.knowledgeIngestComposer input,
+.knowledgeIngestComposer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.knowledgeIngestHint {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .knowledgeQueryComposer textarea {
   width: 100%;
   box-sizing: border-box;
@@ -1394,9 +1406,39 @@ pre {
   text-align: left;
 }
 
+.conversationRow {
+  width: 100%;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 28px;
+  align-items: center;
+  border-radius: var(--radius-md);
+}
+
+.conversationRow:hover,
+.conversationRow.active {
+  background: #deded9;
+}
+
 .conversationItem:hover,
 .conversationItem.active {
-  background: #deded9;
+  background: transparent;
+}
+
+.conversationDelete {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-sm);
+  color: var(--faint);
+  font-size: 18px;
+  line-height: 1;
+}
+
+.conversationDelete:hover {
+  color: var(--danger);
+  background: var(--danger-dim);
 }
 
 .conversationItem strong,
@@ -1471,8 +1513,17 @@ pre {
 .workspaceSelector {
   margin-top: 3px;
   padding: 0;
+  max-width: min(420px, 62vw);
   color: var(--muted);
   font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+}
+
+.workspaceSelector:hover {
+  color: var(--text);
 }
 
 .chatMessages {
@@ -1498,6 +1549,12 @@ pre {
   justify-content: flex-start;
 }
 
+.messageBubble,
+.messageBubble * {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
 .messageBubble {
   max-width: min(760px, 88%);
   padding: 10px 12px;
@@ -1505,6 +1562,56 @@ pre {
   border-radius: var(--radius-lg);
   background: transparent;
   overflow-wrap: anywhere;
+  cursor: text;
+}
+
+.messageCopy {
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  align-self: flex-start;
+  display: grid;
+  place-items: center;
+  margin-top: 4px;
+  border-radius: var(--radius-sm);
+  color: var(--faint);
+  font-size: 15px;
+  line-height: 1;
+  user-select: none;
+}
+
+.messageCopy:hover,
+.messageCopy:focus-visible {
+  color: var(--text);
+  background: var(--surface-3);
+}
+
+.selectionContextMenu {
+  position: fixed;
+  z-index: 1200;
+  min-width: 96px;
+  padding: 4px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  background: var(--panel-bg);
+  box-shadow: 0 8px 24px rgba(29, 29, 27, 0.18);
+  user-select: none;
+}
+
+.selectionContextMenu button {
+  width: 100%;
+  padding: 7px 10px;
+  border-radius: var(--radius-sm);
+  text-align: left;
+}
+
+.selectionContextMenu button:hover,
+.selectionContextMenu button:focus-visible {
+  background: var(--panel-subtle);
+}
+
+.chatMessage.user .messageCopy {
+  order: -1;
 }
 
 .chatMessage.assistant .messageBubble,

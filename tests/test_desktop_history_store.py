@@ -81,6 +81,34 @@ def test_history_store_get_run_returns_state_view_and_final_output(tmp_path):
     assert result["final_output"] == "## 摘要\n完成"
 
 
+def test_history_store_get_run_can_read_archived_task(tmp_path):
+    write_task_history(tmp_path, [{"task_id": "task_recent", "final_output": "recent"}])
+    archive_root = tmp_path / "archives"
+    write_task_history(
+        archive_root,
+        [
+            {
+                "task_id": "task_archived",
+                "user_input": "旧任务",
+                "task_type": "summarize",
+                "intent": "归档任务",
+                "status": "completed",
+                "final_output": "archived output",
+                "final_output_preview": "archived output",
+                "updated_at": "2026-07-01T08:00:00",
+            }
+        ],
+    )
+    (archive_root / "task_history.json").rename(archive_root / "task_history_2026-07.json")
+
+    result = HistoryStore(tmp_path).get_run("task_archived")
+
+    assert result["ok"] is True
+    assert result["task_id"] == "task_archived"
+    assert result["final_output"] == "archived output"
+    assert result["state"]["intent"] == "归档任务"
+
+
 def test_history_store_lists_empty_when_no_history_file(tmp_path):
     result = HistoryStore(tmp_path).list_runs()
 

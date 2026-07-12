@@ -125,6 +125,50 @@ def test_save_task_updates_existing_history_record(tmp_path):
     assert history["tasks"][0]["status"] == "failed"
 
 
+def test_save_task_archives_old_history_records_when_recent_limit_is_exceeded(tmp_path):
+    memory_root = tmp_path / "memory"
+    provider = JsonMemoryProvider(memory_root, recent_task_limit=2)
+
+    for index in range(4):
+        state = completed_state(task_id=f"task_{index}", task_type="summarize")
+        state.updated_at = f"2026-07-0{index + 1}T08:00:00"
+        provider.save_task(state)
+
+    recent_history = read_json(memory_root / "task_history.json")
+    archive_history = read_json(memory_root / "archives" / "task_history_2026-07.json")
+
+    assert [task["task_id"] for task in recent_history["tasks"]] == ["task_2", "task_3"]
+    assert [task["task_id"] for task in archive_history["tasks"]] == ["task_0", "task_1"]
+    assert archive_history["tasks"][0]["final_output"].startswith("## 摘要")
+
+
+def test_json_memory_provider_compacts_existing_task_history_on_init(tmp_path):
+    memory_root = tmp_path / "memory"
+    memory_root.mkdir()
+    (memory_root / "task_history.json").write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "tasks": [
+                    {"task_id": "task_0", "updated_at": "2026-07-01T08:00:00"},
+                    {"task_id": "task_1", "updated_at": "2026-07-02T08:00:00"},
+                    {"task_id": "task_2", "updated_at": "2026-07-03T08:00:00"},
+                    {"task_id": "task_3", "updated_at": "2026-07-04T08:00:00"},
+                ],
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    JsonMemoryProvider(memory_root, recent_task_limit=2)
+
+    recent_history = read_json(memory_root / "task_history.json")
+    archive_history = read_json(memory_root / "archives" / "task_history_2026-07.json")
+    assert [task["task_id"] for task in recent_history["tasks"]] == ["task_2", "task_3"]
+    assert [task["task_id"] for task in archive_history["tasks"]] == ["task_0", "task_1"]
+
+
 def test_save_failed_task_writes_negative_rule(tmp_path):
     provider = JsonMemoryProvider(tmp_path / "memory")
     state = failed_state()

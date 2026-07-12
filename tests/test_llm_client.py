@@ -69,6 +69,9 @@ def test_default_transport_can_disable_ssl_verification(monkeypatch):
             return FakeResponse()
 
     class FakeResponse:
+        def raise_for_status(self):
+            return self
+
         def json(self):
             return {"choices": [{"message": {"content": "ok"}}]}
 
@@ -102,6 +105,9 @@ def test_default_transport_uses_certifi_when_ssl_verification_enabled(monkeypatc
             return FakeResponse()
 
     class FakeResponse:
+        def raise_for_status(self):
+            return self
+
         def json(self):
             return {"choices": [{"message": {"content": "ok"}}]}
 
@@ -118,7 +124,20 @@ def test_default_transport_uses_certifi_when_ssl_verification_enabled(monkeypatc
     assert captured["verify"] == "/tmp/cacert.pem"
 
 
-def test_chat_falls_back_to_curl_transport_on_urllib_ssl_eof():
+def test_from_config_enables_curl_fallback_by_default(monkeypatch):
+    import config
+
+    monkeypatch.setattr(config, "LLM_API_KEY", "key")
+    monkeypatch.setattr(config, "LLM_MODEL", "mimo-v2.5-pro")
+    monkeypatch.setattr(config, "LLM_BASE_URL", "https://example.com/v1")
+    monkeypatch.setattr(config, "LLM_SSL_VERIFY", True)
+
+    client = LLMClient.from_config()
+
+    assert client.fallback_transport is not None
+
+
+def test_chat_falls_back_on_ssl_eof():
     calls = []
 
     def eof_transport(endpoint, headers, payload, timeout):

@@ -8,6 +8,16 @@ class Executor:
         self.tool_registry = tool_registry if tool_registry is not None else build_tool_registry()
 
     def run(self, action: Action) -> ToolResult:
+        if action.tool_name == "unsupported_task":
+            return ToolResult(
+                success=False,
+                tool_name=action.tool_name,
+                action_name=action.action_name,
+                result={},
+                error=str(action.params.get("unsupported_reason") or "当前任务不受支持"),
+                step_id=action.step_id,
+            )
+
         tool = self.tool_registry.get(action.tool_name)
         if tool is None:
             return ToolResult(

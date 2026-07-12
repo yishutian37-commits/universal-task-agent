@@ -41,7 +41,7 @@ class LLMClient:
         )
 
     @classmethod
-    def from_config(cls) -> "LLMClient":
+    def from_config(cls, use_curl_fallback: bool = True) -> "LLMClient":
         from config import LLM_API_KEY, LLM_BASE_URL, LLM_MODEL, LLM_SSL_VERIFY
 
         return cls(
@@ -49,6 +49,7 @@ class LLMClient:
             model=LLM_MODEL,
             base_url=LLM_BASE_URL,
             ssl_verify=LLM_SSL_VERIFY,
+            use_curl_fallback=use_curl_fallback,
         )
 
     def chat(self, system_prompt: str, user_prompt: str) -> str:
@@ -123,6 +124,7 @@ class LLMClient:
         try:
             with httpx.Client(timeout=timeout, verify=verify) as client:
                 response = client.post(endpoint, headers=headers, json=payload)
+                response.raise_for_status()
         except httpx.HTTPStatusError as exc:
             raise LLMClientError(f"LLM HTTP error {exc.response.status_code}: {exc.response.text}") from exc
         except httpx.RequestError as exc:

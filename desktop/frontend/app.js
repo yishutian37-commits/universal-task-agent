@@ -7,6 +7,7 @@ const els = {
   conversationSearch: document.getElementById("conversationSearch"),
   conversationList: document.getElementById("conversationList"),
   conversationTitle: document.getElementById("conversationTitle"),
+  workspaceSelector: document.getElementById("workspaceSelector"),
   openMemory: document.getElementById("openMemory"),
   openKnowledge: document.getElementById("openKnowledge"),
   openSkills: document.getElementById("openSkills"),
@@ -54,18 +55,21 @@ const els = {
   apiKey: document.getElementById("apiKey"),
   sslVerify: document.getElementById("sslVerify"),
   dangerousToolsEnabled: document.getElementById("dangerousToolsEnabled"),
+  desktopAccessEnabled: document.getElementById("desktopAccessEnabled"),
   clearKey: document.getElementById("clearKey"),
   authorizationModal: document.getElementById("authorizationModal"),
   authorizationSummary: document.getElementById("authorizationSummary"),
   authorizationDetails: document.getElementById("authorizationDetails"),
   approveAuthorization: document.getElementById("approveAuthorization"),
   rejectAuthorization: document.getElementById("rejectAuthorization"),
+  selectionContextMenu: document.getElementById("selectionContextMenu"),
+  copySelection: document.getElementById("copySelection"),
   toast: document.getElementById("toast"),
   toastTitle: document.getElementById("toastTitle"),
   toastBody: document.getElementById("toastBody"),
   kbMode: document.getElementById("kbMode"),
-  kbIngestPath: document.getElementById("kbIngestPath"),
-  kbIngestBtn: document.getElementById("kbIngestBtn"),
+  kbIngestFilesBtn: document.getElementById("kbIngestFilesBtn"),
+  kbIngestFolderBtn: document.getElementById("kbIngestFolderBtn"),
   kbRefreshBtn: document.getElementById("kbRefreshBtn"),
   kbDocList: document.getElementById("kbDocList"),
   kbStats: document.getElementById("kbStats"),
@@ -96,7 +100,9 @@ const state = {
   memoryOverview: null,
   memoryTab: "long-term",
   memoryLongTermKind: "identity",
-  memoryArchiveTaskId: null
+  memoryArchiveTaskId: null,
+  workspacePath: "",
+  selectedText: ""
 };
 
 const runLifecycle = window.UTAShell.createRunLifecycle();
@@ -292,19 +298,94 @@ function renderChatMessages() {
   if (!state.messages.length) {
     els.chatMessages.innerHTML = `
       <article class="chatMessage assistant">
-        <div class="messageBubble">你好，我是 UTA。把任务发给我，我会在右侧展示拆解步骤和执行状态。</div>
+        <div class="messageBubble" data-copy-selectable="true">你好，我是 UTA。把任务发给我，我会在右侧展示拆解步骤和执行状态。</div>
       </article>
     `;
     return;
   }
   els.chatMessages.innerHTML = state.messages.map((message) => `
     <article class="chatMessage ${escapeHtml(message.role)} ${escapeHtml(message.status || "")}" data-message-id="${escapeHtml(message.id)}">
-      <div class="messageBubble">
+      <div class="messageBubble" data-copy-selectable="true">
         ${message.role === "assistant" ? renderMarkdown(message.content || "") : escapeHtml(message.content || "")}
       </div>
+      <button class="messageCopy" type="button" data-copy-message-id="${escapeHtml(message.id)}" title="复制消息" aria-label="复制消息">⧉</button>
     </article>
   `).join("");
+  els.chatMessages.querySelectorAll("[data-copy-message-id]").forEach((button) => {
+    button.addEventListener("click", () => copyMessage(button.dataset.copyMessageId));
+  });
   els.chatMessages.scrollTop = els.chatMessages.scrollHeight;
+}
+
+async function copyMessage(messageId) {
+  const message = state.messages.find((item) => item.id === messageId);
+  if (!message) return;
+  try {
+    await copyText(message.content || "");
+    showToast("已复制", "消息已写入剪贴板");
+  } catch (error) {
+    showToast("复制失败", error.message || "无法写入剪贴板");
+  }
+}
+
+async function copyText(text) {
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return;
+    } catch (error) {
+      // file:// WebView 可能暴露 Clipboard API 但拒绝写入，继续使用本地回退方案。
+    }
+  }
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.setAttribute("readonly", "");
+  textarea.style.position = "fixed";
+  textarea.style.opacity = "0";
+  document.body.appendChild(textarea);
+  textarea.select();
+  const copied = document.execCommand("copy");
+  textarea.remove();
+  if (!copied) throw new Error("当前环境不支持复制");
+}
+
+function selectedMessageText(target) {
+  const selectable = target instanceof Element ? target.closest('[data-copy-selectable="true"]') : null;
+  const selection = window.getSelection();
+  if (!selectable || !selection || selection.isCollapsed || !selection.anchorNode || !selection.focusNode) return "";
+  if (!selectable.contains(selection.anchorNode) || !selectable.contains(selection.focusNode)) return "";
+  return selection.toString();
+}
+
+function hideSelectionContextMenu() {
+  state.selectedText = "";
+  els.selectionContextMenu.classList.add("hidden");
+  els.selectionContextMenu.setAttribute("aria-hidden", "true");
+}
+
+function showSelectionContextMenu(clientX, clientY, text) {
+  state.selectedText = text;
+  els.selectionContextMenu.classList.remove("hidden");
+  els.selectionContextMenu.setAttribute("aria-hidden", "false");
+
+  const menuRect = els.selectionContextMenu.getBoundingClientRect();
+  const left = Math.min(clientX, window.innerWidth - menuRect.width - 8);
+  const top = Math.min(clientY, window.innerHeight - menuRect.height - 8);
+  els.selectionContextMenu.style.left = `${Math.max(8, left)}px`;
+  els.selectionContextMenu.style.top = `${Math.max(8, top)}px`;
+  els.copySelection.focus();
+}
+
+async function copySelectedMessageText() {
+  const text = state.selectedText;
+  hideSelectionContextMenu();
+  if (!text) return;
+  try {
+    await copyText(text);
+    showToast("已复制", "选中文字已写入剪贴板");
+  } catch (error) {
+    showToast("复制失败", error.message || "无法写入剪贴板");
+  }
 }
 
 function updateKeyState(settings) {
@@ -316,6 +397,35 @@ function updateDangerousToolsStatus(settings) {
   if (!els.dangerousToolsStatus) return;
   els.dangerousToolsStatus.textContent = enabled ? "工具授权：开启" : "工具授权：关闭";
   els.dangerousToolsStatus.classList.toggle("enabled", enabled);
+}
+
+function updateWorkspaceSelector(workspacePath) {
+  state.workspacePath = workspacePath || "";
+  const normalized = state.workspacePath.replace(/\\/g, "/").replace(/\/$/, "");
+  const name = normalized ? normalized.split("/").pop() || normalized : "选择工作文件夹";
+  els.workspaceSelector.textContent = name;
+  els.workspaceSelector.title = state.workspacePath || "选择工作文件夹";
+  els.workspaceSelector.setAttribute("aria-label", state.workspacePath ? `切换工作文件夹：${state.workspacePath}` : "选择工作文件夹");
+}
+
+async function selectWorkspace() {
+  if (runLifecycle.isBusy()) {
+    showToast("任务运行中", "请先停止当前任务再切换工作区");
+    return false;
+  }
+  try {
+    const result = await callApi("select_workspace");
+    if (!result.ok) {
+      if (!result.cancelled) showToast("选择失败", result.error || "无法选择工作文件夹");
+      return false;
+    }
+    updateWorkspaceSelector(result.workspace_path || "");
+    showToast("工作区已选择", result.workspace_path || "");
+    return true;
+  } catch (error) {
+    showToast("选择失败", error.message);
+    return false;
+  }
 }
 
 function openSettings() {
@@ -387,6 +497,8 @@ async function loadSettings() {
     els.modelName.value = settings.llm_model || "";
     els.sslVerify.checked = settings.llm_ssl_verify !== false;
     els.dangerousToolsEnabled.checked = settings.dangerous_tools_enabled === true;
+    els.desktopAccessEnabled.checked = settings.desktop_access_enabled === true;
+    updateWorkspaceSelector(settings.workspace_path || "");
     updateKeyState(settings);
     updateDangerousToolsStatus(settings);
     els.bridgeState.textContent = "已连接";
@@ -403,7 +515,8 @@ async function saveSettings(event) {
     llm_model: els.modelName.value,
     llm_api_key: els.apiKey.value,
     llm_ssl_verify: els.sslVerify.checked,
-    dangerous_tools_enabled: els.dangerousToolsEnabled.checked
+    dangerous_tools_enabled: els.dangerousToolsEnabled.checked,
+    desktop_access_enabled: els.desktopAccessEnabled.checked
   });
   if (!result.ok) {
     showToast("保存失败", result.error || "未知错误");
@@ -469,10 +582,13 @@ function renderConversationSidebar(conversations) {
     const rows = items.map((conversation) => {
       const active = conversation.conversation_id === state.conversationId;
       return `
-        <button class="conversationItem${active ? " active" : ""}" type="button" aria-current="${active ? "true" : "false"}" data-conversation-id="${escapeHtml(conversation.conversation_id)}">
-          <strong>${escapeHtml(conversation.title || "新对话")}</strong>
-          <small>${escapeHtml(conversation.preview || "暂无消息")}</small>
-        </button>
+        <div class="conversationRow${active ? " active" : ""}">
+          <button class="conversationItem${active ? " active" : ""}" type="button" aria-current="${active ? "true" : "false"}" data-conversation-id="${escapeHtml(conversation.conversation_id)}">
+            <strong>${escapeHtml(conversation.title || "新对话")}</strong>
+            <small>${escapeHtml(conversation.preview || "暂无消息")}</small>
+          </button>
+          <button class="conversationDelete" type="button" data-delete-conversation-id="${escapeHtml(conversation.conversation_id)}" title="删除会话" aria-label="删除会话">×</button>
+        </div>
       `;
     }).join("");
     return `<section class="conversationGroup"><h2>${label}</h2>${rows}</section>`;
@@ -481,6 +597,36 @@ function renderConversationSidebar(conversations) {
   els.conversationList.querySelectorAll("[data-conversation-id]").forEach((button) => {
     button.addEventListener("click", () => openConversation(button.dataset.conversationId));
   });
+  els.conversationList.querySelectorAll("[data-delete-conversation-id]").forEach((button) => {
+    button.addEventListener("click", () => deleteConversation(button.dataset.deleteConversationId));
+  });
+}
+
+async function deleteConversation(conversationId) {
+  if (runLifecycle.isBusy()) {
+    showToast("任务运行中", "请先停止当前任务");
+    return;
+  }
+  const conversation = state.conversations.find((item) => item.conversation_id === conversationId);
+  const title = conversation && conversation.title ? conversation.title : "这个会话";
+  if (!window.confirm(`确定删除“${title}”吗？删除后无法恢复。`)) return;
+
+  const result = await callApi("delete_conversation", conversationId);
+  if (!result.ok) {
+    showToast("删除失败", result.error || "未知错误");
+    return;
+  }
+  if (state.conversationId === conversationId) {
+    state.conversationId = null;
+    state.messages = [];
+    advanceConversationRevision();
+    els.conversationTitle.textContent = "新任务";
+    showConversationView();
+    resetRunSurface();
+    renderChatMessages();
+  }
+  await loadConversationSidebar();
+  showToast("已删除", "会话记录已移除");
 }
 
 async function startNewConversation() {
@@ -582,28 +728,54 @@ async function loadKnowledgeDocs() {
   }
 }
 
-async function ingestKnowledge() {
-  const path = els.kbIngestPath.value.trim();
-  if (!path) {
-    showToast("请输入路径", "输入文件或目录路径");
-    return;
-  }
-  els.kbIngestBtn.disabled = true;
+async function ingestKnowledgePaths(paths) {
+  if (!paths.length) return;
+  els.kbIngestFilesBtn.disabled = true;
+  els.kbIngestFolderBtn.disabled = true;
   els.kbMode.textContent = "摄入中...";
+  let documentCount = 0;
+  let chunkCount = 0;
+  const failures = [];
   try {
-    const result = await callApi("rag_ingest", path);
-    if (result.ok === false) {
-      showToast("摄入失败", result.error || "未知错误");
-    } else {
-      const count = result.chunk_count || (result.ingested ? result.ingested.length : 0);
-      showToast("摄入成功", `${count} 个片段已加入知识库`);
-      els.kbIngestPath.value = "";
-      await loadKnowledgeBase();
+    for (const path of paths) {
+      const result = await callApi("rag_ingest", path);
+      if (result.ok === false) {
+        failures.push(result.error || path);
+        continue;
+      }
+      if (Array.isArray(result.ingested)) {
+        documentCount += result.ingested.length;
+        chunkCount += result.ingested.reduce((total, item) => total + Number(item.chunk_count || 0), 0);
+      } else {
+        documentCount += 1;
+        chunkCount += Number(result.chunk_count || 0);
+      }
     }
+    if (failures.length) {
+      showToast(documentCount ? "部分导入失败" : "导入失败", failures[0]);
+    } else {
+      showToast("导入成功", `${documentCount} 个文档、${chunkCount} 个片段已加入知识库`);
+    }
+    if (documentCount) await loadKnowledgeBase();
   } catch (error) {
-    showToast("摄入失败", error.message);
+    showToast("导入失败", error.message);
   } finally {
-    els.kbIngestBtn.disabled = false;
+    els.kbIngestFilesBtn.disabled = false;
+    els.kbIngestFolderBtn.disabled = false;
+  }
+}
+
+async function chooseKnowledgeSources(selectSources) {
+  try {
+    const result = await selectSources();
+    if (result.cancelled) return;
+    if (!result.ok) {
+      showToast("选择失败", result.error || "无法打开系统选择器");
+      return;
+    }
+    await ingestKnowledgePaths(result.paths || []);
+  } catch (error) {
+    showToast("选择失败", error.message);
   }
 }
 
@@ -991,6 +1163,17 @@ async function runTask() {
     return;
   }
 
+  try {
+    const requirements = await callApi("get_message_requirements", text);
+    if (requirements.workspace_required && !state.workspacePath) {
+      const selected = await selectWorkspace();
+      if (!selected) return;
+    }
+  } catch (error) {
+    showToast("无法检查工作区", error.message);
+    return;
+  }
+
   const requestRevision = state.conversationRevision;
   const requestConversationId = state.conversationId;
   resetRunSurface();
@@ -1098,20 +1281,29 @@ async function resumeTask() {
   const taskId = window.prompt("输入要恢复的 task_id");
   if (!taskId || !taskId.trim()) return;
 
-  resetRunSurface();
   const resumeTaskId = taskId.trim();
+  const resumeContext = await callApi("get_resume_context", resumeTaskId);
+  if (!resumeContext.ok) {
+    showToast("恢复失败", resumeContext.error || "checkpoint 不存在");
+    return;
+  }
+  if (resumeContext.conversation_id && resumeContext.conversation_id !== state.conversationId) {
+    await openConversation(resumeContext.conversation_id);
+    if (state.conversationId !== resumeContext.conversation_id) return;
+  }
+
+  resetRunSurface();
   state.taskId = resumeTaskId;
-  const assistant = addChatMessage("assistant", `正在从 checkpoint 恢复：${resumeTaskId}`, "running", resumeTaskId);
+  const assistant = state.messages.find(
+    (message) => message.role === "assistant" && message.taskId === resumeTaskId
+  ) || addChatMessage("assistant", `正在从 checkpoint 恢复：${resumeTaskId}`, "running", resumeTaskId);
+  Object.assign(assistant, { content: `正在从 checkpoint 恢复：${resumeTaskId}`, status: "running" });
+  renderChatMessages();
   const requestContext = runLifecycle.beginRequest({
     conversationId: state.conversationId || "",
     conversationRevision: state.conversationRevision,
     assistantId: assistant.id
   });
-  const binding = runLifecycle.bindTask(requestContext.requestId, {
-    taskId: resumeTaskId,
-    conversationId: state.conversationId || ""
-  });
-  const context = binding.context;
   setStatus("running", "恢复中");
   els.taskIdLabel.textContent = resumeTaskId;
   els.taskInput.readOnly = true;
@@ -1121,24 +1313,39 @@ async function resumeTask() {
   try {
     const result = await callApi("resume_task", resumeTaskId);
     if (!result.ok) {
-      runLifecycle.finishTask(resumeTaskId, "failed");
+      runLifecycle.finishRequest(requestContext.requestId);
       setStatus("error", "恢复失败");
-      updateAssistantForContext(context, { content: result.error || "恢复失败", status: "failed" });
+      Object.assign(assistant, { content: result.error || "恢复失败", status: "failed" });
+      renderChatMessages();
       showToast("恢复失败", result.error || "checkpoint 不存在");
       return;
     }
+    const binding = runLifecycle.bindTask(requestContext.requestId, {
+      taskId: resumeTaskId,
+      conversationId: result.conversation_id || state.conversationId || ""
+    });
+    if (!binding.ok) return;
+    const context = binding.context;
     state.taskId = resumeTaskId;
     els.taskIdLabel.textContent = resumeTaskId;
     renderTaskPanelEmptyStates();
+    for (const earlyEvent of binding.events) {
+      await handleProgress(earlyEvent);
+    }
     if (!runLifecycle.isTerminalTask(resumeTaskId)) {
       setTaskPanelTab("progress");
       setTaskPanelOpen(true);
       setStopTaskVisible(true);
     }
   } catch (error) {
-    runLifecycle.finishTask(resumeTaskId, "failed");
+    if (runLifecycle.isCurrentRequest(requestContext.requestId)) {
+      runLifecycle.finishRequest(requestContext.requestId);
+    } else {
+      runLifecycle.finishTask(resumeTaskId, "failed");
+    }
     setStatus("error", "恢复失败");
-    updateAssistantForContext(context, { content: error.message, status: "failed" });
+    Object.assign(assistant, { content: error.message, status: "failed" });
+    renderChatMessages();
     showToast("恢复失败", error.message);
   } finally {
     unlockComposerIfIdle();
@@ -1435,7 +1642,8 @@ function bindEvents() {
   els.openKnowledge.addEventListener("click", () => showCapabilityPage("knowledge"));
   els.openMemory.addEventListener("click", () => showCapabilityPage("memory"));
   els.openSkills.addEventListener("click", () => showCapabilityPage("capabilities"));
-  els.kbIngestBtn.addEventListener("click", ingestKnowledge);
+  els.kbIngestFilesBtn.addEventListener("click", () => chooseKnowledgeSources(() => callApi("select_knowledge_files")));
+  els.kbIngestFolderBtn.addEventListener("click", () => chooseKnowledgeSources(() => callApi("select_knowledge_folder")));
   els.kbRefreshBtn.addEventListener("click", loadKnowledgeBase);
   els.kbAskBtn.addEventListener("click", askKnowledge);
   els.kbQueryBtn.addEventListener("click", queryKnowledge);
@@ -1445,6 +1653,7 @@ function bindEvents() {
   els.openSettingsSide.addEventListener("click", openSettings);
   els.dangerousToolsStatus.addEventListener("click", openSettings);
   els.closeSettings.addEventListener("click", closeSettings);
+  els.workspaceSelector.addEventListener("click", selectWorkspace);
   els.settingsModal.addEventListener("click", (event) => {
     if (event.target === els.settingsModal) closeSettings();
   });
@@ -1452,6 +1661,24 @@ function bindEvents() {
   els.clearKey.addEventListener("click", clearKey);
   els.approveAuthorization.addEventListener("click", approveAuthorization);
   els.rejectAuthorization.addEventListener("click", rejectAuthorization);
+  els.copySelection.addEventListener("click", copySelectedMessageText);
+  document.addEventListener("contextmenu", (event) => {
+    const text = selectedMessageText(event.target);
+    if (!text.trim()) {
+      hideSelectionContextMenu();
+      return;
+    }
+    event.preventDefault();
+    showSelectionContextMenu(event.clientX, event.clientY, text);
+  });
+  document.addEventListener("pointerdown", (event) => {
+    if (!els.selectionContextMenu.contains(event.target)) hideSelectionContextMenu();
+  });
+  document.addEventListener("scroll", hideSelectionContextMenu, true);
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") hideSelectionContextMenu();
+  });
+  window.addEventListener("blur", hideSelectionContextMenu);
   els.loadExample.addEventListener("click", loadExample);
   els.clearTask.addEventListener("click", () => {
     els.taskInput.value = "";

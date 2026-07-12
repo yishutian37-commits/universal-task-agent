@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from core.intent_rules import looks_like_langchain_tool_task
 from core.state import Task
 from llm.llm_client import LLMClient
 
@@ -14,6 +15,7 @@ ALLOWED_TASK_TYPES = {
     "code_reading",
     "geo_analysis",
     "history_query",
+    "langchain_tool",
     "complex_task",
     "unknown",
 }
@@ -24,6 +26,9 @@ class TaskParser:
         self.llm_client = llm_client if llm_client is not None else LLMClient.from_config()
 
     def parse(self, task_id: str, user_input: str) -> Task:
+        current_input = self._current_user_input(user_input)
+        if self._looks_like_workspace_summary(current_input):
+            return self._workspace_summary_task(task_id, current_input)
         try:
             payload = self.llm_client.chat_json(
                 self._system_prompt(),
@@ -31,21 +36,23 @@ class TaskParser:
                 schema=None,
             )
         except Exception:
-            return self._fallback_task(task_id, user_input)
+            return self._fallback_task(task_id, current_input)
 
         if not isinstance(payload, dict):
-            return self._fallback_task(task_id, user_input)
+            return self._fallback_task(task_id, current_input)
 
-        if self._looks_like_history_query(user_input):
-            return self._history_query_task(task_id, user_input)
+        if self._looks_like_history_query(current_input):
+            return self._history_query_task(task_id, current_input)
+        if self._looks_like_langchain_tool_task(current_input):
+            return self._langchain_tool_task(task_id, current_input)
 
         task_type = self._normalize_task_type(payload.get("task_type"))
-        if self._looks_like_complex_task(user_input) and task_type in {"summarize", "code_reading", "unknown"}:
-            return self._complex_task(task_id, user_input)
+        if self._looks_like_complex_task(current_input) and task_type in {"summarize", "code_reading", "unknown"}:
+            return self._complex_task(task_id, current_input)
 
         return Task(
             task_id=task_id,
-            user_input=user_input,
+            user_input=current_input,
             task_type=task_type,
             intent=self._string_or_default(payload.get("intent"), task_type),
             input_type=self._string_or_default(payload.get("input_type"), "unknown"),
@@ -55,10 +62,17 @@ class TaskParser:
         )
 
     @staticmethod
+    def _current_user_input(user_input: str) -> str:
+        matches = list(re.finditer(r"(?:^|\n)当前用户输入[:：]\s*", str(user_input or "")))
+        if not matches:
+            return str(user_input or "").strip()
+        return str(user_input or "")[matches[-1].end() :].strip()
+
+    @staticmethod
     def _system_prompt() -> str:
         return (
             "你是 UTA 的 Task Parser。只返回 JSON，不要输出解释。"
-            "task_type 只能是 summarize、data_analysis、research、code_reading、geo_analysis、history_query、complex_task、unknown。"
+            "task_type 只能是 summarize、data_analysis、research、code_reading、geo_analysis、history_query、langchain_tool、complex_task、unknown。"
         )
 
     @staticmethod
@@ -147,6 +161,8 @@ class TaskParser:
             )
         if guessed_type == "history_query":
             return TaskParser._history_query_task(task_id, user_input)
+        if guessed_type == "langchain_tool":
+            return TaskParser._langchain_tool_task(task_id, user_input)
         if guessed_type == "complex_task":
             return TaskParser._complex_task(task_id, user_input)
         return Task(
@@ -165,6 +181,8 @@ class TaskParser:
         text = user_input.lower()
         if TaskParser._looks_like_history_query(user_input):
             return "history_query"
+        if TaskParser._looks_like_langchain_tool_task(user_input):
+            return "langchain_tool"
         if any(marker in text for marker in ["geo", "生成式引擎优化"]):
             return "geo_analysis"
         if any(marker in user_input for marker in ["AI可见性", "AI 可见性", "问题矩阵", "内容Brief", "内容 Brief", "平台合规"]):
@@ -233,6 +251,48 @@ class TaskParser:
             intent="list_previous_tasks",
             input_type="memory",
             expected_output="history_task_list",
+            constraints=[],
+            missing_info=[],
+        )
+
+    @staticmethod
+    def _looks_like_langchain_tool_task(user_input: str) -> bool:
+        return looks_like_langchain_tool_task(user_input)
+
+    @staticmethod
+    def _looks_like_workspace_summary(user_input: str) -> bool:
+        normalized = "".join(str(user_input or "").lower().split())
+        return (
+            "总结" in normalized
+            and any(marker in normalized for marker in ("读取", "查看", "分析"))
+            and any(
+                marker in normalized
+                for marker in ("工作区", "工作文件夹", "工作目录", "当前目录", "这个文件夹", "该文件夹")
+            )
+        )
+
+    @staticmethod
+    def _workspace_summary_task(task_id: str, user_input: str) -> Task:
+        return Task(
+            task_id=task_id,
+            user_input=user_input,
+            task_type="summarize",
+            intent="summarize_workspace",
+            input_type="directory",
+            expected_output="summary_report",
+            constraints=["只读工作区，不修改文件"],
+            missing_info=[],
+        )
+
+    @staticmethod
+    def _langchain_tool_task(task_id: str, user_input: str) -> Task:
+        return Task(
+            task_id=task_id,
+            user_input=user_input,
+            task_type="langchain_tool",
+            intent="invoke_langchain_tool",
+            input_type="text",
+            expected_output="tool_result",
             constraints=[],
             missing_info=[],
         )

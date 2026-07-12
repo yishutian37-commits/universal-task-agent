@@ -1,11 +1,16 @@
 import json
 from datetime import datetime
+from pathlib import Path
 
 import main
-from core.state import Task
+from core.state import AgentState, Plan, PlanStep, Task, ToolResult
 from main import create_initial_state, run_task
 from tools.base_tool import BaseTool
+from tools.authorization import AuthorizationDecision
+from tools.langchain_adapter import LangChainToolAdapter
+from tools.langchain_common_tools import DirectoryCreateLangChainTool, FileDeleteLangChainTool, PythonReplLangChainTool
 from tools.history_tool import HistoryTool
+from tools.registry import build_tool_registry
 
 
 VALID_SUMMARY_REPORT = "## 摘要\n库存接口已完成联调。\n## 核心观点\n流程清晰。\n## 风险点\n原文未提供明确风险。"
@@ -85,6 +90,61 @@ class FakeMemoryProvider:
         return {}
 
 
+class CapturingMemoryProvider:
+    def __init__(self):
+        self.saved_user_inputs = []
+
+    def save_task(self, state):
+        self.saved_user_inputs.append(state.user_input)
+
+    def load_context(self):
+        return {}
+
+
+class CapturingCheckpointStore:
+    def __init__(self, loaded_state=None):
+        self.loaded_state = loaded_state
+        self.saved_states = []
+        self.loaded_task_ids = []
+
+    def save(self, state):
+        self.saved_states.append(state.to_dict())
+
+    def load(self, task_id):
+        self.loaded_task_ids.append(task_id)
+        return self.loaded_state
+
+
+class CapturingParser:
+    def __init__(self):
+        self.seen_user_inputs = []
+
+    def parse(self, task_id, user_input):
+        self.seen_user_inputs.append(user_input)
+        return Task(
+            task_id=task_id,
+            user_input=user_input,
+            task_type="summarize",
+            intent="contextual_task",
+            input_type="text",
+            expected_output="summary_report",
+        )
+
+
+class CapturingTool(BaseTool):
+    name = "capturing_tool"
+    description = "captures user_input"
+
+    def __init__(self):
+        self.seen_user_inputs = []
+
+    def run(self, action_name, params):
+        self.seen_user_inputs.append(params.get("user_input"))
+        if action_name == "read":
+            return {"message": "已读取文本内容", "content": "会议记录：库存接口已完成联调。"}
+        return {"message": VALID_SUMMARY_REPORT, "summary_markdown": VALID_SUMMARY_REPORT, "report_markdown": VALID_SUMMARY_REPORT}
+
+
 class FakeSkillLoader:
     def __init__(self, matched_skill):
         self.matched_skill = matched_skill
@@ -118,12 +178,291 @@ def test_generate_task_id_uses_microseconds_to_avoid_same_second_collisions(monk
     assert second == "task_20260622_010203_123457"
 
 
+def test_run_task_separates_saved_user_input_from_contextual_execution_input():
+    raw_input = "帮我总结刚才提到的项目"
+    contextual_input = "以下是同一对话前文：项目叫 UTA。\n\n当前用户输入：\n帮我总结刚才提到的项目"
+    parser = CapturingParser()
+    tool = CapturingTool()
+    memory_provider = CapturingMemoryProvider()
+
+    state = run_task(
+        contextual_input,
+        task_id="task_context",
+        display_user_input=raw_input,
+        task_parser=parser,
+        tool_registry={"file_tool": tool, "text_tool": tool, "report_tool": tool},
+        memory_provider=memory_provider,
+        skill_loader=False,
+    )
+
+    assert state.user_input == raw_input
+    assert state.execution_input == contextual_input
+    assert parser.seen_user_inputs == [contextual_input]
+    assert tool.seen_user_inputs == [contextual_input, contextual_input, contextual_input]
+    assert memory_provider.saved_user_inputs == [raw_input]
+
+
+def test_run_task_saves_checkpoints_during_execution():
+    checkpoint_store = CapturingCheckpointStore()
+
+    state = run_task(
+        "帮我总结一段文本",
+        task_id="task_checkpoint",
+        task_parser=FakeParser(),
+        tool_registry=make_static_summary_registry(),
+        memory_provider=False,
+        skill_loader=False,
+        checkpoint_store=checkpoint_store,
+    )
+
+    assert state.status == "completed"
+    assert checkpoint_store.saved_states
+    assert checkpoint_store.saved_states[0]["task_id"] == "task_checkpoint"
+    assert checkpoint_store.saved_states[-1]["status"] == "completed"
+    assert checkpoint_store.saved_states[-1]["final_output"] == VALID_SUMMARY_REPORT
+
+
+def test_run_task_executes_safe_langchain_tool_demo():
+    state = run_task(
+        "用 LangChain 工具回显 hello",
+        task_id="task_langchain_demo",
+        task_parser=FakeParser(task_type="langchain_tool", intent="invoke_langchain_tool"),
+        memory_provider=False,
+        skill_loader=False,
+    )
+
+    assert state.status == "completed"
+    assert state.results[-1].tool_name == "langchain_echo_tool"
+    assert state.results[-1].result["output"] == {"echo": {"query": "用 LangChain 工具回显 hello"}}
+    assert "hello" in state.final_output
+
+
+def test_run_task_executes_safe_langchain_calculator_tool():
+    state = run_task(
+        "计算 2 + 3 * 4",
+        task_id="task_langchain_calculator",
+        task_parser=FakeParser(task_type="langchain_tool", intent="invoke_langchain_tool"),
+        memory_provider=False,
+        skill_loader=False,
+    )
+
+    assert state.status == "completed"
+    assert state.results[-1].tool_name == "langchain_calculator_tool"
+    assert state.results[-1].result["output"]["result"] == 14
+    assert "14" in state.final_output
+
+
+class ApprovingAuthorizationManager:
+    def __init__(self):
+        self.requests = []
+
+    def request(self, operation, timeout=None):
+        self.requests.append((operation, timeout))
+        return AuthorizationDecision(
+            request_id="auth_test",
+            approved=True,
+            status="approved",
+            approved_by="tester",
+        )
+
+
+def test_run_task_executes_authorized_file_write_tool(tmp_path):
+    target = tmp_path / "note.txt"
+    auth = ApprovingAuthorizationManager()
+
+    state = run_task(
+        f"写入文件 {target} 内容 hello",
+        task_id="task_authorized_file_write",
+        task_parser=FakeParser(task_type="langchain_tool", intent="invoke_langchain_tool"),
+        tool_registry=build_tool_registry(
+            enable_dangerous_tools=True,
+            authorization_manager=auth,
+            dangerous_allowed_roots=[tmp_path],
+        ),
+        memory_provider=False,
+        skill_loader=False,
+    )
+
+    assert state.status == "completed"
+    assert state.results[-1].tool_name == "langchain_file_write_tool"
+    assert target.read_text(encoding="utf-8") == "hello"
+    assert auth.requests[0][0]["tool_name"] == "langchain_file_write_tool"
+
+
+def test_run_task_executes_authorized_directory_create_tool(tmp_path):
+    auth = ApprovingAuthorizationManager()
+
+    state = run_task(
+        "帮我在桌面创建一个名叫测试的文件夹",
+        task_id="task_authorized_directory_create",
+        task_parser=FakeParser(task_type="langchain_tool", intent="invoke_langchain_tool"),
+        tool_registry={
+            "langchain_directory_create_tool": LangChainToolAdapter(
+                DirectoryCreateLangChainTool(
+                    authorization_manager=auth,
+                    enabled=True,
+                    allowed_roots=[tmp_path],
+                    desktop_root=tmp_path,
+                )
+            )
+        },
+        memory_provider=False,
+        skill_loader=False,
+    )
+
+    assert state.status == "completed"
+    assert state.results[-1].tool_name == "langchain_directory_create_tool"
+    assert (tmp_path / "测试").is_dir()
+    assert auth.requests[0][0]["tool_name"] == "langchain_directory_create_tool"
+
+
+def test_run_task_dangerous_tool_uses_display_input_instead_of_conversation_history(tmp_path):
+    auth = ApprovingAuthorizationManager()
+    current_input = "帮我在桌面创建一个叫测试的文件夹"
+    execution_input = "前文：帮我在桌面创建一个叫一个的文件夹\n\n当前用户输入：\n" + current_input
+
+    state = run_task(
+        execution_input,
+        display_user_input=current_input,
+        task_id="task_current_input_parser",
+        task_parser=FakeParser(task_type="langchain_tool", intent="invoke_langchain_tool"),
+        tool_registry={
+            "langchain_directory_create_tool": LangChainToolAdapter(
+                DirectoryCreateLangChainTool(
+                    authorization_manager=auth,
+                    enabled=True,
+                    allowed_roots=[tmp_path],
+                    desktop_root=tmp_path,
+                )
+            )
+        },
+        memory_provider=False,
+        skill_loader=False,
+    )
+
+    assert state.status == "completed"
+    assert (tmp_path / "测试").is_dir()
+    assert not (tmp_path / "一个").exists()
+
+
+def test_run_task_executes_authorized_python_repl_tool(tmp_path):
+    auth = ApprovingAuthorizationManager()
+
+    state = run_task(
+        "运行 Python 代码 result = 1 + 2",
+        task_id="task_authorized_python_repl",
+        task_parser=FakeParser(task_type="langchain_tool", intent="invoke_langchain_tool"),
+        tool_registry={
+            "langchain_python_repl_tool": LangChainToolAdapter(
+                PythonReplLangChainTool(
+                    authorization_manager=auth,
+                    enabled=True,
+                    allowed_roots=[tmp_path],
+                )
+            )
+        },
+        memory_provider=False,
+        skill_loader=False,
+    )
+
+    assert state.status == "completed"
+    assert state.results[-1].tool_name == "langchain_python_repl_tool"
+    assert state.results[-1].result["output"]["result_repr"] == "3"
+    assert auth.requests[0][0]["tool_name"] == "langchain_python_repl_tool"
+
+
+def test_run_task_executes_authorized_file_delete_tool(tmp_path):
+    target = tmp_path / "old.txt"
+    target.write_text("old", encoding="utf-8")
+    trash = tmp_path / "trash"
+    auth = ApprovingAuthorizationManager()
+
+    state = run_task(
+        f"删除文件 {target}",
+        task_id="task_authorized_file_delete",
+        task_parser=FakeParser(task_type="langchain_tool", intent="invoke_langchain_tool"),
+        tool_registry={
+            "langchain_file_delete_tool": LangChainToolAdapter(
+                FileDeleteLangChainTool(
+                    authorization_manager=auth,
+                    enabled=True,
+                    allowed_roots=[tmp_path],
+                    trash_root=trash,
+                )
+            )
+        },
+        memory_provider=False,
+        skill_loader=False,
+    )
+
+    assert state.status == "completed"
+    assert state.results[-1].tool_name == "langchain_file_delete_tool"
+    assert not target.exists()
+    assert Path(state.results[-1].result["output"]["trash_path"]).read_text(encoding="utf-8") == "old"
+    assert auth.requests[0][0]["tool_name"] == "langchain_file_delete_tool"
+
+
+def test_run_task_resumes_from_checkpoint_without_reparsing():
+    parser = CapturingParser()
+    loaded_state = AgentState(
+        task_id="task_resume",
+        user_input="帮我总结",
+        task_type="summarize",
+        intent="summarize_article",
+        status="running",
+        current_step_id=2,
+    )
+    loaded_state.plan = Plan(
+        plan_id="plan_task_resume",
+        task_id="task_resume",
+        steps=[
+            PlanStep(step_id=1, goal="读取输入内容", status="completed"),
+            PlanStep(step_id=2, goal="提取核心信息", status="running"),
+            PlanStep(step_id=3, goal="生成结构化报告", status="pending"),
+        ],
+        status="running",
+    )
+    loaded_state.results.append(
+        ToolResult(
+            success=True,
+            tool_name="file_tool",
+            action_name="read",
+            result={"message": "file"},
+            step_id=1,
+        )
+    )
+    checkpoint_store = CapturingCheckpointStore(loaded_state=loaded_state)
+
+    state = run_task(
+        "不会使用这个输入",
+        task_id="task_resume",
+        task_parser=parser,
+        tool_registry=make_static_summary_registry(),
+        memory_provider=False,
+        skill_loader=False,
+        checkpoint_store=checkpoint_store,
+        resume_from_checkpoint=True,
+    )
+
+    assert state.status == "completed"
+    assert parser.seen_user_inputs == []
+    assert checkpoint_store.loaded_task_ids == ["task_resume"]
+    assert state.results[0].tool_name == "file_tool"
+
+
 def test_create_initial_state_starts_unknown_before_parser():
-    state = create_initial_state("task_test", "帮我分析 CSV")
+    state = create_initial_state(
+        "task_test",
+        "帮我分析 CSV",
+        conversation_id="conv_20260708_120000_000001",
+        workspace_path="/tmp/workspace",
+    )
 
     assert state.task_id == "task_test"
     assert state.task_type == "unknown"
     assert state.intent == ""
+    assert state.conversation_id == "conv_20260708_120000_000001"
+    assert state.workspace_path == "/tmp/workspace"
 
 
 def test_run_task_completes_with_summary():

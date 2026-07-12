@@ -9,7 +9,13 @@ from core.state import AgentState, Feedback, Plan, PlanStep, Task, ToolResult
 from core.verifier import Verifier
 
 
-def _emit_progress(on_progress, event_type: str, state: AgentState, data: dict) -> None:
+def _save_checkpoint(checkpoint_store, state: AgentState) -> None:
+    if checkpoint_store is not None:
+        checkpoint_store.save(state)
+
+
+def _emit_progress(on_progress, event_type: str, state: AgentState, data: dict, checkpoint_store=None) -> None:
+    _save_checkpoint(checkpoint_store, state)
     if on_progress is None:
         return
     on_progress(
@@ -24,7 +30,7 @@ def _emit_progress(on_progress, event_type: str, state: AgentState, data: dict) 
 def _task_from_state(state: AgentState) -> Task:
     return Task(
         task_id=state.task_id,
-        user_input=state.user_input,
+        user_input=state.execution_input or state.user_input,
         task_type=state.task_type,
         intent=state.intent,
         input_type="unknown",
@@ -72,6 +78,31 @@ def _results_by_step(results: list[ToolResult]) -> dict[int, ToolResult]:
     return mapped
 
 
+def _completed_step_results(results: list[ToolResult]) -> dict[int, dict]:
+    return {
+        step_id: result.result
+        for step_id, result in _results_by_step(results).items()
+        if result.success
+    }
+
+
+def _resume_step_index(plan: Plan) -> int:
+    for index, step in enumerate(plan.steps):
+        if step.status != "completed":
+            return index
+    return len(plan.steps)
+
+
+def _normalize_resumed_plan(plan: Plan) -> None:
+    for step in plan.steps:
+        if step.status == "running":
+            step.status = "pending"
+
+
+def _is_unsupported_result(result: ToolResult | None) -> bool:
+    return result is not None and result.tool_name == "unsupported_task"
+
+
 def _complex_task_output(state: AgentState) -> str:
     steps = state.plan.steps if state.plan is not None else []
     results_by_step = _results_by_step(state.results)
@@ -116,30 +147,45 @@ def _record_replan(
     return event
 
 
-def run_minimal_loop(state: AgentState, tool_registry=None, on_progress=None) -> AgentState:
+def run_minimal_loop(state: AgentState, tool_registry=None, on_progress=None, checkpoint_store=None) -> AgentState:
     planner = Planner()
     router = Router()
     executor = Executor(tool_registry)
     verifier = Verifier()
     reflection = Reflection()
 
-    state.plan = planner.create_plan(_task_from_state(state), matched_skill=state.matched_skill)
-    state.plan.status = "running"
+    if state.plan is None:
+        state.plan = planner.create_plan(_task_from_state(state), matched_skill=state.matched_skill)
+        state.plan.status = "running"
+        event_type = "plan_created"
+        resume_step_id = None
+    else:
+        _normalize_resumed_plan(state.plan)
+        state.plan.status = "running"
+        resume_index = _resume_step_index(state.plan)
+        resume_step_id = (
+            state.plan.steps[resume_index].step_id
+            if resume_index < len(state.plan.steps)
+            else None
+        )
+        event_type = "plan_resumed"
     state.status = "running"
     _emit_progress(
         on_progress,
-        "plan_created",
+        event_type,
         state,
         {
             "steps": [
                 {"step_id": step.step_id, "goal": step.goal}
                 for step in state.plan.steps
-            ]
+            ],
+            "resume_step_id": resume_step_id,
         },
+        checkpoint_store=checkpoint_store,
     )
 
-    completed_step_results = {}
-    step_index = 0
+    completed_step_results = _completed_step_results(state.results)
+    step_index = _resume_step_index(state.plan)
     while step_index < len(state.plan.steps):
         step = state.plan.steps[step_index]
         feedback = None
@@ -159,6 +205,7 @@ def run_minimal_loop(state: AgentState, tool_registry=None, on_progress=None) ->
                     "attempt": attempt + 1,
                     "max_retries": step.max_retries,
                 },
+                checkpoint_store=checkpoint_store,
             )
 
             action = router.choose_tool(state, step)
@@ -176,6 +223,7 @@ def run_minimal_loop(state: AgentState, tool_registry=None, on_progress=None) ->
                     "action_name": action.action_name,
                     "reason": action.reason,
                 },
+                checkpoint_store=checkpoint_store,
             )
 
             result = executor.run(action)
@@ -190,6 +238,7 @@ def run_minimal_loop(state: AgentState, tool_registry=None, on_progress=None) ->
                     "success": result.success,
                     "error": result.error,
                 },
+                checkpoint_store=checkpoint_store,
             )
 
             check = verifier.check(state, step, result)
@@ -203,6 +252,7 @@ def run_minimal_loop(state: AgentState, tool_registry=None, on_progress=None) ->
                     "passed": check.passed,
                     "failed_reasons": check.failed_reasons,
                 },
+                checkpoint_store=checkpoint_store,
             )
 
             if check.passed:
@@ -213,6 +263,7 @@ def run_minimal_loop(state: AgentState, tool_registry=None, on_progress=None) ->
                     "step_done",
                     state,
                     {"step_id": step.step_id, "status": step.status},
+                    checkpoint_store=checkpoint_store,
                 )
                 break
 
@@ -227,11 +278,12 @@ def run_minimal_loop(state: AgentState, tool_registry=None, on_progress=None) ->
                     "failure_type": feedback.failure_type,
                     "repair_strategy": feedback.repair_strategy,
                 },
+                checkpoint_store=checkpoint_store,
             )
             attempt += 1
 
         if step.status != "completed":
-            if feedback is not None and state.replan_count < state.max_replans:
+            if feedback is not None and state.replan_count < state.max_replans and not _is_unsupported_result(result):
                 feedback.need_replan = True
                 old_plan = state.plan
                 new_plan = planner.create_plan(_task_from_state(state), matched_skill=state.matched_skill)
@@ -261,7 +313,7 @@ def run_minimal_loop(state: AgentState, tool_registry=None, on_progress=None) ->
                     new_plan,
                     new_plan.steps[resume_index].step_id,
                 )
-                _emit_progress(on_progress, "replanned", state, event)
+                _emit_progress(on_progress, "replanned", state, event, checkpoint_store=checkpoint_store)
                 step_index = resume_index
                 continue
 
@@ -278,6 +330,7 @@ def run_minimal_loop(state: AgentState, tool_registry=None, on_progress=None) ->
                 "step_done",
                 state,
                 {"step_id": step.step_id, "status": step.status},
+                checkpoint_store=checkpoint_store,
             )
             return state
 
@@ -297,4 +350,5 @@ def run_minimal_loop(state: AgentState, tool_registry=None, on_progress=None) ->
         state.status = "failed"
 
     state.touch()
+    _save_checkpoint(checkpoint_store, state)
     return state

@@ -37,12 +37,11 @@ class HistoryStore:
 
         for task in tasks:
             if isinstance(task, dict) and str(task.get("task_id") or "") == task_id:
-                return {
-                    "ok": True,
-                    "task_id": task_id,
-                    "state": self._state_view(task),
-                    "final_output": str(task.get("final_output") or ""),
-                }
+                return self._run_payload(task_id, task)
+
+        for task in self._read_archived_tasks():
+            if isinstance(task, dict) and str(task.get("task_id") or "") == task_id:
+                return self._run_payload(task_id, task)
 
         return {"ok": False, "error": "任务不存在"}
 
@@ -59,6 +58,34 @@ class HistoryStore:
         if not isinstance(tasks, list):
             return []
         return tasks
+
+    def _read_archived_tasks(self) -> list[dict[str, Any]]:
+        archive_root = self.memory_root / "archives"
+        if not archive_root.exists() or archive_root.is_symlink():
+            return []
+
+        tasks: list[dict[str, Any]] = []
+        for path in sorted(archive_root.glob("task_history_*.json"), reverse=True):
+            if path.is_symlink():
+                continue
+            try:
+                parsed = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+                continue
+            if not isinstance(parsed, dict):
+                continue
+            archived_tasks = parsed.get("tasks")
+            if isinstance(archived_tasks, list):
+                tasks.extend(task for task in archived_tasks if isinstance(task, dict))
+        return tasks
+
+    def _run_payload(self, task_id: str, task: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "ok": True,
+            "task_id": task_id,
+            "state": self._state_view(task),
+            "final_output": str(task.get("final_output") or ""),
+        }
 
     def _summary(self, task: dict[str, Any]) -> dict[str, Any]:
         return {

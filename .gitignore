@@ -13,6 +13,7 @@ outputs/
 /build/
 *.spec.log
 .superpowers/
+.zcode/
 
 # local db
 *.db

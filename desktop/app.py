@@ -25,6 +25,7 @@ def main(debug: bool = False) -> None:
         width=1280,
         height=820,
         min_size=(960, 640),
+        text_select=True,
     )
     api.bind_window(window)
     webview.start(debug=debug)

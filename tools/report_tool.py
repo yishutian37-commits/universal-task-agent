@@ -176,6 +176,8 @@ class ReportTool(BaseTool):
         if not isinstance(files, list):
             files = []
 
+        if analysis.get("project_kind") == "generic":
+            return self._generic_code_report(files)
         return "\n\n".join(
             [
                 self._code_task_flow_section(),
@@ -186,6 +188,38 @@ class ReportTool(BaseTool):
                 self._code_desktop_entry_section(files),
                 self._code_risks_section(),
                 self._code_next_steps_section(),
+            ]
+        )
+
+    def _generic_code_report(self, files: list[dict[str, Any]]) -> str:
+        entry_files = [
+            str(item.get("path") or "")
+            for item in files
+            if "入口" in str(item.get("role") or "")
+        ]
+        dependencies = []
+        for item in files:
+            for imported in item.get("imports") if isinstance(item.get("imports"), list) else []:
+                if str(imported) not in dependencies:
+                    dependencies.append(str(imported))
+        call_order = ["## 调用顺序"]
+        call_order.append(
+            "静态扫描识别到的入口文件：" + "、".join(f"`{path}`" for path in entry_files)
+            if entry_files
+            else "未从文件名和静态结构中确认唯一入口。"
+        )
+        if dependencies:
+            call_order.append("可见依赖：" + "、".join(f"`{name}`" for name in dependencies[:20]))
+        return "\n\n".join(
+            [
+                "## 任务链路\n本报告从项目清单、入口候选、导入关系和顶层符号梳理代码结构。",
+                self._code_key_files_section(files),
+                self._code_module_roles_section(files),
+                "\n".join(call_order),
+                "## 状态与记忆\n静态扫描未假定项目使用特定状态或记忆框架，需要沿入口和依赖继续确认运行时数据流。",
+                "## 桌面端入口\n仅在代码中发现明确的桌面框架或窗口入口时才能确认；当前结果不做 UTA 专用假设。",
+                "## 风险点\n当前是有文件数量和大小上限的静态扫描，不等同于完整语义调用图，也不会执行或修改项目代码。",
+                "## 下一步建议\n- 从识别到的入口文件继续追踪调用关系。\n- 根据项目语言接入对应语法解析器。\n- 对关键流程补充运行时测试或日志验证。",
             ]
         )
 

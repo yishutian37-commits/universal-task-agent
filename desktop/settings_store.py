@@ -19,6 +19,10 @@ DEFAULT_SETTINGS = {
     "memory_context_window_tokens": 400_000,
     "memory_compression_trigger_ratio": 0.7,
     "memory_compression_cap_tokens": 250_000,
+    "memory_compression_message_limit": 40,
+    "dangerous_tools_enabled": False,
+    "desktop_access_enabled": False,
+    "workspace_path": "",
 }
 
 
@@ -50,6 +54,13 @@ class SettingsStore:
             0.7,
         )
         settings["memory_compression_cap_tokens"] = self._to_int(settings["memory_compression_cap_tokens"], 250_000)
+        settings["memory_compression_message_limit"] = self._to_int(
+            settings["memory_compression_message_limit"],
+            40,
+        )
+        settings["dangerous_tools_enabled"] = self._to_bool(settings["dangerous_tools_enabled"])
+        settings["desktop_access_enabled"] = self._to_bool(settings["desktop_access_enabled"])
+        settings["workspace_path"] = self._normalize_workspace_path(settings["workspace_path"])
         return settings
 
     def save(self, payload: dict[str, Any]) -> dict[str, Any]:
@@ -91,6 +102,26 @@ class SettingsStore:
                 settings["memory_compression_cap_tokens"],
             )
 
+        if "memory_compression_message_limit" in payload:
+            settings["memory_compression_message_limit"] = self._to_int(
+                payload["memory_compression_message_limit"],
+                settings["memory_compression_message_limit"],
+            )
+
+        if "dangerous_tools_enabled" in payload:
+            settings["dangerous_tools_enabled"] = self._to_bool(payload["dangerous_tools_enabled"])
+        if "desktop_access_enabled" in payload:
+            settings["desktop_access_enabled"] = self._to_bool(payload["desktop_access_enabled"])
+        if "workspace_path" in payload:
+            value = str(payload.get("workspace_path") or "").strip()
+            if not value:
+                settings["workspace_path"] = ""
+            else:
+                workspace = Path(value).expanduser().resolve()
+                if not workspace.is_dir():
+                    raise ValueError("工作区目录不存在")
+                settings["workspace_path"] = str(workspace)
+
         self.config_path.parent.mkdir(parents=True, exist_ok=True)
         self.config_path.write_text(
             json.dumps(settings, ensure_ascii=False, indent=2) + "\n",
@@ -109,6 +140,10 @@ class SettingsStore:
             "memory_context_window_tokens": settings["memory_context_window_tokens"],
             "memory_compression_trigger_ratio": settings["memory_compression_trigger_ratio"],
             "memory_compression_cap_tokens": settings["memory_compression_cap_tokens"],
+            "memory_compression_message_limit": settings["memory_compression_message_limit"],
+            "dangerous_tools_enabled": settings["dangerous_tools_enabled"],
+            "desktop_access_enabled": settings["desktop_access_enabled"],
+            "workspace_path": settings["workspace_path"],
         }
 
     def apply_to_environment(self) -> None:
@@ -141,3 +176,10 @@ class SettingsStore:
         except (TypeError, ValueError):
             return fallback
         return parsed if parsed > 0 else fallback
+
+    def _normalize_workspace_path(self, value: Any) -> str:
+        text = str(value or "").strip()
+        if not text:
+            return ""
+        workspace = Path(text).expanduser().resolve()
+        return str(workspace) if workspace.is_dir() else ""

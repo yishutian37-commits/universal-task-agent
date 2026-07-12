@@ -42,7 +42,7 @@
             <header class="conversationHeader">
               <div>
                 <h1 id="conversationTitle">新任务</h1>
-                <button class="workspaceSelector" type="button" id="workspaceSelector" disabled title="无工作区">无工作区</button>
+                <button class="workspaceSelector" type="button" id="workspaceSelector" title="选择工作文件夹" aria-label="选择工作文件夹">选择工作文件夹</button>
               </div>
               <div class="headActions">
                 <span class="status ready" id="statusPill"><i></i><span id="statusText">就绪</span></span>
@@ -171,9 +171,10 @@
                 <span id="kbMode">加载中</span>
               </div>
               <div class="knowledgeIngestComposer">
-                <input id="kbIngestPath" placeholder="文件或目录路径（如 ~/notes.md）" />
-                <button class="button primary compact" type="button" id="kbIngestBtn">摄入</button>
+                <button class="button primary compact" type="button" id="kbIngestFilesBtn">导入文档</button>
+                <button class="button secondary compact" type="button" id="kbIngestFolderBtn">导入文件夹</button>
                 <button class="button secondary compact" type="button" id="kbRefreshBtn">刷新</button>
+                <span class="knowledgeIngestHint">支持 Markdown 和纯文本，可多选</span>
               </div>
               <div class="knowledgeDocList" id="kbDocList"></div>
             </section>
@@ -268,11 +269,15 @@
         <section class="settingsGroup">
           <div>
             <strong>工具授权</strong>
-            <p>开启后，Shell、Python REPL、文件写入和文件删除会在执行前请求手动授权。</p>
+            <p>开启后，Shell、Python REPL、目录创建、文件写入和文件删除会在执行前请求手动授权。</p>
           </div>
           <label class="switchRow">
             <span>启用高风险工具</span>
             <input id="dangerousToolsEnabled" type="checkbox" />
+          </label>
+          <label class="switchRow">
+            <span>允许访问桌面目录</span>
+            <input id="desktopAccessEnabled" type="checkbox" />
           </label>
         </section>
       </div>
@@ -297,6 +302,10 @@
         <button class="button primary dangerButton" type="button" id="approveAuthorization">授权执行</button>
       </footer>
     </section>
+  </div>
+
+  <div class="selectionContextMenu hidden" id="selectionContextMenu" role="menu" aria-hidden="true">
+    <button type="button" id="copySelection" role="menuitem">复制</button>
   </div>
 
   <div class="toast" id="toast">

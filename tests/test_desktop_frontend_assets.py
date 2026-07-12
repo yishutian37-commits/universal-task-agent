@@ -357,6 +357,7 @@ def test_frontend_includes_manual_authorization_modal():
     assert 'id="dangerousToolsStatus"' in html
     assert "工具授权" in html
     assert 'id="dangerousToolsEnabled"' in html
+    assert 'id="desktopAccessEnabled"' in html
     assert 'id="authorizationModal"' in html
     assert 'id="approveAuthorization"' in html
     assert 'id="rejectAuthorization"' in html
@@ -367,6 +368,8 @@ def test_frontend_includes_manual_authorization_modal():
     assert 'callApi("reject_authorization", requestId' in js
     assert "payload.code" in js
     assert "payload.trash_path" in js
+    assert "settings.desktop_access_enabled" in js
+    assert "desktop_access_enabled: els.desktopAccessEnabled.checked" in js
 
 
 def test_modals_keep_scrollable_bodies_between_stable_headers_and_footers():
@@ -651,6 +654,56 @@ def test_frontend_can_load_conversations_into_sidebar():
     assert "function openConversation" in js
 
 
+def test_frontend_requires_workspace_for_tasks_and_can_open_native_folder_picker():
+    html = (FRONTEND_ROOT / "index.html").read_text(encoding="utf-8")
+    js = (FRONTEND_ROOT / "app.js").read_text(encoding="utf-8")
+    css = (FRONTEND_ROOT / "style.css").read_text(encoding="utf-8")
+
+    selector = html.split('id="workspaceSelector"', 1)[1].split("</button>", 1)[0]
+    assert "disabled" not in selector
+    assert "选择工作文件夹" in selector
+    assert "workspacePath" in js
+    assert "async function selectWorkspace" in js
+    assert 'callApi("select_workspace")' in js
+    assert 'callApi("get_message_requirements", text)' in js
+    assert 'els.workspaceSelector.addEventListener("click", selectWorkspace);' in js
+    assert 'showToast("任务运行中", "请先停止当前任务再切换工作区");' in js
+    assert "text-overflow: ellipsis" in css_rule(css, ".workspaceSelector")
+
+
+def test_frontend_messages_are_selectable_and_have_copy_action():
+    html = (FRONTEND_ROOT / "index.html").read_text(encoding="utf-8")
+    js = (FRONTEND_ROOT / "app.js").read_text(encoding="utf-8")
+    css = (FRONTEND_ROOT / "style.css").read_text(encoding="utf-8")
+
+    assert 'class="messageCopy"' in js
+    assert 'data-copy-message-id=' in js
+    assert 'data-copy-selectable="true"' in js
+    assert "async function copyMessage" in js
+    assert "navigator.clipboard.writeText" in js
+    assert "user-select: text;" in css_rule(css, ".messageBubble,\n.messageBubble *")
+    assert 'id="selectionContextMenu"' in html
+    assert 'id="copySelection"' in html
+    assert "function selectedMessageText" in js
+    assert 'document.addEventListener("contextmenu"' in js
+    assert "window.getSelection()" in js
+    assert 'target.closest(\'[data-copy-selectable="true"]\')' in js
+    assert 'els.copySelection.addEventListener("click"' in js
+
+
+def test_frontend_can_delete_history_conversation_and_reset_current_view():
+    js = (FRONTEND_ROOT / "app.js").read_text(encoding="utf-8")
+    css = (FRONTEND_ROOT / "style.css").read_text(encoding="utf-8")
+
+    assert 'class="conversationDelete"' in js
+    assert 'aria-label="删除会话"' in js
+    assert "async function deleteConversation" in js
+    assert 'callApi("delete_conversation", conversationId)' in js
+    assert "window.confirm" in js
+    assert "state.conversationId = null;" in js
+    assert ".conversationDelete" in css
+
+
 def test_knowledge_workspace_uses_dedicated_layout_without_history_card_leakage():
     html = (FRONTEND_ROOT / "index.html").read_text(encoding="utf-8")
     js = (FRONTEND_ROOT / "app.js").read_text(encoding="utf-8")
@@ -667,6 +720,20 @@ def test_knowledge_workspace_uses_dedicated_layout_without_history_card_leakage(
     assert ".knowledgeDocPath" in css
     assert "text-overflow: ellipsis" in css
     assert ".knowledgeAnswer" in css
+
+
+def test_knowledge_ingest_uses_native_file_and_folder_pickers():
+    html = (FRONTEND_ROOT / "index.html").read_text(encoding="utf-8")
+    js = (FRONTEND_ROOT / "app.js").read_text(encoding="utf-8")
+
+    assert 'id="kbIngestPath"' not in html
+    assert 'id="kbIngestFilesBtn"' in html
+    assert 'id="kbIngestFolderBtn"' in html
+    assert "支持 Markdown 和纯文本，可多选" in html
+    assert 'callApi("select_knowledge_files")' in js
+    assert 'callApi("select_knowledge_folder")' in js
+    assert "async function ingestKnowledgePaths" in js
+    assert 'callApi("rag_ingest", path)' in js
 
 
 def test_knowledge_document_titles_can_shrink_inside_their_dedicated_items():

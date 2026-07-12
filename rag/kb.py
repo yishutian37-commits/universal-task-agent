@@ -52,8 +52,12 @@ class KnowledgeBase:
         loader = self.loader_factory.get(source)
         loaded = loader.load(source)
 
-        doc_id = str(uuid.uuid4())
-        # 幂等：先删旧的同源 chunk
+        existing_doc = next(
+            (document for document in self._store.list_docs() if document.source == source),
+            None,
+        )
+        doc_id = existing_doc.doc_id if existing_doc is not None else str(uuid.uuid4())
+        # 幂等：复用同源文档身份，并替换旧 chunk。
         self._store.delete_by_source(source)
 
         chunks = self.chunker.chunk_text(loaded.text, doc_id, source)
@@ -106,10 +110,12 @@ class KnowledgeBase:
 
     def delete(self, target: str) -> dict:
         """按 doc_id 或 source 删除文档。返回删除条数和目标。"""
-        # 先尝试按 source 删 chunk，再按 doc_id 删
-        deleted = self._store.delete_by_source(target)
-        if deleted == 0:
-            deleted = self._store.delete_doc(target)
+        source_doc = next(
+            (document for document in self._store.list_docs() if document.source == target),
+            None,
+        )
+        doc_id = source_doc.doc_id if source_doc is not None else target
+        deleted = self._store.delete_doc(doc_id)
         return {"deleted": deleted, "target": target}
 
     def rebuild(self) -> dict:

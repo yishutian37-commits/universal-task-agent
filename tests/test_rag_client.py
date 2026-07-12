@@ -48,6 +48,24 @@ def test_embedded_ingest_and_ask(md_file: Path, tmp_path: Path):
     assert len(answer["sources"]) >= 1
 
 
+def test_embedded_ingest_folder_imports_supported_documents(tmp_path: Path):
+    folder = tmp_path / "knowledge"
+    folder.mkdir()
+    (folder / "one.md").write_text("# One\n第一份文档", encoding="utf-8")
+    (folder / "two.txt").write_text("第二份文档", encoding="utf-8")
+    (folder / "ignored.json").write_text("{}", encoding="utf-8")
+    client = RAGClient(api_url="")
+    from rag.defaults import create_default_kb
+
+    client._kb = create_default_kb(db_path=str(tmp_path / "kb.db"))
+
+    result = client.ingest(str(folder))
+
+    assert result["ok"] is True
+    assert len(result["ingested"]) == 2
+    assert client.stats()["documents"] == 2
+
+
 def test_embedded_stats(md_file: Path, tmp_path: Path):
     client = RAGClient(api_url="")
     from rag.defaults import create_default_kb
