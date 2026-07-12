@@ -16,26 +16,31 @@ DEFAULT_FIELDS = {
 
 
 class SkillLoader:
-    def __init__(self, skills_root: Path | str = "skills"):
+    def __init__(
+        self,
+        skills_root: Path | str = "skills",
+        *,
+        additional_roots: list[Path | str] | tuple[Path | str, ...] | None = None,
+    ):
         self.skills_root = Path(skills_root)
+        self.additional_roots = [Path(root) for root in (additional_roots or [])]
         self.errors: list[dict[str, str]] = []
 
     def load_skills(self) -> list[dict[str, Any]]:
         self.errors = []
-        skills: list[dict[str, Any]] = []
-
-        if not self.skills_root.exists():
-            return skills
-
-        for skill_path in sorted(self.skills_root.glob("*.md")):
-            try:
-                skill = self._read_skill(skill_path)
-            except ValueError as exc:
-                self.errors.append({"path": str(skill_path), "error": str(exc)})
+        skills_by_id: dict[str, dict[str, Any]] = {}
+        for root in (self.skills_root, *self.additional_roots):
+            if not root.exists():
                 continue
-            skills.append(skill)
+            for skill_path in sorted(root.glob("*.md")):
+                try:
+                    skill = self._read_skill(skill_path)
+                except ValueError as exc:
+                    self.errors.append({"path": str(skill_path), "error": str(exc)})
+                    continue
+                skills_by_id[str(skill["id"])] = skill
 
-        return skills
+        return list(skills_by_id.values())
 
     def match(self, task: Task) -> dict[str, Any] | None:
         matches = [

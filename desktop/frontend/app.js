@@ -91,6 +91,8 @@ const els = {
   kbAnswer: document.getElementById("kbAnswer"),
   kbSources: document.getElementById("kbSources"),
   runtimeSkillList: document.getElementById("runtimeSkillList"),
+  skillCandidateList: document.getElementById("skillCandidateList"),
+  skillDraftList: document.getElementById("skillDraftList"),
   vendorSkillPackList: document.getElementById("vendorSkillPackList"),
   skillPackMeta: document.getElementById("skillPackMeta"),
   skillErrorList: document.getElementById("skillErrorList")
@@ -1263,10 +1265,15 @@ function renderSkillOverview(result) {
   const runtimeSkills = result.runtime_skills || [];
   const vendorPacks = result.vendor_packs || [];
   const errors = result.errors || [];
+  const candidates = result.candidates || [];
+  const drafts = result.drafts || [];
   els.skillPackMeta.textContent = `${runtimeSkills.length} 个 Skill · ${vendorPacks.length} 个规则包`;
   els.runtimeSkillList.innerHTML = renderRuntimeSkills(runtimeSkills);
   els.vendorSkillPackList.innerHTML = renderVendorPacks(vendorPacks);
+  els.skillCandidateList.innerHTML = renderSkillCandidates(candidates);
+  els.skillDraftList.innerHTML = renderSkillDrafts(drafts);
   els.skillErrorList.innerHTML = renderSkillErrors(errors);
+  bindSkillActions();
 }
 
 function renderRuntimeSkills(skills) {
@@ -1283,9 +1290,70 @@ function renderRuntimeSkills(skills) {
         <small>关键词：${escapeHtml(keywords)}</small>
         <small>流程：${escapeHtml(workflow)}</small>
         <small>${escapeHtml(skill.source_path || "")}</small>
+        <div class="skillActions">
+          <button class="button ghost compact" type="button" data-skill-toggle="${escapeHtml(skill.id || "")}" data-skill-enabled="${skill.enabled ? "true" : "false"}">${skill.enabled ? "停用" : "启用"}</button>
+          <button class="button ghost compact" type="button" data-skill-rollback="${escapeHtml(skill.id || "")}" ${skill.can_rollback ? "" : "disabled"}>回滚</button>
+        </div>
       </article>
     `;
   }).join("");
+}
+
+function renderSkillCandidates(candidates) {
+  if (!candidates.length) return '<div class="emptyState">暂无 Skill 候选</div>';
+  return candidates.slice().reverse().map((candidate) => `
+    <article class="memoryCard">
+      <strong>${escapeHtml(candidate.task_type || "unknown")}</strong>
+      <small>${escapeHtml(candidate.reason || "等待积累成功任务")}</small>
+      <small>${escapeHtml(candidate.status || "tracking")} · 成功 ${escapeHtml(candidate.success_count || 0)} 次</small>
+      <div class="skillActions">
+        <button class="button primary compact" type="button" data-skill-generate="${escapeHtml(candidate.task_type || "")}" ${candidate.status === "candidate" ? "" : "disabled"}>生成草稿</button>
+      </div>
+    </article>
+  `).join("");
+}
+
+function renderSkillDrafts(drafts) {
+  if (!drafts.length) return '<div class="emptyState">暂无待审核草稿</div>';
+  return drafts.map((draft) => `
+    <article class="memoryCard">
+      <strong>${escapeHtml(draft.task_type || "skill")}</strong>
+      <small>${escapeHtml(draft.path || "")}</small>
+      <details><summary>查看草稿</summary><pre class="skillDraftPreview">${escapeHtml(draft.content || "")}</pre></details>
+      <div class="skillActions">
+        <button class="button primary compact" type="button" data-skill-activate="${escapeHtml(draft.task_type || "")}">审核通过并启用</button>
+      </div>
+    </article>
+  `).join("");
+}
+
+function bindSkillActions() {
+  document.querySelectorAll("[data-skill-generate]").forEach((button) => {
+    button.addEventListener("click", () => runSkillAction("generate_skill_draft", button.dataset.skillGenerate));
+  });
+  document.querySelectorAll("[data-skill-activate]").forEach((button) => {
+    button.addEventListener("click", () => runSkillAction("activate_skill_draft", button.dataset.skillActivate, true));
+  });
+  document.querySelectorAll("[data-skill-toggle]").forEach((button) => {
+    button.addEventListener("click", () => runSkillAction("set_skill_enabled", button.dataset.skillToggle, false, button.dataset.skillEnabled !== "true"));
+  });
+  document.querySelectorAll("[data-skill-rollback]").forEach((button) => {
+    button.addEventListener("click", () => runSkillAction("rollback_skill", button.dataset.skillRollback, true));
+  });
+}
+
+async function runSkillAction(method, identifier, needsConfirmation = false, enabled = undefined) {
+  if (!identifier) return;
+  if (needsConfirmation && !window.confirm("确认执行这个 Skill 变更吗？运行时会立即使用新版本。")) return;
+  try {
+    const args = enabled === undefined ? [identifier] : [identifier, enabled];
+    const result = await callApi(method, ...args);
+    if (!result.ok) throw new Error(result.error || "Skill 操作失败");
+    await loadSkillOverview();
+    showToast("Skill 已更新", identifier);
+  } catch (error) {
+    showToast("Skill 操作失败", error.message);
+  }
 }
 
 function renderVendorPacks(packs) {

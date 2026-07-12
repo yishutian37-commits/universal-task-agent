@@ -246,7 +246,10 @@ class TaskRunner:
                     dangerous_allowed_roots=dangerous_allowed_roots,
                 ),
                 memory_provider=JsonMemoryProvider(self.memory_root),
-                skill_loader=SkillLoader(resource_path("skills")),
+                skill_loader=SkillLoader(
+                    resource_path("skills"),
+                    additional_roots=[uta_home() / "skills"],
+                ),
                 on_progress=self._emit_progress,
             )
             with self._lock:

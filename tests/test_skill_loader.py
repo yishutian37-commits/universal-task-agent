@@ -154,6 +154,42 @@ def test_project_geo_analysis_skill_is_available():
     ]
 
 
+def test_skill_loader_allows_user_root_to_override_builtin_skill(tmp_path):
+    builtin_root = tmp_path / "builtin"
+    user_root = tmp_path / "user"
+    builtin_root.mkdir()
+    user_root.mkdir()
+    write_skill(
+        builtin_root / "shared.md",
+        """
+        ---
+        id: shared_skill
+        name: 内置
+        task_type: summarize
+        workflow:
+          - 内置流程
+        ---
+        """,
+    )
+    write_skill(
+        user_root / "shared.md",
+        """
+        ---
+        id: shared_skill
+        name: 用户版
+        task_type: summarize
+        workflow:
+          - 用户流程
+        ---
+        """,
+    )
+
+    skills = SkillLoader(builtin_root, additional_roots=[user_root]).load_skills()
+
+    assert len(skills) == 1
+    assert skills[0]["name"] == "用户版"
+
+
 def test_skill_loader_matches_by_task_type_when_keywords_omitted(tmp_path):
     skills_root = tmp_path / "skills"
     skills_root.mkdir()

@@ -504,7 +504,12 @@ def test_desktop_api_exposes_runtime_skills_and_vendor_packs(tmp_path, monkeypat
     result = api.get_skill_overview()
 
     assert result["ok"] is True
-    assert result["counts"] == {"runtime_skills": 1, "vendor_packs": 1}
+    assert result["counts"] == {
+        "runtime_skills": 1,
+        "vendor_packs": 1,
+        "candidates": 0,
+        "drafts": 0,
+    }
     assert result["runtime_skills"][0]["id"] == "geo_analysis"
     assert result["runtime_skills"][0]["task_type"] == "geo_analysis"
     assert result["runtime_skills"][0]["enabled"] is True

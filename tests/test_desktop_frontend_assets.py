@@ -854,3 +854,15 @@ def test_knowledge_document_titles_can_shrink_inside_their_dedicated_items():
 
     title_rule = css[css.index(".knowledgeDocMain strong"):css.index("}", css.index(".knowledgeDocMain strong"))]
     assert "overflow-wrap: anywhere;" in title_rule
+
+
+def test_frontend_skill_workspace_supports_candidate_review_and_lifecycle_actions():
+    html = (FRONTEND_ROOT / "index.html").read_text(encoding="utf-8")
+    js = (FRONTEND_ROOT / "app.js").read_text(encoding="utf-8")
+
+    assert 'id="skillCandidateList"' in html
+    assert 'id="skillDraftList"' in html
+    assert '"generate_skill_draft"' in js
+    assert '"activate_skill_draft"' in js
+    assert '"set_skill_enabled"' in js
+    assert '"rollback_skill"' in js

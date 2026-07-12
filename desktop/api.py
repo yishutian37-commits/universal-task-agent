@@ -39,7 +39,15 @@ class DesktopAPI:
         self.history_store = history_store if history_store is not None else HistoryStore(uta_home() / "memory")
         self.memory_store = memory_store if memory_store is not None else MemoryStore(uta_home() / "memory")
         self.rag_client = rag_client if rag_client is not None else RAGClient()
-        self.skill_store = skill_store if skill_store is not None else SkillStore(skills_root or resource_path("skills"))
+        self.skill_store = (
+            skill_store
+            if skill_store is not None
+            else SkillStore(
+                skills_root or resource_path("skills"),
+                user_skills_root=uta_home() / "skills",
+                memory_root=uta_home() / "memory",
+            )
+        )
         self.conversation_store = (
             conversation_store if conversation_store is not None else ConversationStore(uta_home() / "conversations")
         )
@@ -237,6 +245,30 @@ class DesktopAPI:
     def get_skill_overview(self) -> dict[str, Any]:
         try:
             return self.skill_store.overview()
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)}
+
+    def generate_skill_draft(self, task_type: str) -> dict[str, Any]:
+        try:
+            return self.skill_store.generate_draft(str(task_type or ""))
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)}
+
+    def activate_skill_draft(self, task_type: str) -> dict[str, Any]:
+        try:
+            return self.skill_store.activate_draft(str(task_type or ""))
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)}
+
+    def set_skill_enabled(self, skill_id: str, enabled: bool) -> dict[str, Any]:
+        try:
+            return self.skill_store.set_enabled(str(skill_id or ""), enabled is True)
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)}
+
+    def rollback_skill(self, skill_id: str) -> dict[str, Any]:
+        try:
+            return self.skill_store.rollback(str(skill_id or ""))
         except Exception as exc:
             return {"ok": False, "error": str(exc)}
 

@@ -59,7 +59,8 @@ class SettingsStore:
         if legacy_key:
             self.credential_store.set_password(legacy_key)
             stored_key = legacy_key
-            self._write_settings(settings)
+            if getattr(self.credential_store, "backend_name", "") != "memory":
+                self._write_settings(settings)
         settings["llm_api_key"] = stored_key
         settings["llm_ssl_verify"] = self._to_bool(settings["llm_ssl_verify"])
         settings["memory_compression_enabled"] = self._to_bool(settings["memory_compression_enabled"])
