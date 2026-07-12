@@ -1,6 +1,7 @@
 import json
 import os
 
+from desktop.credential_store import FallbackCredentialStore, PrivateFileCredentialStore
 from desktop.settings_store import SettingsStore
 
 
@@ -206,3 +207,24 @@ def test_settings_store_keeps_legacy_key_usable_when_keychain_migration_fails(tm
     assert store.public_settings()["has_api_key"] is True
     assert "钥匙串不可用" in store.public_settings()["credential_warning"]
     assert saved["llm_api_key"] == "legacy-secret"
+
+
+def test_settings_store_finishes_legacy_migration_through_private_file_fallback(tmp_path):
+    config_path = tmp_path / "config.json"
+    credentials_path = tmp_path / "credentials.json"
+    config_path.write_text(json.dumps({"llm_api_key": "legacy-secret"}), encoding="utf-8")
+    credentials = FallbackCredentialStore(
+        FailingCredentialStore(),
+        PrivateFileCredentialStore(credentials_path),
+    )
+    store = SettingsStore(config_path=config_path, credential_store=credentials)
+
+    loaded = store.load()
+    saved = json.loads(config_path.read_text(encoding="utf-8"))
+    public = store.public_settings()
+
+    assert loaded["llm_api_key"] == "legacy-secret"
+    assert "llm_api_key" not in saved
+    assert credentials_path.exists()
+    assert public["has_api_key"] is True
+    assert "本地凭据文件" in public["credential_warning"]

@@ -891,3 +891,4 @@ def test_frontend_reports_keychain_warning_without_calling_it_workspace_error():
 
     assert "settings.credential_warning" in js
     assert 'showToast("钥匙串提示"' in js
+    assert 'showToast("设置已保存", "API Key 已安全保存")' in js

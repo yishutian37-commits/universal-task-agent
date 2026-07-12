@@ -71,7 +71,7 @@ class SettingsStore:
                 else:
                     if getattr(self.credential_store, "backend_name", "") != "memory":
                         self._legacy_key_pending = ""
-                        self._credential_warning = ""
+                        self._credential_warning = self._store_credential_warning()
                         self._write_settings(settings)
         else:
             self._legacy_key_pending = ""
@@ -105,7 +105,7 @@ class SettingsStore:
             self.credential_store.delete_password()
             settings["llm_api_key"] = ""
             self._legacy_key_pending = ""
-            self._credential_warning = ""
+            self._credential_warning = self._store_credential_warning()
         else:
             api_key = payload.get("llm_api_key")
             if isinstance(api_key, str) and api_key.strip():
@@ -113,7 +113,7 @@ class SettingsStore:
                 settings["llm_api_key"] = api_key.strip()
                 self._legacy_key_pending = ""
                 self._migration_attempted = True
-                self._credential_warning = ""
+                self._credential_warning = self._store_credential_warning()
 
         if "llm_ssl_verify" in payload:
             settings["llm_ssl_verify"] = self._to_bool(payload["llm_ssl_verify"])
@@ -221,11 +221,16 @@ class SettingsStore:
 
     def _read_credential_password(self) -> str:
         try:
-            return str(self.credential_store.get_password() or "")
+            password = str(self.credential_store.get_password() or "")
         except Exception as exc:
             if not self._legacy_key_pending:
                 self._credential_warning = f"暂时无法读取 macOS 钥匙串：{exc}"
             return ""
+        self._credential_warning = self._store_credential_warning()
+        return password
+
+    def _store_credential_warning(self) -> str:
+        return str(getattr(self.credential_store, "warning", "") or "")
 
     def _write_settings(self, settings: dict[str, Any]) -> None:
         public_settings = {key: value for key, value in settings.items() if key != "llm_api_key"}

@@ -659,7 +659,7 @@ async function saveSettings(event) {
   els.apiKey.value = "";
   closeSettings();
   await loadSettings();
-  showToast("设置已保存", "API Key 已保存到 macOS 钥匙串");
+  showToast("设置已保存", "API Key 已安全保存");
 }
 
 async function clearKey() {
