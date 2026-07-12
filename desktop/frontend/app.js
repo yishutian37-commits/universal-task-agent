@@ -93,6 +93,8 @@ const els = {
   runtimeSkillList: document.getElementById("runtimeSkillList"),
   skillCandidateList: document.getElementById("skillCandidateList"),
   skillDraftList: document.getElementById("skillDraftList"),
+  runCoreEvaluation: document.getElementById("runCoreEvaluation"),
+  evaluationSummary: document.getElementById("evaluationSummary"),
   vendorSkillPackList: document.getElementById("vendorSkillPackList"),
   skillPackMeta: document.getElementById("skillPackMeta"),
   skillErrorList: document.getElementById("skillErrorList")
@@ -1356,6 +1358,28 @@ async function runSkillAction(method, identifier, needsConfirmation = false, ena
   }
 }
 
+async function runCoreEvaluation() {
+  els.runCoreEvaluation.disabled = true;
+  els.evaluationSummary.innerHTML = '<div class="emptyState">正在运行评测</div>';
+  try {
+    const result = await callApi("run_core_evaluation");
+    if (!result.ok) throw new Error(result.error || "评测失败");
+    const report = result.report || {};
+    const failed = (report.results || []).filter((item) => !item.passed);
+    els.evaluationSummary.innerHTML = `
+      <article class="memoryCard">
+        <strong>${escapeHtml(report.passed || 0)} / ${escapeHtml(report.total || 0)} 通过</strong>
+        <small>模式：${escapeHtml(report.mode || "offline")} · 通过率 ${escapeHtml(Math.round((report.pass_rate || 0) * 100))}%</small>
+        ${failed.map((item) => `<small>${escapeHtml(item.id || "case")}：${escapeHtml((item.failures || []).map((failure) => failure.field).join("、"))}</small>`).join("")}
+      </article>
+    `;
+  } catch (error) {
+    els.evaluationSummary.innerHTML = `<div class="emptyState">${escapeHtml(error.message)}</div>`;
+  } finally {
+    els.runCoreEvaluation.disabled = false;
+  }
+}
+
 function renderVendorPacks(packs) {
   if (!packs.length) {
     return '<div class="emptyState">暂无 vendor 规则包</div>';
@@ -2029,6 +2053,7 @@ function bindEvents() {
   els.refreshMemory.addEventListener("click", loadMemoryOverview);
   els.compressCurrentConversation.addEventListener("click", compressCurrentConversation);
   els.refreshSkills.addEventListener("click", loadSkillOverview);
+  els.runCoreEvaluation.addEventListener("click", runCoreEvaluation);
   els.openSettingsSide.addEventListener("click", openSettings);
   els.dangerousToolsStatus.addEventListener("click", openSettings);
   els.closeSettings.addEventListener("click", closeSettings);

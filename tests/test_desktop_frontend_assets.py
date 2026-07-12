@@ -866,3 +866,12 @@ def test_frontend_skill_workspace_supports_candidate_review_and_lifecycle_action
     assert '"activate_skill_draft"' in js
     assert '"set_skill_enabled"' in js
     assert '"rollback_skill"' in js
+
+
+def test_frontend_skill_workspace_can_run_core_evaluation_suite():
+    html = (FRONTEND_ROOT / "index.html").read_text(encoding="utf-8")
+    js = (FRONTEND_ROOT / "app.js").read_text(encoding="utf-8")
+
+    assert 'id="runCoreEvaluation"' in html
+    assert 'id="evaluationSummary"' in html
+    assert 'callApi("run_core_evaluation")' in js

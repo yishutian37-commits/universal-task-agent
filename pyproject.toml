@@ -46,9 +46,10 @@ dev = [
 uta = "main:main"
 uta-api = "api.server:main"
 uta-desktop = "desktop.app:main"
+uta-eval = "evals.runner:main"
 
 [tool.setuptools.packages.find]
-include = ["api*", "core*", "desktop*", "llm*", "memory_providers*", "rag*", "search_providers*", "skills*", "tools*", "weather_providers*"]
+include = ["api*", "core*", "desktop*", "evals*", "llm*", "memory_providers*", "rag*", "search_providers*", "skills*", "tools*", "weather_providers*"]
 
 [tool.pytest.ini_options]
 markers = [

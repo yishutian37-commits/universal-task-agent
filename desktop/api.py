@@ -272,6 +272,14 @@ class DesktopAPI:
         except Exception as exc:
             return {"ok": False, "error": str(exc)}
 
+    def run_core_evaluation(self) -> dict[str, Any]:
+        try:
+            from evals.runner import evaluate_cases, load_cases
+
+            return {"ok": True, "report": evaluate_cases(load_cases(), live_model=False)}
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)}
+
     def get_result(self, task_id: str) -> dict[str, Any]:
         return self.runner.get_result(task_id)
 

@@ -1,0 +1,17 @@
+[
+  {"id": "chat_greeting", "input": "你好", "expect": {"message_kind": "chat"}},
+  {"id": "chat_capability", "input": "你能干什么？", "expect": {"message_kind": "chat"}},
+  {"id": "summarize", "input": "帮我总结这段文本：Agent 应该根据工具证据报告结果。", "expect": {"message_kind": "task", "task_type": "summarize", "plan_steps": 3, "first_tool": "file_tool"}},
+  {"id": "table", "input": "分析 examples/orders.csv，说明缺失值和异常", "expect": {"message_kind": "task", "task_type": "data_analysis", "plan_steps": 3, "first_tool": "file_tool"}},
+  {"id": "research", "input": "调研本地 Agent 框架的发展趋势，并列出来源", "expect": {"message_kind": "task", "task_type": "research", "plan_steps": 2, "first_tool": "search_tool"}},
+  {"id": "weather", "input": "查询包头今日天气和气温", "expect": {"message_kind": "task", "task_type": "research", "plan_steps": 2, "first_tool": "search_tool"}},
+  {"id": "code", "input": "阅读当前项目代码，说明任务从输入到输出的调用链", "expect": {"message_kind": "task", "task_type": "code_reading", "plan_steps": 2, "first_tool": "code_tool"}},
+  {"id": "history", "input": "我之前让你进行过什么任务，给我列出来", "expect": {"message_kind": "task", "task_type": "history_query", "plan_steps": 1, "first_tool": "history_tool"}},
+  {"id": "geo", "input": "做一次 GEO 分析，生成问题矩阵和平台合规检查", "expect": {"message_kind": "task", "task_type": "geo_analysis", "plan_steps": 2, "first_tool": "geo_tool"}},
+  {"id": "complex", "input": "执行复杂任务：[1]总结核心观点 [2]列出风险 [3]给出下一步", "expect": {"message_kind": "task", "task_type": "complex_task", "plan_steps": 3, "first_tool": "text_tool"}},
+  {"id": "calculator", "input": "帮我计算 125 乘以 48", "expect": {"message_kind": "task", "task_type": "langchain_tool", "plan_steps": 1, "first_tool": "langchain_calculator_tool"}},
+  {"id": "workspace_read", "input": "当前工作区有哪些文件", "expect": {"message_kind": "task", "task_type": "langchain_tool", "plan_steps": 1, "first_tool": "file_tool"}},
+  {"id": "directory_create", "input": "在工作区创建一个名叫测试的文件夹", "expect": {"message_kind": "task", "task_type": "langchain_tool", "plan_steps": 1, "first_tool": "langchain_directory_create_tool"}},
+  {"id": "file_write", "input": "创建文件 note.txt 并写入 hello", "expect": {"message_kind": "task", "task_type": "langchain_tool", "plan_steps": 1, "first_tool": "langchain_file_write_tool"}},
+  {"id": "file_delete", "input": "删除文件 note.txt", "expect": {"message_kind": "task", "task_type": "langchain_tool", "plan_steps": 1, "first_tool": "langchain_file_delete_tool"}}
+]

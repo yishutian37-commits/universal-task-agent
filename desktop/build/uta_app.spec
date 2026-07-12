@@ -9,6 +9,7 @@ EXAMPLES = ROOT / "examples"
 SKILLS = ROOT / "skills"
 DOCS = ROOT / "docs"
 MEMORY = ROOT / "memory"
+EVALS = ROOT / "evals"
 README = ROOT / "README.md"
 CHANGELOG = ROOT / "CHANGELOG.md"
 SOURCE_ITEMS = [
@@ -16,6 +17,7 @@ SOURCE_ITEMS = [
     ROOT / "api",
     ROOT / "core",
     ROOT / "desktop",
+    ROOT / "evals",
     ROOT / "llm",
     ROOT / "memory_providers",
     ROOT / "rag",
@@ -30,6 +32,7 @@ datas = [
     (str(SKILLS), "skills"),
     (str(DOCS), "docs"),
     (str(MEMORY), "memory"),
+    (str(EVALS / "cases"), "evals/cases"),
     (str(README), "."),
     (str(CHANGELOG), "."),
 ]
@@ -50,6 +53,7 @@ a = Analysis(
         "desktop.runner",
         "desktop.settings_store",
         "desktop.skill_store",
+        "evals.runner",
         "desktop.rag_client",
         "api",
         "api.server",
