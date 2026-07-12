@@ -108,7 +108,9 @@ class RAGClient:
 
     def query(self, question: str, top_k: int = 5) -> dict[str, Any]:
         if self.mode == "http":
-            return self._http("POST", "/query", {"question": question, "top_k": top_k})
+            return self._normalize_query_result(
+                self._http("POST", "/query", {"question": question, "top_k": top_k})
+            )
         from rag.errors import EmptyStoreError
 
         try:
@@ -121,11 +123,58 @@ class RAGClient:
                 {
                     "score": round(r.score, 4),
                     "source": r.chunk.source,
-                    "text": r.chunk.text[:200],
+                    "doc_id": r.chunk.doc_id,
+                    "chunk_index": r.chunk.chunk_index,
+                    "text": r.chunk.text,
                 }
                 for r in retrieved
             ],
         }
+
+    def query_expanded(self, question: str, top_k: int = 4) -> dict[str, Any]:
+        options = {
+            "question": question,
+            "top_k": top_k,
+            "expand": True,
+            "neighbor_window": 4,
+            "max_sources": 2,
+            "max_chars": 16_000,
+        }
+        if self.mode == "http":
+            return self._normalize_query_result(self._http("POST", "/query", options))
+        from rag.errors import EmptyStoreError
+
+        try:
+            retrieved = self._get_embedded_kb().query_with_neighbors(
+                question,
+                top_k=top_k,
+                neighbor_window=options["neighbor_window"],
+                max_sources=options["max_sources"],
+                max_chars=options["max_chars"],
+            )
+        except EmptyStoreError as exc:
+            return {"ok": False, "error": str(exc)}
+        return {
+            "ok": True,
+            "expanded": True,
+            "chunks": [
+                {
+                    "score": round(item.score, 4),
+                    "source": item.chunk.source,
+                    "doc_id": item.chunk.doc_id,
+                    "chunk_index": item.chunk.chunk_index,
+                    "text": item.chunk.text,
+                }
+                for item in retrieved
+            ],
+        }
+
+    @staticmethod
+    def _normalize_query_result(result: dict[str, Any]) -> dict[str, Any]:
+        normalized = dict(result or {})
+        if normalized.get("ok") is not False and isinstance(normalized.get("chunks"), list):
+            normalized["ok"] = True
+        return normalized
 
     def ask(self, question: str, top_k: int = 5) -> dict[str, Any]:
         if self.mode == "http":

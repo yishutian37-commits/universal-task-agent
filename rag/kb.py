@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import re
 import uuid
+from dataclasses import replace
 from datetime import datetime
 
 from rag.chunkers.base import BaseChunker
@@ -100,6 +101,68 @@ class KnowledgeBase:
         else:
             candidates = self.retriever.search(vectors, chunks, query_vec, candidate_k)
         return self.reranker.rerank(question, candidates, top_k)
+
+    def query_with_neighbors(
+        self,
+        question: str,
+        *,
+        top_k: int = 4,
+        neighbor_window: int = 4,
+        max_sources: int = 2,
+        max_chars: int = 16_000,
+    ) -> list[RetrievedChunk]:
+        """检索后展开命中片段的同源相邻内容，供完整章节类请求使用。"""
+        hits = self.query(question, top_k=top_k)
+        _, all_chunks = self._store.all_vectors()
+        if not hits or not all_chunks:
+            return hits
+
+        selected_sources: list[tuple[str, str]] = []
+        source_scores: dict[tuple[str, str], float] = {}
+        hit_indexes: dict[tuple[str, str], set[int]] = {}
+        for hit in hits:
+            key = (hit.chunk.doc_id, hit.chunk.source)
+            if key not in source_scores:
+                if len(selected_sources) >= max(1, int(max_sources)):
+                    continue
+                selected_sources.append(key)
+                source_scores[key] = float(hit.score)
+                hit_indexes[key] = set()
+            source_scores[key] = max(source_scores[key], float(hit.score))
+            hit_indexes[key].add(int(hit.chunk.chunk_index))
+
+        window = max(0, int(neighbor_window))
+        char_limit = max(1, int(max_chars))
+        total_chars = 0
+        expanded: list[RetrievedChunk] = []
+        for key in selected_sources:
+            indexes = hit_indexes[key]
+            candidates = sorted(
+                (
+                    chunk
+                    for chunk in all_chunks
+                    if (chunk.doc_id, chunk.source) == key
+                    and any(abs(int(chunk.chunk_index) - hit_index) <= window for hit_index in indexes)
+                ),
+                key=lambda chunk: int(chunk.chunk_index),
+            )
+            for chunk in candidates:
+                remaining = char_limit - total_chars
+                if remaining <= 0:
+                    break
+                text = str(chunk.text or "")
+                if len(text) > remaining:
+                    text = text[:remaining]
+                expanded.append(
+                    RetrievedChunk(
+                        chunk=replace(chunk, text=text),
+                        score=source_scores[key],
+                    )
+                )
+                total_chars += len(text)
+            if total_chars >= char_limit:
+                break
+        return expanded or hits
 
     def ask(self, question: str, top_k: int = 5) -> Answer:
         """端到端问答：检索 → 生成，返回带来源引用的答案。"""

@@ -1,5 +1,6 @@
-from rag.models import Chunk
+from rag.models import Chunk, RetrievedChunk
 from rag.retrieval.hybrid_retriever import HybridRetriever
+from rag.retrieval.reranker import KeywordDiversityReranker
 
 
 def _chunk(index, text, source):
@@ -25,3 +26,14 @@ def test_hybrid_retriever_prefers_exact_keyword_when_vectors_tie():
 
     assert results[0].chunk.source == "checkpoint.md"
     assert len(results) == 2
+
+
+def test_reranker_uses_source_filename_to_disambiguate_named_topic():
+    candidates = [
+        RetrievedChunk(_chunk(0, "如何构建智能体", "08-agent-interfaces.md"), 0.8),
+        RetrievedChunk(_chunk(1, "如何构建知识库", "rag-knowledge-base-design.md"), 0.8),
+    ]
+
+    results = KeywordDiversityReranker().rerank("RAG 如何构建", candidates, top_k=2)
+
+    assert results[0].chunk.source == "rag-knowledge-base-design.md"

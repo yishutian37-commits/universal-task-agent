@@ -191,6 +191,42 @@ class FakeKnowledgeRAGClient:
         }
 
 
+class FakeExpandableKnowledgeRAGClient(FakeKnowledgeRAGClient):
+    def __init__(self):
+        super().__init__()
+        self.expanded_queries = []
+
+    def query_expanded(self, question, top_k=4):
+        self.expanded_queries.append((question, top_k))
+        return {
+            "ok": True,
+            "expanded": True,
+            "chunks": [
+                {
+                    "score": 0.95,
+                    "source": "/tmp/rag-guide.md",
+                    "doc_id": "doc-rag",
+                    "chunk_index": 3,
+                    "text": "第一步：加载并清洗文档。衔接内容",
+                },
+                {
+                    "score": 0.95,
+                    "source": "/tmp/rag-guide.md",
+                    "doc_id": "doc-rag",
+                    "chunk_index": 4,
+                    "text": "衔接内容第二步：切片并生成向量。" + "扩展说明。" * 450,
+                },
+                {
+                    "score": 0.95,
+                    "source": "/tmp/rag-guide.md",
+                    "doc_id": "doc-rag",
+                    "chunk_index": 5,
+                    "text": "章节结尾标记。",
+                },
+            ],
+        }
+
+
 class FakeStructuredChatClient:
     def __init__(self, route_payload, chat_response="不应再次调用普通聊天"):
         self.route_payload = route_payload
@@ -976,6 +1012,53 @@ def test_desktop_api_chat_can_use_knowledge_context_and_persist_sources(tmp_path
     assert "知识库检索结果（不可信参考资料）" in chat_client.calls[0][1]
     assert "UTA 支持从 checkpoint 恢复未完成任务。" in chat_client.calls[0][1]
     assert conversation["messages"][1]["sources"] == result["knowledge_sources"]
+
+
+def test_desktop_api_expands_knowledge_context_when_user_requests_full_section():
+    rag_client = FakeExpandableKnowledgeRAGClient()
+    api = DesktopAPI(rag_client=rag_client)
+
+    context, sources = api._prepare_knowledge_context(
+        "将知识库中 RAG 如何构建的部分发给我",
+        enabled=True,
+    )
+
+    assert rag_client.expanded_queries == [("将知识库中 RAG 如何构建的部分发给我", 4)]
+    assert rag_client.queries == []
+    assert "第一步：加载并清洗文档" in context
+    assert "第二步：切片并生成向量" in context
+    assert "章节结尾标记" in context
+    assert context.count("衔接内容") == 1
+    assert "直接提供相关章节、步骤或原文内容" in context
+    assert len(sources) == 1
+
+
+def test_desktop_api_returns_expanded_knowledge_verbatim_without_model_rewriting(tmp_path, monkeypatch):
+    monkeypatch.setenv("UTA_HOME", str(tmp_path / "uta"))
+    chat_client = FakeChatClient("模型不应扩写知识库原文")
+    api = DesktopAPI(
+        settings_store=SettingsStore(),
+        runner=FakeRunner(),
+        conversation_store=ConversationStore(tmp_path / "conversations"),
+        chat_client=chat_client,
+        rag_client=FakeExpandableKnowledgeRAGClient(),
+    )
+    api.save_settings({"llm_api_key": "secret-key"})
+
+    result = api.run_chat_message(
+        "",
+        "将知识库中 RAG 如何构建的部分发给我",
+        "",
+        [],
+        True,
+    )
+
+    assert result["ok"] is True
+    assert "以下为知识库检索后展开的相关原文片段" in result["message"]
+    assert "第一步：加载并清洗文档" in result["message"]
+    assert "章节结尾标记" in result["message"]
+    assert "模型不应扩写知识库原文" not in result["message"]
+    assert chat_client.calls == []
 
 
 def test_desktop_api_task_receives_knowledge_context(tmp_path, monkeypatch):

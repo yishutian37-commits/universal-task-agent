@@ -97,6 +97,25 @@ def test_query(client, md_file):
     assert "score" in data["chunks"][0]
 
 
+def test_query_can_expand_neighboring_chunks(client, md_file):
+    client.post("/ingest", json={"path": str(md_file)})
+
+    resp = client.post(
+        "/query",
+        json={
+            "question": "UTA",
+            "top_k": 1,
+            "expand": True,
+            "neighbor_window": 2,
+            "max_sources": 1,
+            "max_chars": 4_000,
+        },
+    )
+
+    assert resp.status_code == 200
+    assert resp.json()["expanded"] is True
+
+
 def test_query_empty_store(client):
     resp = client.post("/query", json={"question": "test"})
     assert resp.status_code == 409

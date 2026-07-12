@@ -86,6 +86,41 @@ def test_embedded_query_empty_returns_error(tmp_path: Path):
     assert result["ok"] is False
 
 
+def test_embedded_query_does_not_truncate_retrieved_chunk_to_200_characters(tmp_path: Path):
+    source = tmp_path / "long.md"
+    source.write_text("RAG构建步骤：" + "先清洗文档再切片。" * 35, encoding="utf-8")
+    client = RAGClient(api_url="")
+    from rag.defaults import create_default_kb
+
+    client._kb = create_default_kb(db_path=str(tmp_path / "kb.db"))
+    client.ingest(str(source))
+
+    result = client.query("RAG构建步骤", top_k=1)
+
+    assert len(result["chunks"][0]["text"]) > 200
+    assert "chunk_index" in result["chunks"][0]
+
+
+def test_http_expanded_query_requests_neighboring_context():
+    client = RAGClient(api_url="http://localhost:8000")
+    client._http = MagicMock(return_value={"chunks": []})
+
+    client.query_expanded("RAG 如何构建", top_k=4)
+
+    client._http.assert_called_once_with(
+        "POST",
+        "/query",
+        {
+            "question": "RAG 如何构建",
+            "top_k": 4,
+            "expand": True,
+            "neighbor_window": 4,
+            "max_sources": 2,
+            "max_chars": 16_000,
+        },
+    )
+
+
 # ---- HTTP 模式（mock）----
 
 

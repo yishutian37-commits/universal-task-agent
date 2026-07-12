@@ -48,6 +48,18 @@ def test_query_returns_chunks_without_llm(fake_components):
     assert all(hasattr(c, "score") for c in chunks)
 
 
+def test_query_with_neighbors_expands_contiguous_chunks_from_hit_source(fake_components):
+    kb = KnowledgeBase(**fake_components)
+    kb.ingest_path("notes.md")
+
+    chunks = kb.query_with_neighbors("问题", top_k=1, neighbor_window=1, max_sources=1)
+    indexes = [item.chunk.chunk_index for item in chunks]
+
+    assert len(chunks) >= 2
+    assert indexes == list(range(min(indexes), max(indexes) + 1))
+    assert {item.chunk.source for item in chunks} == {"notes.md"}
+
+
 def test_lexical_overlap_rewards_exact_english_and_chinese_terms():
     relevant = _lexical_overlap("UTA 如何保存长期记忆", "UTA 支持会话压缩和长期记忆管理")
     unrelated = _lexical_overlap("UTA 如何保存长期记忆", "今天的天气适合出门")

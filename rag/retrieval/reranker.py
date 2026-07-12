@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+
 from rag.models import RetrievedChunk
 from rag.retrieval.hybrid_retriever import search_tokens
 
@@ -14,6 +16,7 @@ class KeywordDiversityReranker:
         top_k: int,
     ) -> list[RetrievedChunk]:
         query_tokens = set(search_tokens(question))
+        query_named_tokens = set(re.findall(r"[a-z0-9_]{2,}", str(question or "").casefold()))
         ranked: list[RetrievedChunk] = []
         source_counts: dict[str, int] = {}
         remaining = list(candidates)
@@ -23,8 +26,12 @@ class KeywordDiversityReranker:
             for index, item in enumerate(remaining):
                 text_tokens = set(search_tokens(item.chunk.text))
                 coverage = len(query_tokens & text_tokens) / max(1, len(query_tokens))
+                source_tokens = set(
+                    re.findall(r"[a-z0-9_]{2,}", str(item.chunk.source or "").casefold())
+                )
+                source_bonus = 0.18 if query_named_tokens & source_tokens else 0.0
                 source_penalty = 0.04 * source_counts.get(item.chunk.source, 0)
-                score = float(item.score) + 0.35 * coverage - source_penalty
+                score = float(item.score) + 0.35 * coverage + source_bonus - source_penalty
                 if score > best_score:
                     best_index = index
                     best_score = score

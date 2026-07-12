@@ -45,6 +45,10 @@ class IngestRequest(BaseModel):
 class QueryRequest(BaseModel):
     question: str
     top_k: int = 5
+    expand: bool = False
+    neighbor_window: int = 4
+    max_sources: int = 2
+    max_chars: int = 16_000
 
 
 class AskRequest(BaseModel):
@@ -108,14 +112,25 @@ def ingest(req: IngestRequest):
 def query(req: QueryRequest):
     kb = _get_kb()
     try:
-        retrieved = kb.query(req.question, top_k=req.top_k)
+        if req.expand:
+            retrieved = kb.query_with_neighbors(
+                req.question,
+                top_k=req.top_k,
+                neighbor_window=req.neighbor_window,
+                max_sources=req.max_sources,
+                max_chars=req.max_chars,
+            )
+        else:
+            retrieved = kb.query(req.question, top_k=req.top_k)
     except EmptyStoreError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     return {
+        "expanded": req.expand,
         "chunks": [
             {
                 "score": round(r.score, 4),
                 "source": r.chunk.source,
+                "doc_id": r.chunk.doc_id,
                 "chunk_index": r.chunk.chunk_index,
                 "text": r.chunk.text,
             }
