@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 
 from rag.errors import EmptyStoreError
-from rag.kb import KnowledgeBase
+from rag.kb import KnowledgeBase, _lexical_overlap
 
 
 def test_ask_on_empty_store_raises(fake_components):
@@ -46,3 +46,11 @@ def test_query_returns_chunks_without_llm(fake_components):
     chunks = kb.query("问题", top_k=2)
     assert len(chunks) <= 2
     assert all(hasattr(c, "score") for c in chunks)
+
+
+def test_lexical_overlap_rewards_exact_english_and_chinese_terms():
+    relevant = _lexical_overlap("UTA 如何保存长期记忆", "UTA 支持会话压缩和长期记忆管理")
+    unrelated = _lexical_overlap("UTA 如何保存长期记忆", "今天的天气适合出门")
+
+    assert relevant > unrelated
+    assert relevant > 0

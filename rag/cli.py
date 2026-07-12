@@ -78,9 +78,9 @@ def cmd_ingest(args: argparse.Namespace) -> int:
     path = Path(args.path)
     if path.is_dir():
         if not args.recursive:
-            files = sorted(path.glob("*.md")) + sorted(path.glob("*.txt"))
+            files = [file for pattern in ("*.md", "*.txt", "*.pdf", "*.docx") for file in sorted(path.glob(pattern))]
         else:
-            files = sorted(path.rglob("*.md")) + sorted(path.rglob("*.txt"))
+            files = [file for pattern in ("*.md", "*.txt", "*.pdf", "*.docx") for file in sorted(path.rglob(pattern))]
         results = []
         for f in files:
             try:

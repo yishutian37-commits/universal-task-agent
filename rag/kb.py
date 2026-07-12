@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 import uuid
 from datetime import datetime
 
@@ -86,7 +87,17 @@ class KnowledgeBase:
         vectors, chunks = self._store.all_vectors()
         if not chunks:
             raise EmptyStoreError("知识库为空，请先 ingest 文档")
-        return self.retriever.search(vectors, chunks, query_vec, top_k)
+        candidate_k = min(len(chunks), max(top_k, top_k * 4))
+        candidates = self.retriever.search(vectors, chunks, query_vec, candidate_k)
+        reranked = [
+            RetrievedChunk(
+                chunk=item.chunk,
+                score=float(item.score) + 0.15 * _lexical_overlap(question, item.chunk.text),
+            )
+            for item in candidates
+        ]
+        reranked.sort(key=lambda item: item.score, reverse=True)
+        return reranked[:top_k]
 
     def ask(self, question: str, top_k: int = 5) -> Answer:
         """端到端问答：检索 → 生成，返回带来源引用的答案。"""
@@ -122,3 +133,22 @@ class KnowledgeBase:
         """清空库（换 embedder 后重建用）。返回清空后的统计。"""
         self._store.clear()
         return self.stats()
+
+
+def _lexical_overlap(question: str, text: str) -> float:
+    query_tokens = _search_tokens(question)
+    if not query_tokens:
+        return 0.0
+    text_tokens = _search_tokens(text)
+    return len(query_tokens & text_tokens) / len(query_tokens)
+
+
+def _search_tokens(value: str) -> set[str]:
+    normalized = str(value or "").casefold()
+    ascii_words = set(re.findall(r"[a-z0-9_]{2,}", normalized))
+    chinese_runs = re.findall(r"[\u4e00-\u9fff]+", normalized)
+    chinese_tokens: set[str] = set()
+    for run in chinese_runs:
+        chinese_tokens.update(run)
+        chinese_tokens.update(run[index : index + 2] for index in range(len(run) - 1))
+    return ascii_words | chinese_tokens

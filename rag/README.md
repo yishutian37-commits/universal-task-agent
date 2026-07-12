@@ -1,6 +1,6 @@
 # RAG 知识库
 
-RAG 知识库系统，支持文档摄入、向量检索、LLM 问答。当前已经合并进 UTA 主项目根目录，不再使用旧的 `rag-knowledge-base/` 子目录。
+RAG 知识库系统，支持 Markdown、TXT、PDF、DOCX 文档摄入、向量检索和 LLM 问答。PDF 必须包含可提取文本；扫描件需要先经过 OCR。当前已经合并进 UTA 主项目根目录，不再使用旧的 `rag-knowledge-base/` 子目录。
 
 ## 当前状态
 

@@ -91,7 +91,11 @@ def ingest(req: IngestRequest):
         raise HTTPException(status_code=404, detail=f"路径不存在: {req.path}")
     try:
         if p.is_dir():
-            files = sorted(p.rglob("*.md")) + sorted(p.rglob("*.txt"))
+            files = [
+                file
+                for pattern in ("*.md", "*.txt", "*.pdf", "*.docx")
+                for file in sorted(p.rglob(pattern))
+            ]
             results = [kb.ingest_path(str(f)) for f in files]
             return {"ingested": results}
         result = kb.ingest_path(req.path)

@@ -95,12 +95,16 @@ class DesktopAPI:
                 webview.FileDialog.OPEN,
                 directory=self._knowledge_picker_directory(),
                 allow_multiple=True,
-                file_types=("支持的文档 (*.md;*.txt)",),
+                file_types=("支持的文档 (*.md;*.txt;*.pdf;*.docx)",),
             )
             if not selected:
                 return {"ok": False, "cancelled": True, "paths": []}
             paths = [Path(str(path)).expanduser().resolve() for path in selected]
-            invalid = [path for path in paths if not path.is_file() or path.suffix.lower() not in {".md", ".txt"}]
+            invalid = [
+                path
+                for path in paths
+                if not path.is_file() or path.suffix.lower() not in {".md", ".txt", ".pdf", ".docx"}
+            ]
             if invalid:
                 return {"ok": False, "error": f"不支持的文档：{invalid[0].name}", "paths": []}
             return {"ok": True, "paths": [str(path) for path in paths]}

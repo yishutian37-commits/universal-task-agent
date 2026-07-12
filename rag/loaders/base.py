@@ -46,3 +46,11 @@ class LoaderFactory:
         from rag.loaders.text_loader import TextLoader
 
         return cls({".md": TextLoader(), ".txt": TextLoader()})
+
+    @classmethod
+    def for_documents(cls) -> "LoaderFactory":
+        from rag.loaders.document_loaders import DocxLoader, PdfLoader
+        from rag.loaders.text_loader import TextLoader
+
+        text = TextLoader()
+        return cls({".md": text, ".txt": text, ".pdf": PdfLoader(), ".docx": DocxLoader()})

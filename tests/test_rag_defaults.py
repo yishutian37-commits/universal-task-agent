@@ -4,6 +4,7 @@ from pathlib import Path
 
 from rag.defaults import create_default_kb
 from rag.generation.echo_generator import EchoGenerator
+from rag.loaders.document_loaders import DocxLoader, PdfLoader
 from rag.loaders.text_loader import TextLoader
 from rag.retrieval.vector_retriever import VectorRetriever
 
@@ -11,6 +12,8 @@ from rag.retrieval.vector_retriever import VectorRetriever
 def test_defaults_assembles_real_components(tmp_path: Path):
     kb = create_default_kb(db_path=str(tmp_path / "kb.db"))
     assert isinstance(kb.loader_factory.get("a.md"), TextLoader)
+    assert isinstance(kb.loader_factory.get("a.pdf"), PdfLoader)
+    assert isinstance(kb.loader_factory.get("a.docx"), DocxLoader)
     assert isinstance(kb.retriever, VectorRetriever)
     assert isinstance(kb.generator, EchoGenerator)
 

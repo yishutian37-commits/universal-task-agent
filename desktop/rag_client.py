@@ -97,7 +97,11 @@ class RAGClient:
             return self._http("POST", "/ingest", {"path": path})
         source = Path(path).expanduser()
         if source.is_dir():
-            files = sorted(source.rglob("*.md")) + sorted(source.rglob("*.txt"))
+            files = [
+                file
+                for pattern in ("*.md", "*.txt", "*.pdf", "*.docx")
+                for file in sorted(source.rglob(pattern))
+            ]
             return {"ok": True, "ingested": [self._get_embedded_kb().ingest_path(str(file)) for file in files]}
         result = self._get_embedded_kb().ingest_path(path)
         return {"ok": True, **result}

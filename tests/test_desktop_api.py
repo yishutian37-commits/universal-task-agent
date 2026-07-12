@@ -544,20 +544,32 @@ def test_desktop_api_selects_multiple_supported_knowledge_files(tmp_path, monkey
     workspace.mkdir()
     markdown = workspace / "notes.md"
     text_file = workspace / "facts.txt"
+    pdf_file = workspace / "guide.pdf"
+    docx_file = workspace / "guide.docx"
     markdown.write_text("notes", encoding="utf-8")
     text_file.write_text("facts", encoding="utf-8")
+    pdf_file.write_bytes(b"pdf")
+    docx_file.write_bytes(b"docx")
     settings_store = SettingsStore()
     settings_store.save({"workspace_path": str(workspace)})
     api = DesktopAPI(settings_store=settings_store, runner=FakeRunner())
-    window = FakeDialogWindow([str(markdown), str(text_file)])
+    window = FakeDialogWindow([str(markdown), str(text_file), str(pdf_file), str(docx_file)])
     api.bind_window(window)
 
     result = api.select_knowledge_files()
 
-    assert result == {"ok": True, "paths": [str(markdown.resolve()), str(text_file.resolve())]}
+    assert result == {
+        "ok": True,
+        "paths": [
+            str(markdown.resolve()),
+            str(text_file.resolve()),
+            str(pdf_file.resolve()),
+            str(docx_file.resolve()),
+        ],
+    }
     assert window.calls[0][1]["allow_multiple"] is True
     assert window.calls[0][1]["directory"] == str(workspace.resolve())
-    assert "*.md;*.txt" in window.calls[0][1]["file_types"][0]
+    assert "*.md;*.txt;*.pdf;*.docx" in window.calls[0][1]["file_types"][0]
 
 
 def test_desktop_api_selects_knowledge_folder(tmp_path, monkeypatch):

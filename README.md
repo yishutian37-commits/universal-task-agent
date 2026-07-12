@@ -147,7 +147,7 @@ LLM_SSL_VERIFY=0
 
 ## RAG 知识库
 
-`rag/` 模块提供文档摄入、向量检索和问答能力，可独立使用，也可供 Agent 和桌面端调用。当前已经完成真实文件摄入、定长切片、SQLite 持久化、numpy 向量检索、CLI、FastAPI、桌面端知识库接入，以及可选真实模型模式。
+`rag/` 模块提供文档摄入、向量检索和问答能力，可独立使用，也可供 Agent 和桌面端调用。当前支持 Markdown、TXT、PDF、DOCX，已经完成真实文件摄入、定长切片、SQLite 持久化、向量召回与关键词重排、CLI、FastAPI、桌面端知识库接入，以及可选真实模型模式。
 
 ```python
 from rag import create_default_kb

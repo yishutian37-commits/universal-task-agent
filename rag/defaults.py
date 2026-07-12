@@ -35,7 +35,7 @@ def create_default_kb(
 
     store = SqliteStore(db_path, dim=embedder.dim)
     return KnowledgeBase(
-        loader_factory=LoaderFactory.for_text(),
+        loader_factory=LoaderFactory.for_documents(),
         chunker=FixedChunker(),
         embedder=embedder,
         store=store,
