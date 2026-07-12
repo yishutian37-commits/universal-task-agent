@@ -42,6 +42,12 @@ def test_checkpoint_store_round_trips_agent_state(tmp_path):
         )
     )
     state.checks.append(CheckResult(passed=True, failed_reasons=[], suggested_fix=[]))
+    state.evidence["files"].append(
+        {"path": str(tmp_path / "workspace" / "input.md"), "operation": "read", "step_id": 1}
+    )
+    state.evidence["artifacts"].append(
+        {"artifact_id": "artifact-1", "kind": "report", "verified": True, "step_id": 2}
+    )
 
     saved_path = store.save(state)
     loaded = store.load(state.task_id)
@@ -57,6 +63,7 @@ def test_checkpoint_store_round_trips_agent_state(tmp_path):
     assert loaded.current_action.tool_name == "text_tool"
     assert loaded.results[0].result["message"] == "file"
     assert loaded.checks[0].passed is True
+    assert loaded.evidence == state.evidence
 
 
 def test_checkpoint_store_rejects_unsafe_task_id(tmp_path):

@@ -468,3 +468,61 @@ def test_verifier_rejects_geo_report_without_matrix_question():
 
     assert check.passed is False
     assert "问题矩阵小节缺少问题：包头本地装修哪家靠谱？" in check.failed_reasons
+
+
+def test_verifier_accepts_directory_creation_only_when_directory_exists(tmp_path):
+    created = tmp_path / "created"
+    created.mkdir()
+    result = ToolResult(
+        success=True,
+        tool_name="langchain_directory_create_tool",
+        action_name="invoke",
+        result={"path": str(created), "created": True},
+    )
+
+    assert Verifier().check(result).passed is True
+
+    created.rmdir()
+    check = Verifier().check(result)
+    assert check.passed is False
+    assert "目录创建结果不存在" in check.failed_reasons[0]
+
+
+def test_verifier_rejects_file_write_when_file_or_size_evidence_is_invalid(tmp_path):
+    output = tmp_path / "output.txt"
+    result = ToolResult(
+        success=True,
+        tool_name="langchain_file_write_tool",
+        action_name="invoke",
+        result={"path": str(output), "mode": "create", "bytes_written": 4},
+    )
+
+    missing = Verifier().check(result)
+    assert missing.passed is False
+    assert "写入后的文件不存在" in missing.failed_reasons[0]
+
+    output.write_text("wrong-size", encoding="utf-8")
+    wrong_size = Verifier().check(result)
+    assert wrong_size.passed is False
+    assert "文件字节数与工具结果不一致" in wrong_size.failed_reasons[0]
+
+
+def test_verifier_accepts_delete_only_when_original_is_gone_and_trash_copy_exists(tmp_path):
+    original = tmp_path / "delete-me.txt"
+    trash = tmp_path / "trash" / "delete-me.txt"
+    original.write_text("content", encoding="utf-8")
+    trash.parent.mkdir()
+    trash.write_text("content", encoding="utf-8")
+    result = ToolResult(
+        success=True,
+        tool_name="langchain_file_delete_tool",
+        action_name="invoke",
+        result={"path": str(original), "trash_path": str(trash), "mode": "move_to_trash"},
+    )
+
+    failed = Verifier().check(result)
+    assert failed.passed is False
+    assert "删除后原路径仍然存在" in failed.failed_reasons[0]
+
+    original.unlink()
+    assert Verifier().check(result).passed is True

@@ -37,6 +37,7 @@ def test_langchain_adapter_invokes_tool_with_explicit_tool_input():
     assert "42" in result["message"]
     assert result["tool"] == "fake_langchain_tool"
     assert result["output"] == {"value": 42}
+    assert result["value"] == 42
 
 
 def test_langchain_adapter_builds_query_input_from_user_input():

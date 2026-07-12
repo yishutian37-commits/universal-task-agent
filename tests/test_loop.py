@@ -1,6 +1,15 @@
+from pathlib import Path
+from types import SimpleNamespace
+
 from core.loop import run_minimal_loop
 from core.state import AgentState, Plan, PlanStep, ToolResult
 from tools.base_tool import BaseTool
+from tools.langchain_adapter import LangChainToolAdapter
+from tools.langchain_common_tools import (
+    DirectoryCreateLangChainTool,
+    FileDeleteLangChainTool,
+    FileWriteLangChainTool,
+)
 from tools.report_tool import ReportTool
 
 
@@ -61,6 +70,25 @@ class SequenceTextTool(BaseTool):
         self.params_seen.append(params)
         message = self.messages.pop(0)
         return {"message": message, "summary_markdown": message}
+
+
+class EvidenceWriteTool(BaseTool):
+    name = "langchain_file_write_tool"
+    description = "writes evidence file"
+
+    def __init__(self, path):
+        self.path = path
+
+    def run(self, action_name, params):
+        del action_name, params
+        self.path.write_text("done", encoding="utf-8")
+        return {"path": str(self.path), "mode": "create", "bytes_written": 4}
+
+
+class AutoApproveAuthorization:
+    def request(self, operation, timeout=None):
+        del operation, timeout
+        return SimpleNamespace(approved=True, approved_by="test", reason="")
 
 
 def test_minimal_loop_fails_unknown_task_instead_of_claiming_mock_success():
@@ -149,12 +177,121 @@ def test_loop_emits_progress_events():
         "step_started",
         "tool_selected",
         "tool_executed",
+        "artifact_created",
         "verified",
         "step_done",
     ]
     assert events[0]["data"]["steps"][0] == {"step_id": 1, "goal": "读取输入内容"}
     assert events[2]["data"]["tool_name"] == "file_tool"
     assert events[4]["data"]["passed"] is True
+
+
+def test_loop_persists_and_emits_file_change_and_artifact_evidence(tmp_path):
+    output = tmp_path / "result.txt"
+    state = AgentState(
+        task_id="task_evidence",
+        user_input=f"创建文件 {output}",
+        task_type="langchain_tool",
+        intent="write_file",
+        workspace_path=str(tmp_path),
+    )
+    events = []
+
+    updated = run_minimal_loop(
+        state,
+        tool_registry={"langchain_file_write_tool": EvidenceWriteTool(output)},
+        on_progress=events.append,
+    )
+
+    assert updated.status == "completed"
+    assert updated.evidence["changes"][0]["path"] == str(output.resolve())
+    assert updated.evidence["changes"][0]["change_type"] == "created"
+    assert updated.evidence["artifacts"][0]["path"] == str(output.resolve())
+    assert [event["type"] for event in events if event["type"] in {"file_changed", "artifact_created"}] == [
+        "file_changed",
+        "artifact_created",
+    ]
+
+
+def test_loop_real_file_write_produces_verified_evidence(tmp_path):
+    output = tmp_path / "written.txt"
+    tool = FileWriteLangChainTool(
+        authorization_manager=AutoApproveAuthorization(),
+        enabled=True,
+        allowed_roots=[tmp_path],
+    )
+    state = AgentState(
+        task_id="task_real_write",
+        user_input=f"写入文件 {output} 内容 真实写入",
+        task_type="langchain_tool",
+        intent="write_file",
+        workspace_path=str(tmp_path),
+    )
+
+    updated = run_minimal_loop(
+        state,
+        tool_registry={"langchain_file_write_tool": LangChainToolAdapter(tool)},
+    )
+
+    assert updated.status == "completed"
+    assert output.read_text(encoding="utf-8") == "真实写入"
+    assert updated.evidence["changes"][0]["change_type"] == "created"
+    assert updated.evidence["artifacts"][0]["verified"] is True
+
+
+def test_loop_real_directory_create_records_existing_directory(tmp_path):
+    target = tmp_path / "evidence-folder"
+    tool = DirectoryCreateLangChainTool(
+        authorization_manager=AutoApproveAuthorization(),
+        enabled=True,
+        allowed_roots=[tmp_path],
+    )
+    state = AgentState(
+        task_id="task_real_directory",
+        user_input=f"创建文件夹 {target}",
+        task_type="langchain_tool",
+        intent="create_directory",
+        workspace_path=str(tmp_path),
+    )
+
+    updated = run_minimal_loop(
+        state,
+        tool_registry={"langchain_directory_create_tool": LangChainToolAdapter(tool)},
+    )
+
+    assert updated.status == "completed"
+    assert target.is_dir()
+    assert any(item["path"] == str(target.resolve()) for item in updated.evidence["changes"])
+
+
+def test_loop_real_file_delete_records_trash_restore_path(tmp_path):
+    target = tmp_path / "delete-me.txt"
+    target.write_text("delete", encoding="utf-8")
+    trash_root = tmp_path / "uta-trash"
+    tool = FileDeleteLangChainTool(
+        authorization_manager=AutoApproveAuthorization(),
+        enabled=True,
+        allowed_roots=[tmp_path],
+        trash_root=trash_root,
+    )
+    state = AgentState(
+        task_id="task_real_delete",
+        user_input=f"删除文件 {target}",
+        task_type="langchain_tool",
+        intent="delete_file",
+        workspace_path=str(tmp_path),
+    )
+
+    updated = run_minimal_loop(
+        state,
+        tool_registry={"langchain_file_delete_tool": LangChainToolAdapter(tool)},
+    )
+
+    assert updated.status == "completed"
+    assert not target.exists()
+    deleted = next(item for item in updated.evidence["changes"] if item["change_type"] == "deleted")
+    assert deleted["restore_path"]
+    assert Path(deleted["restore_path"]).exists()
 
 
 def test_loop_accepts_injected_tool_registry_for_summary_flow():

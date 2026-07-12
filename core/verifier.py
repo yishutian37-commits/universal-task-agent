@@ -1,4 +1,5 @@
 import re
+from pathlib import Path
 
 from core.state import AgentState, CheckResult, PlanStep, ToolResult
 
@@ -24,6 +25,15 @@ class Verifier:
         if not result.success:
             return self._failed_tool_check(result)
 
+        if result.tool_name == "langchain_directory_create_tool":
+            return self._check_directory_creation(result)
+
+        if result.tool_name == "langchain_file_write_tool":
+            return self._check_file_write(result)
+
+        if result.tool_name == "langchain_file_delete_tool":
+            return self._check_file_delete(result)
+
         if self._should_check_summary(state, result):
             return self._check_summary(result)
 
@@ -40,6 +50,55 @@ class Verifier:
             return self._check_geo_report(result)
 
         return CheckResult(passed=True, failed_reasons=[], suggested_fix=[])
+
+    def _check_directory_creation(self, result: ToolResult) -> CheckResult:
+        path = self._result_path(result, "path")
+        if path is None or not path.is_dir():
+            return CheckResult(
+                passed=False,
+                failed_reasons=["目录创建结果不存在"],
+                suggested_fix=["检查目标路径并重新创建目录"],
+            )
+        return CheckResult(passed=True, failed_reasons=[], suggested_fix=[])
+
+    def _check_file_write(self, result: ToolResult) -> CheckResult:
+        path = self._result_path(result, "path")
+        if path is None or not path.is_file():
+            return CheckResult(
+                passed=False,
+                failed_reasons=["写入后的文件不存在"],
+                suggested_fix=["检查目标路径并重新写入文件"],
+            )
+
+        expected_bytes = int(result.result.get("bytes_written") or 0)
+        mode = str(result.result.get("mode") or "create")
+        actual_bytes = path.stat().st_size
+        size_matches = actual_bytes >= expected_bytes if mode == "append" else actual_bytes == expected_bytes
+        if expected_bytes and not size_matches:
+            return CheckResult(
+                passed=False,
+                failed_reasons=["文件字节数与工具结果不一致"],
+                suggested_fix=["重新读取目标文件并确认写入内容"],
+            )
+        return CheckResult(passed=True, failed_reasons=[], suggested_fix=[])
+
+    def _check_file_delete(self, result: ToolResult) -> CheckResult:
+        original = self._result_path(result, "path")
+        trash = self._result_path(result, "trash_path")
+        if original is None:
+            return CheckResult(False, ["删除结果缺少原路径"], ["补充被删除路径"])
+        if original.exists():
+            return CheckResult(False, ["删除后原路径仍然存在"], ["重新执行移动到回收站操作"])
+        if trash is None or not trash.exists():
+            return CheckResult(False, ["UTA 回收路径不存在"], ["确认文件已安全移动到 UTA 回收站"])
+        return CheckResult(passed=True, failed_reasons=[], suggested_fix=[])
+
+    @staticmethod
+    def _result_path(result: ToolResult, key: str) -> Path | None:
+        value = result.result.get(key)
+        if not isinstance(value, str) or not value.strip():
+            return None
+        return Path(value).expanduser().resolve()
 
     def _failed_tool_check(self, result: ToolResult) -> CheckResult:
         error = result.error or "unknown error"

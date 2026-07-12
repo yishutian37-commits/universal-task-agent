@@ -3,6 +3,7 @@
   const TASK_TABS = new Set(["progress", "files", "changes", "artifacts", "diagnostics"]);
   const MEMORY_TABS = new Set(["long-term", "session", "learning", "archive"]);
   const TERMINAL_PHASES = new Set(["completed", "cancelled", "failed"]);
+  const TASK_EVIDENCE_BUCKETS = ["files", "changes", "artifacts"];
 
   function startOfDay(value) {
     return new Date(value.getFullYear(), value.getMonth(), value.getDate()).getTime();
@@ -83,6 +84,52 @@
     activateTaskTab(nextTab.dataset.taskTab);
     nextTab.focus();
     return nextTab.dataset.taskTab;
+  }
+
+  function normalizeTaskEvidence(value) {
+    const source = value && typeof value === "object" ? value : {};
+    const evidence = {};
+    TASK_EVIDENCE_BUCKETS.forEach((bucket) => {
+      evidence[bucket] = (Array.isArray(source[bucket]) ? source[bucket] : [])
+        .filter((item) => item && typeof item === "object" && !Array.isArray(item))
+        .map((item) => ({ ...item }));
+    });
+    return evidence;
+  }
+
+  function taskEvidenceKey(bucket, item) {
+    if (bucket === "files") {
+      return JSON.stringify([item.path || "", item.operation || "", item.tool_name || "", item.step_id ?? null]);
+    }
+    if (bucket === "changes") {
+      return JSON.stringify([item.path || "", item.change_type || "", item.tool_name || "", item.step_id ?? null]);
+    }
+    return JSON.stringify([item.artifact_id || item.path || "", item.kind || "", item.tool_name || "", item.step_id ?? null]);
+  }
+
+  function mergeTaskEvidence(target, incoming) {
+    const added = normalizeTaskEvidence({});
+    const normalized = normalizeTaskEvidence(incoming);
+    TASK_EVIDENCE_BUCKETS.forEach((bucket) => {
+      if (!Array.isArray(target[bucket])) target[bucket] = [];
+      const known = new Set(target[bucket].map((item) => taskEvidenceKey(bucket, item)));
+      normalized[bucket].forEach((item) => {
+        const key = taskEvidenceKey(bucket, item);
+        if (known.has(key)) return;
+        target[bucket].push(item);
+        added[bucket].push(item);
+        known.add(key);
+      });
+    });
+    return added;
+  }
+
+  function evidenceOperationLabel(value) {
+    return ({ read: "读取", write: "写入", delete: "删除", verify: "确认" })[value] || "涉及";
+  }
+
+  function evidenceChangeLabel(value) {
+    return ({ created: "已创建", modified: "已修改", deleted: "已删除" })[value] || "已变更";
   }
 
   function activateMemoryTab(tabName) {
@@ -488,6 +535,10 @@
     setTaskPanelOpen,
     activateTaskTab,
     handleTaskTabKeydown,
+    normalizeTaskEvidence,
+    mergeTaskEvidence,
+    evidenceOperationLabel,
+    evidenceChangeLabel,
     activateMemoryTab,
     handleMemoryTabKeydown,
     groupMemoryFacts,

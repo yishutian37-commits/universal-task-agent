@@ -69,3 +69,20 @@ def test_agent_state_exports_replan_tracking_fields():
 
     assert exported["replan_count"] == 1
     assert exported["replan_events"] == [{"failed_step_id": 2, "resume_step_id": 2}]
+
+
+def test_agent_state_round_trips_task_evidence():
+    state = AgentState(task_id="task_evidence", user_input="读取并写入文件")
+    state.evidence["files"].append(
+        {"path": "/tmp/input.md", "operation": "read", "tool_name": "file_tool", "step_id": 1}
+    )
+    state.evidence["changes"].append(
+        {"path": "/tmp/output.md", "change_type": "created", "tool_name": "write", "step_id": 2}
+    )
+    state.evidence["artifacts"].append(
+        {"artifact_id": "artifact-1", "kind": "file", "path": "/tmp/output.md", "verified": True}
+    )
+
+    restored = AgentState.from_dict(state.to_dict())
+
+    assert restored.evidence == state.evidence

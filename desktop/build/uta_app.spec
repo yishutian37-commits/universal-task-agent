@@ -52,6 +52,7 @@ a = Analysis(
         "api",
         "api.server",
         "core.executor",
+        "core.evidence",
         "core.loop",
         "core.planner",
         "core.reflection",
@@ -168,8 +169,8 @@ app = BUNDLE(
     info_plist={
         "CFBundleName": "UTA Desktop",
         "CFBundleDisplayName": "UTA Desktop",
-        "CFBundleShortVersionString": "1.4.0",
-        "CFBundleVersion": "1.4.0",
+        "CFBundleShortVersionString": "1.5.0",
+        "CFBundleVersion": "1.5.0",
         "LSMinimumSystemVersion": "11.0",
         "NSHighResolutionCapable": True,
     },

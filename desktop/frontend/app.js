@@ -41,6 +41,9 @@ const els = {
   planMeta: document.getElementById("planMeta"),
   planList: document.getElementById("planList"),
   taskActivity: document.getElementById("taskActivity"),
+  taskFilesList: document.getElementById("taskFilesList"),
+  taskChangesList: document.getElementById("taskChangesList"),
+  taskArtifactsList: document.getElementById("taskArtifactsList"),
   logPanel: document.getElementById("logPanel"),
   report: document.getElementById("report"),
   copyReport: document.getElementById("copyReport"),
@@ -102,7 +105,8 @@ const state = {
   memoryLongTermKind: "identity",
   memoryArchiveTaskId: null,
   workspacePath: "",
-  selectedText: ""
+  selectedText: "",
+  taskEvidence: window.UTAShell.normalizeTaskEvidence({})
 };
 
 const runLifecycle = window.UTAShell.createRunLifecycle();
@@ -130,6 +134,63 @@ function setMemoryTab(tabName) {
 
 function renderTaskPanelEmptyStates() {
   els.chatDetailPanel.classList.toggle("has-task", Boolean(state.taskId));
+}
+
+function evidenceFileName(path) {
+  const parts = String(path || "").split(/[\\/]/).filter(Boolean);
+  return parts.length ? parts[parts.length - 1] : "未命名记录";
+}
+
+function evidencePathControl(path) {
+  if (!path) return "";
+  return `<button class="iconButton evidenceCopy" type="button" data-copy-evidence-path="${escapeHtml(path)}" title="复制路径" aria-label="复制路径">⧉</button>`;
+}
+
+function renderTaskEvidence() {
+  const files = state.taskEvidence.files || [];
+  const changes = state.taskEvidence.changes || [];
+  const artifacts = state.taskEvidence.artifacts || [];
+
+  els.taskFilesList.innerHTML = files.length ? files.map((item) => `
+    <article class="taskEvidenceItem">
+      <div><strong><span>${escapeHtml(window.UTAShell.evidenceOperationLabel(item.operation))}</span>${escapeHtml(evidenceFileName(item.path))}</strong><small title="${escapeHtml(item.path || "")}">${escapeHtml(item.path || "")}</small></div>
+      ${evidencePathControl(item.path)}
+    </article>
+  `).join("") : '<div class="emptyState">本轮暂无文件记录</div>';
+
+  els.taskChangesList.innerHTML = changes.length ? changes.map((item) => `
+    <article class="taskEvidenceItem">
+      <div><strong><span>${escapeHtml(window.UTAShell.evidenceChangeLabel(item.change_type))}</span>${escapeHtml(evidenceFileName(item.path))}</strong><small title="${escapeHtml(item.path || "")}">${escapeHtml(item.path || "")}</small>${item.restore_path ? `<small title="${escapeHtml(item.restore_path)}">可从 ${escapeHtml(item.restore_path)} 恢复</small>` : ""}</div>
+      ${evidencePathControl(item.path)}
+    </article>
+  `).join("") : '<div class="emptyState">本轮暂无文件变更</div>';
+
+  els.taskArtifactsList.innerHTML = artifacts.length ? artifacts.map((item) => `
+    <article class="taskEvidenceItem">
+      <div><strong><span>${item.verified ? "已验证" : "待验证"}</span>${escapeHtml(item.label || evidenceFileName(item.path) || "任务产物")}</strong><small>${escapeHtml(item.path || item.content_preview || "任务内报告")}</small></div>
+      ${evidencePathControl(item.path)}
+    </article>
+  `).join("") : '<div class="emptyState">本轮暂无独立产物</div>';
+
+  [els.taskFilesList, els.taskChangesList, els.taskArtifactsList].forEach((container) => {
+    container.querySelectorAll("[data-copy-evidence-path]").forEach((button) => {
+      button.addEventListener("click", async () => {
+        try {
+          await copyText(button.dataset.copyEvidencePath || "");
+          showToast("已复制", "路径已写入剪贴板");
+        } catch (error) {
+          showToast("复制失败", error.message || "无法写入剪贴板");
+        }
+      });
+    });
+  });
+}
+
+function mergeTaskEvidenceRecord(bucket, record) {
+  const incoming = window.UTAShell.normalizeTaskEvidence({});
+  incoming[bucket].push(record || {});
+  window.UTAShell.mergeTaskEvidence(state.taskEvidence, incoming);
+  renderTaskEvidence();
 }
 
 function setStopTaskVisible(isVisible) {
@@ -1136,6 +1197,7 @@ function resetRunSurface() {
   els.runTask.disabled = false;
   els.resumeTask.disabled = false;
   state.taskId = null;
+  state.taskEvidence = window.UTAShell.normalizeTaskEvidence({});
   els.planList.innerHTML = "";
   els.logPanel.innerHTML = "";
   els.planMeta.textContent = "0 步";
@@ -1149,6 +1211,7 @@ function resetRunSurface() {
   els.copyReport.disabled = true;
   state.reportText = "";
   renderTaskPanelEmptyStates();
+  renderTaskEvidence();
 }
 
 async function runTask() {
@@ -1425,6 +1488,9 @@ function sourceFor(event) {
     step_started: "Loop",
     tool_selected: "Router",
     tool_executed: "Executor",
+    file_recorded: "Files",
+    file_changed: "Changes",
+    artifact_created: "Artifacts",
     verified: "Verifier",
     reflection: "Reflection",
     replanned: "Replan",
@@ -1448,6 +1514,9 @@ function messageFor(event) {
   if (event.type === "step_started") return `开始步骤 ${data.step_id}：${data.goal}`;
   if (event.type === "tool_selected") return `步骤 ${data.step_id} 路由到 ${data.tool_name}`;
   if (event.type === "tool_executed") return `工具 ${data.tool_name} 执行 ${data.success ? "成功" : "失败"}`;
+  if (event.type === "file_recorded") return `记录文件：${data.path || "未知路径"}`;
+  if (event.type === "file_changed") return `${window.UTAShell.evidenceChangeLabel(data.change_type)}：${data.path || "未知路径"}`;
+  if (event.type === "artifact_created") return `登记产物：${data.label || data.path || "任务产物"}`;
   if (event.type === "verified") return `步骤 ${data.step_id} 校验 ${data.passed ? "通过" : "未通过"}`;
   if (event.type === "reflection") return `${data.failure_type}，${data.repair_strategy}`;
   if (event.type === "replanned") return `从步骤 ${data.resume_step_id} 继续`;
@@ -1510,6 +1579,9 @@ async function handleProgress(event) {
     appendAssistantProgress(taskId, `调用工具：${data.tool_name}`);
     markStep(data.step_id, "active", "tool", data.tool_name);
   }
+  if (event.type === "file_recorded") mergeTaskEvidenceRecord("files", data);
+  if (event.type === "file_changed") mergeTaskEvidenceRecord("changes", data);
+  if (event.type === "artifact_created") mergeTaskEvidenceRecord("artifacts", data);
   if (event.type === "authorization_required") {
     appendAssistantProgress(taskId, `等待授权：${data.summary || data.tool_name || "高风险操作"}`);
     updateAssistantForContext(context, {
@@ -1570,6 +1642,10 @@ async function refreshResult(taskId) {
   try {
     const result = await callApi("get_result", taskId);
     if (!isRunContextVisible(context)) return;
+    if (result.state && result.state.evidence) {
+      state.taskEvidence = window.UTAShell.normalizeTaskEvidence(result.state.evidence);
+      renderTaskEvidence();
+    }
     els.stateJson.textContent = JSON.stringify(result.state || result, null, 2);
   } catch (error) {
     if (!isRunContextVisible(context)) return;

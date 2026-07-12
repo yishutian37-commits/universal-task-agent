@@ -266,6 +266,42 @@ def test_memory_enum_labels_are_chinese_and_have_safe_fallbacks():
     )
 
 
+def test_task_evidence_helpers_normalize_merge_and_localize_records():
+    run_node(
+        """
+        const assert = require("node:assert/strict");
+        const {
+          normalizeTaskEvidence,
+          mergeTaskEvidence,
+          evidenceOperationLabel,
+          evidenceChangeLabel
+        } = require("./desktop/frontend/shell.js");
+
+        const evidence = normalizeTaskEvidence({
+          files: [{ path: "/tmp/input.md", operation: "read", step_id: 1 }, null],
+          changes: [{ path: "/tmp/output.md", change_type: "created", step_id: 2 }],
+          artifacts: [{ artifact_id: "artifact-1", kind: "file", path: "/tmp/output.md" }]
+        });
+        assert.equal(evidence.files.length, 1);
+        assert.equal(evidence.changes.length, 1);
+        assert.equal(evidence.artifacts.length, 1);
+
+        const added = mergeTaskEvidence(evidence, {
+          files: [{ path: "/tmp/input.md", operation: "read", step_id: 1 }],
+          changes: [{ path: "/tmp/output.md", change_type: "modified", step_id: 3 }],
+          artifacts: []
+        });
+        assert.equal(added.files.length, 0);
+        assert.equal(added.changes.length, 1);
+        assert.equal(evidence.changes.length, 2);
+        assert.equal(evidenceOperationLabel("read"), "读取");
+        assert.equal(evidenceOperationLabel("unexpected"), "涉及");
+        assert.equal(evidenceChangeLabel("created"), "已创建");
+        assert.equal(evidenceChangeLabel("unexpected"), "已变更");
+        """
+    )
+
+
 def test_memory_view_helpers_cover_tabs_keyboard_and_content_organization():
     run_node(
         """

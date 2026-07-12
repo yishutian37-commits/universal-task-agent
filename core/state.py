@@ -27,6 +27,15 @@ def _list_of_dicts(value: Any) -> list[dict[str, Any]]:
     return [item for item in value if isinstance(item, dict)]
 
 
+def _evidence_payload(value: Any) -> dict[str, list[dict[str, Any]]]:
+    payload = value if isinstance(value, dict) else {}
+    return {
+        "files": _list_of_dicts(payload.get("files")),
+        "changes": _list_of_dicts(payload.get("changes")),
+        "artifacts": _list_of_dicts(payload.get("artifacts")),
+    }
+
+
 @dataclass
 class Task:
     task_id: str
@@ -112,6 +121,7 @@ class AgentState:
     results: list[ToolResult] = field(default_factory=list)
     checks: list[CheckResult] = field(default_factory=list)
     feedbacks: list[Feedback] = field(default_factory=list)
+    evidence: dict[str, list[dict[str, Any]]] = field(default_factory=lambda: _evidence_payload({}))
     final_output: str | None = None
     memory_saved: bool = False
     created_at: str = field(default_factory=current_timestamp)
@@ -138,6 +148,7 @@ class AgentState:
             max_replans=int(payload.get("max_replans") or 1),
             replan_count=int(payload.get("replan_count") or 0),
             replan_events=_list_of_dicts(payload.get("replan_events")),
+            evidence=_evidence_payload(payload.get("evidence")),
             final_output=payload.get("final_output"),
             memory_saved=bool(payload.get("memory_saved") or False),
             created_at=str(payload.get("created_at") or current_timestamp()),

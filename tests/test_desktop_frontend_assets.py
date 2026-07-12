@@ -27,6 +27,25 @@ def test_frontend_keeps_task_details_in_tabbed_panel():
         assert f'data-task-panel="{name}"' in html
 
 
+def test_frontend_task_evidence_tabs_render_live_and_recovered_records():
+    html = (FRONTEND_ROOT / "index.html").read_text(encoding="utf-8")
+    js = (FRONTEND_ROOT / "app.js").read_text(encoding="utf-8")
+    css = (FRONTEND_ROOT / "style.css").read_text(encoding="utf-8")
+
+    assert 'id="taskFilesList"' in html
+    assert 'id="taskChangesList"' in html
+    assert 'id="taskArtifactsList"' in html
+    assert "function renderTaskEvidence" in js
+    assert "window.UTAShell.mergeTaskEvidence" in js
+    assert 'event.type === "file_recorded"' in js
+    assert 'event.type === "file_changed"' in js
+    assert 'event.type === "artifact_created"' in js
+    assert "result.state && result.state.evidence" in js
+    assert 'data-copy-evidence-path=' in js
+    assert ".taskEvidenceList" in css
+    assert ".taskEvidenceItem" in css
+
+
 def test_frontend_task_panel_has_minimum_functional_layout():
     css = (FRONTEND_ROOT / "style.css").read_text(encoding="utf-8")
 

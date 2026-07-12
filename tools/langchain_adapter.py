@@ -27,11 +27,15 @@ class LangChainToolAdapter(BaseTool):
         except Exception as exc:
             raise RuntimeError(f"LangChain 工具执行失败：{exc}") from exc
 
-        return {
+        result = {
             "message": f"LangChain 工具执行完成：{self._format_output(output)}",
             "tool": self.name,
             "output": output,
         }
+        if isinstance(output, dict):
+            for key, value in output.items():
+                result.setdefault(str(key), value)
+        return result
 
     def _tool_input_from_params(self, params: dict[str, Any]) -> Any:
         if "tool_input" in params:

@@ -1,6 +1,14 @@
 import json
 import re
 
+from core.evidence import (
+    artifacts_from_changes,
+    collect_tool_evidence,
+    diff_workspace_snapshots,
+    merge_evidence,
+    should_snapshot_tool,
+    snapshot_workspace,
+)
 from core.executor import Executor
 from core.planner import Planner
 from core.reflection import Reflection
@@ -101,6 +109,32 @@ def _normalize_resumed_plan(plan: Plan) -> None:
 
 def _is_unsupported_result(result: ToolResult | None) -> bool:
     return result is not None and result.tool_name == "unsupported_task"
+
+
+def _record_tool_evidence(state: AgentState, action, result, before_snapshot) -> dict[str, list[dict]]:
+    incoming = collect_tool_evidence(action, result, workspace_path=state.workspace_path)
+    if before_snapshot is not None and state.workspace_path:
+        snapshot_changes = diff_workspace_snapshots(
+            before_snapshot,
+            snapshot_workspace(state.workspace_path),
+            state.workspace_path,
+            tool_name=result.tool_name,
+            step_id=result.step_id,
+        )
+        incoming["changes"] = snapshot_changes + incoming["changes"]
+        incoming["artifacts"] = artifacts_from_changes(snapshot_changes) + incoming["artifacts"]
+    return merge_evidence(state.evidence, incoming)
+
+
+def _emit_evidence_events(on_progress, state: AgentState, added: dict[str, list[dict]], checkpoint_store=None) -> None:
+    event_types = {
+        "files": "file_recorded",
+        "changes": "file_changed",
+        "artifacts": "artifact_created",
+    }
+    for bucket, event_type in event_types.items():
+        for record in added.get(bucket, []):
+            _emit_progress(on_progress, event_type, state, record, checkpoint_store=checkpoint_store)
 
 
 def _complex_task_output(state: AgentState) -> str:
@@ -226,8 +260,14 @@ def run_minimal_loop(state: AgentState, tool_registry=None, on_progress=None, ch
                 checkpoint_store=checkpoint_store,
             )
 
+            before_snapshot = (
+                snapshot_workspace(state.workspace_path)
+                if state.workspace_path and should_snapshot_tool(action.tool_name)
+                else None
+            )
             result = executor.run(action)
             state.results.append(result)
+            added_evidence = _record_tool_evidence(state, action, result, before_snapshot)
             _emit_progress(
                 on_progress,
                 "tool_executed",
@@ -237,9 +277,11 @@ def run_minimal_loop(state: AgentState, tool_registry=None, on_progress=None, ch
                     "tool_name": result.tool_name,
                     "success": result.success,
                     "error": result.error,
+                    "evidence_counts": {key: len(value) for key, value in added_evidence.items()},
                 },
                 checkpoint_store=checkpoint_store,
             )
+            _emit_evidence_events(on_progress, state, added_evidence, checkpoint_store=checkpoint_store)
 
             check = verifier.check(state, step, result)
             state.checks.append(check)
