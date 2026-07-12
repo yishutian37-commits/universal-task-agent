@@ -20,6 +20,8 @@ const els = {
   memoryConversationShortTerm: document.getElementById("memoryConversationShortTerm"),
   memoryLongTermKinds: document.getElementById("memoryLongTermKinds"),
   memoryLongTermFacts: document.getElementById("memoryLongTermFacts"),
+  memorySearchInput: document.getElementById("memorySearchInput"),
+  memoryIncludeDisabled: document.getElementById("memoryIncludeDisabled"),
   compressCurrentConversation: document.getElementById("compressCurrentConversation"),
   memoryLessons: document.getElementById("memoryLessons"),
   memoryNegativeRules: document.getElementById("memoryNegativeRules"),
@@ -103,6 +105,8 @@ const state = {
   memoryOverview: null,
   memoryTab: "long-term",
   memoryLongTermKind: "identity",
+  memorySearchFacts: null,
+  memoryIncludeDisabled: false,
   memoryArchiveTaskId: null,
   workspacePath: "",
   selectedText: "",
@@ -942,6 +946,7 @@ async function loadMemoryOverview() {
 
 function renderMemoryOverview(memory, currentConversation = null) {
   state.memoryOverview = memory;
+  state.memorySearchFacts = null;
   renderMemoryLongTerm(memory.long_term_facts || []);
   renderConversationShortTermMemory(currentConversation);
   renderMemoryLearning(memory);
@@ -969,7 +974,11 @@ function renderConversationShortTermMemory(conversation) {
 }
 
 function renderMemoryLongTerm(facts) {
-  const grouped = window.UTAShell.groupMemoryFacts(facts);
+  const sourceFacts = state.memorySearchFacts === null ? facts : state.memorySearchFacts;
+  const visibleFacts = (sourceFacts || []).filter((fact) => (
+    state.memoryIncludeDisabled === true || fact.enabled !== false
+  ));
+  const grouped = window.UTAShell.groupMemoryFacts(visibleFacts);
   const knownKinds = new Set(MEMORY_KIND_GROUPS.map((group) => group.kind));
   const groups = MEMORY_KIND_GROUPS.concat(
     Object.keys(grouped)
@@ -999,22 +1008,79 @@ function renderMemoryLongTerm(facts) {
       renderMemoryLongTerm(state.memoryOverview?.long_term_facts || []);
     });
   });
+  els.memoryLongTermFacts.querySelectorAll("[data-memory-action]").forEach((button) => {
+    button.addEventListener("click", () => handleMemoryFactAction(button.dataset.memoryAction, button.dataset.memoryId));
+  });
 }
 
 function renderMemoryFact(fact) {
   const confidence = Number.isFinite(Number(fact.confidence)) ? `${Math.round(Number(fact.confidence) * 100)}%` : "未知";
+  const disabled = fact.enabled === false;
   return `
-    <article class="memoryFact">
+    <article class="memoryFact ${disabled ? "disabled" : ""}" data-memory-id="${escapeHtml(fact.memory_id || "")}">
       <p>${escapeHtml(fact.content || "")}</p>
+      <div class="memoryFactActions">
+        <span>${disabled ? "已停用" : "使用中"}</span>
+        <button class="button ghost compact" type="button" data-memory-action="edit" data-memory-id="${escapeHtml(fact.memory_id || "")}">编辑</button>
+        <button class="button ghost compact" type="button" data-memory-action="toggle" data-memory-id="${escapeHtml(fact.memory_id || "")}">${disabled ? "启用" : "停用"}</button>
+        <button class="button ghost compact danger" type="button" data-memory-action="delete" data-memory-id="${escapeHtml(fact.memory_id || "")}">删除</button>
+      </div>
       <details class="memoryDetails">
         <summary>来源详情</summary>
         <small>置信度：${escapeHtml(confidence)}</small>
         <small>来源会话：${escapeHtml(fact.source_conversation_id || "")}</small>
         <small>首次出现：${escapeHtml(fact.first_seen_at || "")}</small>
         <small>最近出现：${escapeHtml(fact.last_seen_at || "")}</small>
+        <small>人工更新：${escapeHtml(fact.updated_at || "尚未编辑")}</small>
       </details>
     </article>
   `;
+}
+
+async function runMemorySearch() {
+  const query = els.memorySearchInput.value.trim();
+  state.memoryIncludeDisabled = els.memoryIncludeDisabled.checked;
+  try {
+    const result = await callApi("search_long_term_memory", query, "", state.memoryIncludeDisabled);
+    if (!result.ok) {
+      showToast("搜索失败", result.error || "无法搜索长期记忆");
+      return;
+    }
+    state.memorySearchFacts = result.facts || [];
+    renderMemoryLongTerm(state.memoryOverview?.long_term_facts || []);
+  } catch (error) {
+    showToast("搜索失败", error.message);
+  }
+}
+
+async function handleMemoryFactAction(action, memoryId) {
+  const facts = state.memoryOverview?.long_term_facts || [];
+  const fact = facts.find((item) => item.memory_id === memoryId);
+  if (!fact) return;
+  let result;
+  if (action === "edit") {
+    const content = window.prompt("编辑长期记忆", fact.content || "");
+    if (content === null) return;
+    if (!content.trim()) {
+      showToast("无法保存", "长期记忆内容不能为空");
+      return;
+    }
+    result = await callApi("update_long_term_memory", memoryId, { content: content.trim() });
+  } else if (action === "toggle") {
+    result = await callApi("update_long_term_memory", memoryId, { enabled: fact.enabled === false });
+  } else if (action === "delete") {
+    if (!window.confirm("确定永久删除这条长期记忆吗？")) return;
+    result = await callApi("delete_long_term_memory", memoryId);
+  } else {
+    return;
+  }
+  if (!result.ok) {
+    showToast("操作失败", result.error || "无法更新长期记忆");
+    return;
+  }
+  showToast(action === "delete" ? "已删除" : "已更新", fact.content || "长期记忆");
+  await loadMemoryOverview();
+  await runMemorySearch();
 }
 
 async function compressCurrentConversation() {
@@ -1823,6 +1889,11 @@ function bindEvents() {
       if (nextTab) state.memoryTab = nextTab;
     });
   });
+  els.memorySearchInput.addEventListener("input", () => {
+    clearTimeout(runMemorySearch.timer);
+    runMemorySearch.timer = setTimeout(runMemorySearch, 180);
+  });
+  els.memoryIncludeDisabled.addEventListener("change", runMemorySearch);
   els.taskInput.addEventListener("keydown", (event) => {
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();

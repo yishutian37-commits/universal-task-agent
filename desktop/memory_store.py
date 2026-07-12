@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from desktop.memory_compression import default_long_term_memory, merge_long_term_memory
+from desktop.memory_compression import ALLOWED_MEMORY_KINDS, default_long_term_memory, merge_long_term_memory
 
 
 class MemoryStore:
@@ -65,6 +66,125 @@ class MemoryStore:
         except ValueError as exc:
             return {"ok": False, "error": str(exc)}
         return {"ok": True, "long_term_memory": merged}
+
+    def search_long_term_facts(
+        self,
+        query: str = "",
+        *,
+        kind: str = "",
+        include_disabled: bool = False,
+    ) -> dict[str, Any]:
+        try:
+            memory = self.load_long_term_memory()
+        except ValueError as exc:
+            return {"ok": False, "error": str(exc), "facts": []}
+        needle = str(query or "").strip().casefold()
+        kind_filter = str(kind or "").strip()
+        facts = []
+        for fact in memory.get("facts", []):
+            if not isinstance(fact, dict):
+                continue
+            if fact.get("enabled") is False and not include_disabled:
+                continue
+            if kind_filter and str(fact.get("kind") or "") != kind_filter:
+                continue
+            searchable = " ".join(
+                str(fact.get(field) or "")
+                for field in ("content", "kind", "source_conversation_id", "memory_id")
+            ).casefold()
+            if needle and needle not in searchable:
+                continue
+            facts.append(dict(fact))
+        return {"ok": True, "facts": facts, "count": len(facts)}
+
+    def update_long_term_fact(
+        self,
+        memory_id: str,
+        changes: dict[str, Any],
+        *,
+        now: str | None = None,
+    ) -> dict[str, Any]:
+        normalized_id = str(memory_id or "").strip()
+        if not normalized_id:
+            return {"ok": False, "error": "memory_id 不能为空"}
+        if not isinstance(changes, dict):
+            return {"ok": False, "error": "修改内容必须是对象"}
+        try:
+            memory = self.load_long_term_memory()
+        except ValueError as exc:
+            return {"ok": False, "error": str(exc)}
+        fact = next(
+            (
+                item
+                for item in memory.get("facts", [])
+                if isinstance(item, dict) and str(item.get("memory_id") or "") == normalized_id
+            ),
+            None,
+        )
+        if fact is None:
+            return {"ok": False, "error": "长期记忆不存在"}
+
+        if "content" in changes:
+            content = str(changes.get("content") or "").strip()
+            if not content:
+                return {"ok": False, "error": "长期记忆内容不能为空"}
+            fact["content"] = content
+        if "kind" in changes:
+            kind = str(changes.get("kind") or "").strip()
+            if kind not in ALLOWED_MEMORY_KINDS:
+                return {"ok": False, "error": f"未知记忆类型: {kind}"}
+            fact["kind"] = kind
+        if "enabled" in changes:
+            if not isinstance(changes.get("enabled"), bool):
+                return {"ok": False, "error": "enabled 必须是布尔值"}
+            fact["enabled"] = changes["enabled"]
+        fact["updated_at"] = now or datetime.now(timezone.utc).isoformat()
+        self._rebuild_long_term_profile(memory)
+        self.save_long_term_memory(memory)
+        return {"ok": True, "fact": dict(fact)}
+
+    def delete_long_term_fact(self, memory_id: str) -> dict[str, Any]:
+        normalized_id = str(memory_id or "").strip()
+        try:
+            memory = self.load_long_term_memory()
+        except ValueError as exc:
+            return {"ok": False, "error": str(exc)}
+        facts = memory.get("facts", [])
+        index = next(
+            (
+                index
+                for index, item in enumerate(facts)
+                if isinstance(item, dict) and str(item.get("memory_id") or "") == normalized_id
+            ),
+            None,
+        )
+        if index is None:
+            return {"ok": False, "error": "长期记忆不存在"}
+        fact = facts.pop(index)
+        self._rebuild_long_term_profile(memory)
+        self.save_long_term_memory(memory)
+        return {"ok": True, "fact": fact}
+
+    @staticmethod
+    def _rebuild_long_term_profile(memory: dict[str, Any]) -> None:
+        profile = default_long_term_memory()["profile"]
+        buckets = {
+            "identity": "identity",
+            "preference": "preferences",
+            "work_habit": "work_habits",
+            "project": "projects",
+            "constraint": "constraints",
+            "decision": "decisions",
+            "open_question": "open_questions",
+        }
+        for fact in memory.get("facts", []):
+            if not isinstance(fact, dict) or fact.get("enabled") is False:
+                continue
+            bucket = buckets.get(str(fact.get("kind") or ""))
+            content = str(fact.get("content") or "").strip()
+            if bucket and content and content not in profile[bucket]:
+                profile[bucket].append(content)
+        memory["profile"] = profile
 
     def _list_from_file(self, filename: str, key: str) -> list[dict[str, Any]]:
         payload = self._read_payload(filename)

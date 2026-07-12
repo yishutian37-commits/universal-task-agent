@@ -1109,6 +1109,33 @@ pre {
   overflow: hidden;
 }
 
+.memoryFactsPanel {
+  grid-template-rows: auto auto minmax(0, 1fr);
+}
+
+.memoryFactToolbar {
+  min-width: 0;
+  padding: 10px 14px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.memoryFactToolbar input[type="search"] {
+  min-width: 0;
+  flex: 1;
+}
+
+.memoryFactToolbar label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
 .memoryBlock {
   min-height: 0;
   overflow: auto;
@@ -1232,6 +1259,28 @@ pre {
   margin: 0;
   line-height: 1.55;
   overflow-wrap: anywhere;
+}
+
+.memoryFact.disabled {
+  opacity: 0.68;
+  background: var(--surface-2);
+}
+
+.memoryFactActions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.memoryFactActions span {
+  margin-right: auto;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.memoryFactActions .danger {
+  color: var(--danger);
 }
 
 .memoryDetails {

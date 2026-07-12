@@ -114,8 +114,12 @@
                 <div class="panelHead"><h3>记忆分类</h3></div>
                 <div class="memoryKindList" id="memoryLongTermKinds"></div>
               </section>
-              <section class="panel memoryPanel">
+              <section class="panel memoryPanel memoryFactsPanel">
                 <div class="panelHead"><h3>长期事实</h3></div>
+                <div class="memoryFactToolbar">
+                  <input id="memorySearchInput" type="search" placeholder="搜索记忆内容或来源" aria-label="搜索长期记忆" />
+                  <label><input id="memoryIncludeDisabled" type="checkbox" />显示已停用</label>
+                </div>
                 <div class="memoryBlock memoryLongTermFacts" id="memoryLongTermFacts"></div>
               </section>
             </div>

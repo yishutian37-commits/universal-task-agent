@@ -85,3 +85,61 @@ def test_memory_store_merges_long_term_candidates(tmp_path):
     assert result["ok"] is True
     assert result["long_term_memory"]["profile"]["preferences"] == ["用户明确要求使用中文回复。"]
     assert persisted["facts"][0]["content"] == "用户明确要求使用中文回复。"
+
+
+def test_memory_store_searches_long_term_facts_and_hides_disabled_by_default(tmp_path):
+    write_json(
+        tmp_path / "long_term_memory.json",
+        {
+            "version": 1,
+            "facts": [
+                {"memory_id": "mem_1", "kind": "preference", "content": "用户喜欢中文回复"},
+                {"memory_id": "mem_2", "kind": "project", "content": "UTA 使用桌面端", "enabled": False},
+            ],
+        },
+    )
+    store = MemoryStore(tmp_path)
+
+    assert [item["memory_id"] for item in store.search_long_term_facts("中文")["facts"]] == ["mem_1"]
+    assert store.search_long_term_facts("UTA")["facts"] == []
+    assert [
+        item["memory_id"] for item in store.search_long_term_facts("UTA", include_disabled=True)["facts"]
+    ] == ["mem_2"]
+
+
+def test_memory_store_updates_content_kind_and_enabled_state(tmp_path):
+    write_json(
+        tmp_path / "long_term_memory.json",
+        {"version": 1, "facts": [{"memory_id": "mem_1", "kind": "preference", "content": "旧内容"}]},
+    )
+    store = MemoryStore(tmp_path)
+
+    result = store.update_long_term_fact(
+        "mem_1",
+        {"content": "新内容", "kind": "work_habit", "enabled": False},
+        now="2026-07-13T14:00:00+00:00",
+    )
+    persisted = json.loads((tmp_path / "long_term_memory.json").read_text(encoding="utf-8"))
+
+    assert result["ok"] is True
+    assert result["fact"]["content"] == "新内容"
+    assert result["fact"]["kind"] == "work_habit"
+    assert result["fact"]["enabled"] is False
+    assert result["fact"]["updated_at"] == "2026-07-13T14:00:00+00:00"
+    assert persisted["facts"][0] == result["fact"]
+
+
+def test_memory_store_rejects_empty_updates_and_deletes_by_memory_id(tmp_path):
+    write_json(
+        tmp_path / "long_term_memory.json",
+        {"version": 1, "facts": [{"memory_id": "mem_1", "kind": "project", "content": "UTA"}]},
+    )
+    store = MemoryStore(tmp_path)
+
+    rejected = store.update_long_term_fact("mem_1", {"content": "  "})
+    deleted = store.delete_long_term_fact("mem_1")
+
+    assert rejected["ok"] is False
+    assert deleted["ok"] is True
+    assert deleted["fact"]["memory_id"] == "mem_1"
+    assert store.load_long_term_memory()["facts"] == []

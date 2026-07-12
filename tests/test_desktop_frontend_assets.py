@@ -329,14 +329,34 @@ def test_frontend_groups_long_term_memory_instead_of_flat_list():
     assert "明确约束" in js
     assert "决策记录" in js
     assert "待确认问题" in js
-    assert "window.UTAShell.groupMemoryFacts(facts)" in js
+    assert "window.UTAShell.groupMemoryFacts(visibleFacts)" in js
     assert 'data-memory-kind=' in js
-    assert 'class="memoryFact"' in js
+    assert 'class="memoryFact ${disabled ? "disabled" : ""}"' in js
     assert 'class="memoryDetails"' in js
     assert "<summary>来源详情</summary>" in js
     assert ".memoryLongTermLayout" in css
     assert ".memoryKindList" in css
     assert ".memoryDetails" in css
+
+
+def test_frontend_can_search_edit_disable_and_delete_long_term_memory():
+    html = (FRONTEND_ROOT / "index.html").read_text(encoding="utf-8")
+    js = (FRONTEND_ROOT / "app.js").read_text(encoding="utf-8")
+    css = (FRONTEND_ROOT / "style.css").read_text(encoding="utf-8")
+
+    assert 'id="memorySearchInput"' in html
+    assert 'id="memoryIncludeDisabled"' in html
+    assert 'callApi("search_long_term_memory"' in js
+    assert 'callApi("update_long_term_memory"' in js
+    assert 'callApi("delete_long_term_memory"' in js
+    assert 'data-memory-action="edit"' in js
+    assert 'data-memory-action="toggle"' in js
+    assert 'data-memory-action="delete"' in js
+    assert "function runMemorySearch" in js
+    assert "function handleMemoryFactAction" in js
+    assert ".memoryFactToolbar" in css
+    assert ".memoryFactActions" in css
+    assert ".memoryFact.disabled" in css
 
 
 def test_frontend_long_term_memory_panel_has_room_to_render_groups():

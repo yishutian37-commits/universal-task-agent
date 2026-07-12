@@ -200,6 +200,33 @@ class DesktopAPI:
         except Exception as exc:
             return {"ok": False, "error": str(exc)}
 
+    def search_long_term_memory(
+        self,
+        query: str = "",
+        kind: str = "",
+        include_disabled: bool = False,
+    ) -> dict[str, Any]:
+        try:
+            return self.memory_store.search_long_term_facts(
+                str(query or ""),
+                kind=str(kind or ""),
+                include_disabled=include_disabled is True,
+            )
+        except Exception as exc:
+            return {"ok": False, "error": str(exc), "facts": []}
+
+    def update_long_term_memory(self, memory_id: str, changes: dict[str, Any] | None = None) -> dict[str, Any]:
+        try:
+            return self.memory_store.update_long_term_fact(str(memory_id or ""), changes or {})
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)}
+
+    def delete_long_term_memory(self, memory_id: str) -> dict[str, Any]:
+        try:
+            return self.memory_store.delete_long_term_fact(str(memory_id or ""))
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)}
+
     def get_skill_overview(self) -> dict[str, Any]:
         try:
             return self.skill_store.overview()
@@ -828,7 +855,7 @@ def _build_long_term_memory_context(memory: dict[str, Any]) -> str:
         "open_question": "待确认问题",
     }
     ordered = sorted(
-        (fact for fact in facts if isinstance(fact, dict)),
+        (fact for fact in facts if isinstance(fact, dict) and fact.get("enabled") is not False),
         key=lambda fact: str(fact.get("last_seen_at") or fact.get("first_seen_at") or ""),
         reverse=True,
     )

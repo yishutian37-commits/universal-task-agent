@@ -1,6 +1,7 @@
 import json
 from datetime import datetime
 
+import desktop.api as api_module
 import desktop.runner as runner_module
 from desktop.api import DesktopAPI, _build_conversation_context
 from desktop.conversation_store import ConversationStore
@@ -943,6 +944,48 @@ def test_desktop_api_general_chat_includes_long_term_memory(tmp_path, monkeypatc
     assert result["ok"] is True
     assert "长期记忆" in chat_client.calls[0][1]
     assert "用户明确要求始终使用中文回复。" in chat_client.calls[0][1]
+
+
+def test_long_term_context_excludes_disabled_memory():
+    context = api_module._build_long_term_memory_context(
+        {
+            "facts": [
+                {"memory_id": "mem_on", "kind": "preference", "content": "使用中文", "enabled": True},
+                {"memory_id": "mem_off", "kind": "project", "content": "过期项目", "enabled": False},
+            ]
+        }
+    )
+
+    assert "使用中文" in context
+    assert "过期项目" not in context
+
+
+def test_desktop_api_manages_long_term_memory_facts(tmp_path, monkeypatch):
+    monkeypatch.setenv("UTA_HOME", str(tmp_path / "uta"))
+    memory_store = MemoryStore(tmp_path / "memory")
+    merged = memory_store.merge_long_term_candidates(
+        [{"kind": "preference", "content": "使用中文", "confidence": 0.9}],
+        conversation_id="conv_memory",
+        now="2026-07-13T12:00:00+00:00",
+    )
+    memory_id = merged["long_term_memory"]["facts"][0]["memory_id"]
+    api = DesktopAPI(
+        settings_store=SettingsStore(),
+        runner=FakeRunner(),
+        memory_store=memory_store,
+        conversation_store=ConversationStore(tmp_path / "conversations"),
+    )
+
+    searched = api.search_long_term_memory("中文", "preference", False)
+    updated = api.update_long_term_memory(memory_id, {"content": "始终使用中文", "enabled": False})
+    deleted = api.delete_long_term_memory(memory_id)
+
+    assert searched["ok"] is True
+    assert searched["facts"][0]["memory_id"] == memory_id
+    assert updated["fact"]["content"] == "始终使用中文"
+    assert updated["fact"]["enabled"] is False
+    assert deleted["ok"] is True
+    assert memory_store.load_long_term_memory()["facts"] == []
 
 
 def test_desktop_api_contextual_greeting_uses_llm_with_same_conversation_context(tmp_path, monkeypatch):
