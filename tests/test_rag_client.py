@@ -105,19 +105,32 @@ def test_http_expanded_query_requests_neighboring_context():
     client = RAGClient(api_url="http://localhost:8000")
     client._http = MagicMock(return_value={"chunks": []})
 
-    client.query_expanded("RAG 如何构建", top_k=4)
+    client.query_expanded("把知识库中 RAG 如何构建的详细内容发给我", top_k=4)
 
     client._http.assert_called_once_with(
         "POST",
         "/query",
         {
-            "question": "RAG 如何构建",
+            "question": "RAG 如何构建 基础流程 核心步骤 架构",
             "top_k": 4,
             "expand": True,
-            "neighbor_window": 24,
-            "max_sources": 1,
+            "neighbor_window": 4,
+            "max_sources": 2,
             "max_chars": 14_000,
         },
+    )
+
+
+def test_http_query_removes_natural_language_delivery_wrappers():
+    client = RAGClient(api_url="http://localhost:8000")
+    client._http = MagicMock(return_value={"chunks": []})
+
+    client.query("把知识库中 Loop 相关知识发给我", top_k=4)
+
+    client._http.assert_called_once_with(
+        "POST",
+        "/query",
+        {"question": "Loop", "top_k": 4},
     )
 
 

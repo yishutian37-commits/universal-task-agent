@@ -29,9 +29,22 @@ class KeywordDiversityReranker:
                 source_tokens = set(
                     re.findall(r"[a-z0-9_]{2,}", str(item.chunk.source or "").casefold())
                 )
+                named_matches = query_named_tokens & (text_tokens | source_tokens)
+                named_coverage = len(named_matches) / max(1, len(query_named_tokens))
+                named_bonus = 0.55 * named_coverage if query_named_tokens else 0.0
+                missing_named_penalty = (
+                    0.45 if query_named_tokens and not named_matches else 0.0
+                )
                 source_bonus = 0.18 if query_named_tokens & source_tokens else 0.0
                 source_penalty = 0.04 * source_counts.get(item.chunk.source, 0)
-                score = float(item.score) + 0.35 * coverage + source_bonus - source_penalty
+                score = (
+                    float(item.score)
+                    + 0.35 * coverage
+                    + named_bonus
+                    + source_bonus
+                    - missing_named_penalty
+                    - source_penalty
+                )
                 if score > best_score:
                     best_index = index
                     best_score = score

@@ -12,6 +12,7 @@ from rag.errors import EmptyStoreError
 from rag.generation.base import BaseGenerator
 from rag.loaders.base import LoaderFactory
 from rag.models import Answer, Document, RetrievedChunk
+from rag.query_normalizer import expand_knowledge_query
 from rag.retrieval.base import BaseRetriever
 from rag.store.base import BaseVectorStore
 
@@ -90,17 +91,18 @@ class KnowledgeBase:
         if self._store.count() == 0:
             raise EmptyStoreError("知识库为空，请先 ingest 文档")
 
-        query_vec = self.embedder.embed([question])[0]
+        retrieval_query = expand_knowledge_query(question)
+        query_vec = self.embedder.embed([retrieval_query])[0]
         vectors, chunks = self._store.all_vectors()
         if not chunks:
             raise EmptyStoreError("知识库为空，请先 ingest 文档")
-        candidate_k = min(len(chunks), max(top_k, top_k * 4))
+        candidate_k = min(len(chunks), max(top_k * 12, 48))
         hybrid_search = getattr(self.retriever, "search_with_text", None)
         if callable(hybrid_search):
-            candidates = hybrid_search(vectors, chunks, query_vec, question, candidate_k)
+            candidates = hybrid_search(vectors, chunks, query_vec, retrieval_query, candidate_k)
         else:
             candidates = self.retriever.search(vectors, chunks, query_vec, candidate_k)
-        return self.reranker.rerank(question, candidates, top_k)
+        return self.reranker.rerank(retrieval_query, candidates, top_k)
 
     def query_with_neighbors(
         self,
@@ -120,15 +122,19 @@ class KnowledgeBase:
 
         source_order: list[tuple[str, str]] = []
         source_scores: dict[tuple[str, str], float] = {}
-        hit_indexes: dict[tuple[str, str], set[int]] = {}
+        hit_indexes: dict[tuple[str, str], dict[int, float]] = {}
         for hit in hits:
             key = (hit.chunk.doc_id, hit.chunk.source)
             if key not in source_scores:
                 source_order.append(key)
                 source_scores[key] = float(hit.score)
-                hit_indexes[key] = set()
+                hit_indexes[key] = {}
             source_scores[key] = max(source_scores[key], float(hit.score))
-            hit_indexes[key].add(int(hit.chunk.chunk_index))
+            chunk_index = int(hit.chunk.chunk_index)
+            hit_indexes[key][chunk_index] = max(
+                hit_indexes[key].get(chunk_index, float("-inf")),
+                float(hit.score),
+            )
 
         best_score = max(source_scores.values(), default=0.0)
         if best_score > 0:
@@ -147,13 +153,17 @@ class KnowledgeBase:
         total_chars = 0
         expanded: list[RetrievedChunk] = []
         for key in selected_sources:
-            indexes = hit_indexes[key]
+            scored_indexes = hit_indexes[key]
+            best_index = max(
+                scored_indexes,
+                key=lambda index: (scored_indexes[index], -index),
+            )
             candidates = sorted(
                 (
                     chunk
                     for chunk in all_chunks
                     if (chunk.doc_id, chunk.source) == key
-                    and any(abs(int(chunk.chunk_index) - hit_index) <= window for hit_index in indexes)
+                    and abs(int(chunk.chunk_index) - best_index) <= window
                 ),
                 key=lambda chunk: int(chunk.chunk_index),
             )

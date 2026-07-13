@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from desktop.paths import uta_home
+from rag.query_normalizer import expand_knowledge_query
 
 
 class RAGClient:
@@ -107,14 +108,15 @@ class RAGClient:
         return {"ok": True, **result}
 
     def query(self, question: str, top_k: int = 5) -> dict[str, Any]:
+        retrieval_query = expand_knowledge_query(question)
         if self.mode == "http":
             return self._normalize_query_result(
-                self._http("POST", "/query", {"question": question, "top_k": top_k})
+                self._http("POST", "/query", {"question": retrieval_query, "top_k": top_k})
             )
         from rag.errors import EmptyStoreError
 
         try:
-            retrieved = self._get_embedded_kb().query(question, top_k=top_k)
+            retrieved = self._get_embedded_kb().query(retrieval_query, top_k=top_k)
         except EmptyStoreError as exc:
             return {"ok": False, "error": str(exc)}
         return {
@@ -132,12 +134,13 @@ class RAGClient:
         }
 
     def query_expanded(self, question: str, top_k: int = 4) -> dict[str, Any]:
+        retrieval_query = expand_knowledge_query(question)
         options = {
-            "question": question,
+            "question": retrieval_query,
             "top_k": top_k,
             "expand": True,
-            "neighbor_window": 24,
-            "max_sources": 1,
+            "neighbor_window": 4,
+            "max_sources": 2,
             "max_chars": 14_000,
         }
         if self.mode == "http":

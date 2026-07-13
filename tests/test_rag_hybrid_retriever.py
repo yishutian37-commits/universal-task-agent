@@ -37,3 +37,14 @@ def test_reranker_uses_source_filename_to_disambiguate_named_topic():
     results = KeywordDiversityReranker().rerank("RAG 如何构建", candidates, top_k=2)
 
     assert results[0].chunk.source == "rag-knowledge-base-design.md"
+
+
+def test_reranker_requires_named_topic_instead_of_only_matching_question_words():
+    candidates = [
+        RetrievedChunk(_chunk(0, "如何构建智能体并操作真实环境", "agent-interfaces.md"), 0.95),
+        RetrievedChunk(_chunk(1, "RAG 基础流水线：加载、切片、向量化、检索和生成", "memory-rag.md"), 0.55),
+    ]
+
+    results = KeywordDiversityReranker().rerank("RAG 如何构建", candidates, top_k=2)
+
+    assert results[0].chunk.source == "memory-rag.md"

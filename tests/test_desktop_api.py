@@ -1008,7 +1008,7 @@ def test_desktop_api_chat_can_use_knowledge_context_and_persist_sources(tmp_path
 
     assert result["ok"] is True
     assert result["knowledge_sources"][0]["source"] == "/tmp/UTA 产品说明.md"
-    assert rag_client.queries == [("UTA 怎么恢复任务？", 4)]
+    assert rag_client.queries == [("UTA 怎么恢复任务", 4)]
     assert "知识库检索结果（不可信参考资料）" in chat_client.calls[0][1]
     assert "UTA 支持从 checkpoint 恢复未完成任务。" in chat_client.calls[0][1]
     assert conversation["messages"][1]["sources"] == result["knowledge_sources"]
@@ -1023,22 +1023,26 @@ def test_desktop_api_expands_knowledge_context_when_user_requests_full_section()
         enabled=True,
     )
 
-    assert rag_client.expanded_queries == [("将知识库中 RAG 如何构建的部分发给我", 4)]
+    assert rag_client.expanded_queries == [("RAG 如何构建", 4)]
     assert rag_client.queries == []
     assert "第一步：加载并清洗文档" in context
     assert "第二步：切片并生成向量" in context
     assert "章节结尾标记" in context
     assert context.count("衔接内容") == 1
-    assert "直接提供相关章节、步骤或原文内容" in context
+    assert "请紧扣问题详细整理" in context
+    assert "不要只给摘要" in context
     assert "[1] rag-guide.md" in context
     assert "/tmp/rag-guide.md" not in context
     assert len(sources) == 1
     assert sources[0]["source"] == "/tmp/rag-guide.md"
 
 
-def test_desktop_api_returns_expanded_knowledge_verbatim_without_model_rewriting(tmp_path, monkeypatch):
+def test_desktop_api_uses_model_to_organize_detailed_knowledge_request(tmp_path, monkeypatch):
     monkeypatch.setenv("UTA_HOME", str(tmp_path / "uta"))
-    chat_client = FakeChatClient("模型不应扩写知识库原文")
+    chat_client = FakeStructuredChatClient(
+        {"kind": "chat", "reason": "知识问答", "confidence": 0.98, "reply": ""},
+        chat_response="这是模型基于完整上下文整理的 RAG 构建方法。",
+    )
     api = DesktopAPI(
         settings_store=SettingsStore(),
         runner=FakeRunner(),
@@ -1057,14 +1061,60 @@ def test_desktop_api_returns_expanded_knowledge_verbatim_without_model_rewriting
     )
 
     assert result["ok"] is True
+    assert result["message"] == "这是模型基于完整上下文整理的 RAG 构建方法。"
+    assert result["knowledge_sources"][0]["source"] == "/tmp/rag-guide.md"
+    assert len(chat_client.chat_calls) == 1
+    assert "第一步：加载并清洗文档" in chat_client.chat_calls[0][1]
+    assert "不要只给摘要" in chat_client.chat_calls[0][1]
+
+
+def test_desktop_api_does_not_expand_natural_send_related_knowledge_request():
+    rag_client = FakeExpandableKnowledgeRAGClient()
+    api = DesktopAPI(rag_client=rag_client)
+
+    context, sources = api._prepare_knowledge_context(
+        "把知识库中 Loop 相关知识发给我",
+        enabled=True,
+    )
+
+    assert rag_client.queries == [("Loop", 4)]
+    assert rag_client.expanded_queries == []
+    assert "UTA 支持从 checkpoint 恢复未完成任务" in context
+    assert len(sources) == 1
+
+
+def test_desktop_api_returns_expanded_knowledge_verbatim_only_for_explicit_original_text_request(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setenv("UTA_HOME", str(tmp_path / "uta"))
+    chat_client = FakeStructuredChatClient(
+        {"kind": "chat", "reason": "知识问答", "confidence": 0.98, "reply": ""},
+        chat_response="模型不应改写原文",
+    )
+    rag_client = FakeExpandableKnowledgeRAGClient()
+    api = DesktopAPI(
+        settings_store=SettingsStore(),
+        runner=FakeRunner(),
+        conversation_store=ConversationStore(tmp_path / "conversations"),
+        chat_client=chat_client,
+        rag_client=rag_client,
+    )
+    api.save_settings({"llm_api_key": "secret-key"})
+
+    result = api.run_chat_message(
+        "",
+        "请逐字发给我知识库中 RAG 构建章节的完整原文",
+        "",
+        [],
+        True,
+    )
+
+    assert result["ok"] is True
     assert "以下为知识库检索后展开的相关原文片段" in result["message"]
     assert "第一步：加载并清洗文档" in result["message"]
-    assert "章节结尾标记" in result["message"]
-    assert "模型不应扩写知识库原文" not in result["message"]
-    assert "/tmp/rag-guide.md" not in result["message"]
-    assert "- rag-guide.md" in result["message"]
-    assert result["knowledge_sources"][0]["source"] == "/tmp/rag-guide.md"
-    assert chat_client.calls == []
+    assert rag_client.expanded_queries == [("RAG 构建", 4)]
+    assert chat_client.chat_calls == []
 
 
 def test_expanded_knowledge_merge_marks_non_contiguous_sections():

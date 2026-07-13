@@ -89,6 +89,33 @@ def test_query_with_neighbors_excludes_weak_secondary_sources(fake_components, m
     assert "agent-interfaces.md" not in {item.chunk.source for item in chunks}
 
 
+def test_query_with_neighbors_uses_only_best_hit_window_per_source(fake_components, monkeypatch):
+    kb = KnowledgeBase(**fake_components)
+    source_chunks = [
+        Chunk(f"c{index}", "d1", "guide.md", index, f"第 {index} 段", {})
+        for index in range(12)
+    ]
+    hits = [
+        RetrievedChunk(source_chunks[2], 1.0),
+        RetrievedChunk(source_chunks[9], 0.8),
+    ]
+    monkeypatch.setattr(kb, "query", lambda question, top_k: hits[:top_k])
+    monkeypatch.setattr(
+        kb._store,
+        "all_vectors",
+        lambda: ([[1.0]] * len(source_chunks), source_chunks),
+    )
+
+    chunks = kb.query_with_neighbors(
+        "主题",
+        top_k=2,
+        neighbor_window=1,
+        max_sources=1,
+    )
+
+    assert [item.chunk.chunk_index for item in chunks] == [1, 2, 3]
+
+
 def test_lexical_overlap_rewards_exact_english_and_chinese_terms():
     relevant = _lexical_overlap("UTA 如何保存长期记忆", "UTA 支持会话压缩和长期记忆管理")
     unrelated = _lexical_overlap("UTA 如何保存长期记忆", "今天的天气适合出门")

@@ -18,6 +18,7 @@ from desktop.rag_client import RAGClient
 from desktop.runner import TaskRunner
 from desktop.settings_store import SettingsStore
 from desktop.skill_store import SkillStore
+from rag.query_normalizer import normalize_knowledge_query
 
 
 class DesktopAPI:
@@ -505,13 +506,13 @@ class DesktopAPI:
             try:
                 conversation_id = self._ensure_conversation_id(conversation_id)
                 stream = getattr(client, "chat_stream", None)
-                expanded_answer = (
+                verbatim_answer = (
                     _expanded_knowledge_answer(knowledge_context, knowledge_sources)
-                    if knowledge_sources and _wants_expanded_knowledge(text)
+                    if knowledge_sources and _wants_verbatim_knowledge(text)
                     else ""
                 )
-                if expanded_answer:
-                    answer = expanded_answer
+                if verbatim_answer:
+                    answer = verbatim_answer
                 elif request_id and callable(stream):
                     answer = self._run_general_chat_stream(
                         execution_text,
@@ -698,7 +699,9 @@ class DesktopAPI:
     ) -> tuple[str, list[dict[str, Any]]]:
         if not enabled:
             return "", []
-        expanded = _wants_expanded_knowledge(str(question or ""))
+        response_mode = _knowledge_response_mode(str(question or ""))
+        expanded = response_mode != "standard"
+        retrieval_query = normalize_knowledge_query(question)
         try:
             query_method = (
                 getattr(self.rag_client, "query_expanded", None)
@@ -706,9 +709,9 @@ class DesktopAPI:
                 else None
             )
             if callable(query_method):
-                result = query_method(str(question or "").strip(), top_k=4)
+                result = query_method(retrieval_query, top_k=4)
             else:
-                result = self.rag_client.query(str(question or "").strip(), top_k=4)
+                result = self.rag_client.query(retrieval_query, top_k=4)
         except Exception:
             return "", []
         if not isinstance(result, dict) or result.get("ok") is not True:
@@ -760,7 +763,7 @@ class DesktopAPI:
         ]
         if expanded:
             instructions.append(
-                "用户要求展开知识库内容。请直接提供相关章节、步骤或原文内容；"
+                "已为用户展开更完整的相关内容。请紧扣问题详细整理，保留关键步骤和细节；"
                 "不要只给摘要，不要声称只能看到摘要，也不要要求用户再次下达读取文件的指令。"
             )
         context = "\n".join(instructions) + "\n\n" + "\n\n".join(sections)
@@ -1112,24 +1115,44 @@ def _with_attachment_names(text: str, names: list[str]) -> str:
     return f"{text}\n\n附件：{', '.join(names)}"
 
 
-def _wants_expanded_knowledge(question: str) -> bool:
+def _knowledge_response_mode(question: str) -> str:
     normalized = "".join(str(question or "").casefold().split())
-    markers = (
-        "发给我",
+    verbatim_markers = (
+        "逐字",
+        "完整原文",
+        "原始内容",
+        "完整章节",
+        "原文",
+        "全文",
+        "不改写",
+        "不要改写",
+        "不要总结",
+    )
+    if any(marker in normalized for marker in verbatim_markers):
+        return "verbatim"
+    detailed_markers = (
         "完整内容",
         "完整步骤",
         "全部内容",
         "相关部分",
         "整段",
-        "全文",
-        "原文",
         "展开",
         "详细内容",
         "具体步骤",
         "如何构建",
         "怎么构建",
     )
-    return any(marker in normalized for marker in markers)
+    if any(marker in normalized for marker in detailed_markers):
+        return "detailed"
+    return "standard"
+
+
+def _wants_expanded_knowledge(question: str) -> bool:
+    return _knowledge_response_mode(question) != "standard"
+
+
+def _wants_verbatim_knowledge(question: str) -> bool:
+    return _knowledge_response_mode(question) == "verbatim"
 
 
 def _merge_expanded_knowledge_chunks(chunks: list[Any]) -> list[dict[str, Any]]:
