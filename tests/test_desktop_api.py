@@ -1030,7 +1030,10 @@ def test_desktop_api_expands_knowledge_context_when_user_requests_full_section()
     assert "章节结尾标记" in context
     assert context.count("衔接内容") == 1
     assert "直接提供相关章节、步骤或原文内容" in context
+    assert "[1] rag-guide.md" in context
+    assert "/tmp/rag-guide.md" not in context
     assert len(sources) == 1
+    assert sources[0]["source"] == "/tmp/rag-guide.md"
 
 
 def test_desktop_api_returns_expanded_knowledge_verbatim_without_model_rewriting(tmp_path, monkeypatch):
@@ -1058,7 +1061,43 @@ def test_desktop_api_returns_expanded_knowledge_verbatim_without_model_rewriting
     assert "第一步：加载并清洗文档" in result["message"]
     assert "章节结尾标记" in result["message"]
     assert "模型不应扩写知识库原文" not in result["message"]
+    assert "/tmp/rag-guide.md" not in result["message"]
+    assert "- rag-guide.md" in result["message"]
+    assert result["knowledge_sources"][0]["source"] == "/tmp/rag-guide.md"
     assert chat_client.calls == []
+
+
+def test_expanded_knowledge_merge_marks_non_contiguous_sections():
+    chunks = [
+        {
+            "score": 0.95,
+            "source": "/tmp/rag-guide.md",
+            "doc_id": "doc-rag",
+            "chunk_index": 2,
+            "text": "连续内容 A。",
+        },
+        {
+            "score": 0.95,
+            "source": "/tmp/rag-guide.md",
+            "doc_id": "doc-rag",
+            "chunk_index": 8,
+            "text": "连续内容 B。",
+        },
+    ]
+
+    merged = api_module._merge_expanded_knowledge_chunks(chunks)
+
+    assert len(merged) == 1
+    assert "[中间无关片段已省略]" in merged[0]["text"]
+
+
+def test_expanded_knowledge_content_drops_incomplete_chunk_tail():
+    content = "## 完整小节\n\n这是完整内容。\n\n### 下一小节\n\n只取到了半句就断在 sto"
+
+    cleaned = api_module._truncate_expanded_knowledge_content(content, 1_000)
+
+    assert cleaned.endswith("这是完整内容。")
+    assert "sto" not in cleaned
 
 
 def test_desktop_api_task_receives_knowledge_context(tmp_path, monkeypatch):

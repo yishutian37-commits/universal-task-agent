@@ -110,6 +110,7 @@ class KnowledgeBase:
         neighbor_window: int = 4,
         max_sources: int = 2,
         max_chars: int = 16_000,
+        min_source_score_ratio: float = 0.82,
     ) -> list[RetrievedChunk]:
         """检索后展开命中片段的同源相邻内容，供完整章节类请求使用。"""
         hits = self.query(question, top_k=top_k)
@@ -117,19 +118,29 @@ class KnowledgeBase:
         if not hits or not all_chunks:
             return hits
 
-        selected_sources: list[tuple[str, str]] = []
+        source_order: list[tuple[str, str]] = []
         source_scores: dict[tuple[str, str], float] = {}
         hit_indexes: dict[tuple[str, str], set[int]] = {}
         for hit in hits:
             key = (hit.chunk.doc_id, hit.chunk.source)
             if key not in source_scores:
-                if len(selected_sources) >= max(1, int(max_sources)):
-                    continue
-                selected_sources.append(key)
+                source_order.append(key)
                 source_scores[key] = float(hit.score)
                 hit_indexes[key] = set()
             source_scores[key] = max(source_scores[key], float(hit.score))
             hit_indexes[key].add(int(hit.chunk.chunk_index))
+
+        best_score = max(source_scores.values(), default=0.0)
+        if best_score > 0:
+            ratio = min(1.0, max(0.0, float(min_source_score_ratio)))
+            minimum_score = best_score * ratio
+            eligible_sources = [
+                key for key in source_order if source_scores[key] >= minimum_score
+            ]
+        else:
+            # 非正分值无法用比例衡量可信度，仅保留最优来源。
+            eligible_sources = source_order[:1]
+        selected_sources = eligible_sources[: max(1, int(max_sources))]
 
         window = max(0, int(neighbor_window))
         char_limit = max(1, int(max_chars))

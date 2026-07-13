@@ -719,12 +719,22 @@ class DesktopAPI:
         sources: list[dict[str, Any]] = []
         sections: list[str] = []
         seen_sources: set[str] = set()
-        for index, chunk in enumerate(chunks[:4], start=1):
+        expanded_chars_remaining = 14_000
+        for chunk in chunks[:4]:
             if not isinstance(chunk, dict):
                 continue
             source = str(chunk.get("source") or "未知来源").strip()
-            content_limit = 8_000 if expanded else 2_000
-            content = str(chunk.get("text") or "").strip()[:content_limit]
+            raw_content = str(chunk.get("text") or "").strip()
+            if expanded:
+                if expanded_chars_remaining <= 0:
+                    break
+                content = _truncate_expanded_knowledge_content(
+                    raw_content,
+                    expanded_chars_remaining,
+                )
+                expanded_chars_remaining -= len(content)
+            else:
+                content = raw_content[:2_000]
             if not content:
                 continue
             try:
@@ -740,7 +750,8 @@ class DesktopAPI:
                 }
                 sources.append(source_record)
                 seen_sources.add(source)
-            sections.append(f"[{index}] {source}\n{content}")
+            section_source = (Path(source).name or source) if expanded else source
+            sections.append(f"[{len(sections) + 1}] {section_source}\n{content}")
         if not sections:
             return "", []
         instructions = [
@@ -1152,7 +1163,7 @@ def _merge_expanded_knowledge_chunks(chunks: list[Any]) -> list[dict[str, Any]]:
                 overlap = _suffix_prefix_overlap(content, text)
                 content += text[overlap:]
             else:
-                content += "\n\n" + text
+                content += "\n\n[中间无关片段已省略]\n\n" + text
             previous_index = chunk_index
         if not content.strip():
             continue
@@ -1182,14 +1193,48 @@ def _expanded_knowledge_answer(
     source_lines = []
     for source in sources:
         title = str(source.get("title") or source.get("source") or "未知来源")
-        path = str(source.get("source") or "")
-        source_lines.append(f"- {title}" + (f"：{path}" if path and path != title else ""))
+        source_lines.append(f"- {title}")
     source_section = "\n\n知识来源\n" + "\n".join(source_lines) if source_lines else ""
     return (
         "以下为知识库检索后展开的相关原文片段。内容按命中文档和片段顺序合并，未由模型补写。\n\n"
         + material.strip()
         + source_section
     )
+
+
+def _truncate_expanded_knowledge_content(content: str, limit: int) -> str:
+    text = str(content or "").strip()
+    char_limit = max(0, int(limit))
+    if len(text) <= char_limit:
+        return _trim_incomplete_expanded_tail(text)
+    marker = "\n\n[内容过长，后续片段已省略]"
+    if char_limit <= len(marker):
+        return marker.strip()[:char_limit]
+    cutoff = char_limit - len(marker)
+    prefix = text[:cutoff]
+    candidates = (
+        prefix.rfind("\n\n"),
+        prefix.rfind("\n"),
+        prefix.rfind("。"),
+        prefix.rfind(". "),
+    )
+    boundary = max(candidates)
+    if boundary >= max(80, cutoff // 2):
+        prefix = prefix[: boundary + 1]
+    return _trim_incomplete_expanded_tail(prefix.rstrip()) + marker
+
+
+def _trim_incomplete_expanded_tail(content: str) -> str:
+    text = str(content or "").strip()
+    if not text or text.endswith(("。", "！", "？", ".", "!", "?", "```", "~~~", "|", "}", "]")):
+        return text
+    boundary = text.rfind("\n\n")
+    if boundary < len(text) // 2:
+        return text
+    blocks = [block for block in text[:boundary].rstrip().split("\n\n") if block.strip()]
+    while blocks and blocks[-1].lstrip().startswith("#"):
+        blocks.pop()
+    return "\n\n".join(blocks).rstrip() or text
 
 
 def _suffix_prefix_overlap(left: str, right: str, limit: int = 256) -> int:

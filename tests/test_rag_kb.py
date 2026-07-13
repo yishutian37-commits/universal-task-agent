@@ -4,6 +4,7 @@ import pytest
 
 from rag.errors import EmptyStoreError
 from rag.kb import KnowledgeBase, _lexical_overlap
+from rag.models import Chunk, RetrievedChunk
 
 
 def test_ask_on_empty_store_raises(fake_components):
@@ -58,6 +59,34 @@ def test_query_with_neighbors_expands_contiguous_chunks_from_hit_source(fake_com
     assert len(chunks) >= 2
     assert indexes == list(range(min(indexes), max(indexes) + 1))
     assert {item.chunk.source for item in chunks} == {"notes.md"}
+
+
+def test_query_with_neighbors_excludes_weak_secondary_sources(fake_components, monkeypatch):
+    kb = KnowledgeBase(**fake_components)
+    relevant = Chunk("c1", "d1", "rag-design.md", 0, "RAG 构建方案", {})
+    supporting = Chunk("c2", "d2", "rag-guide.md", 0, "RAG 实施步骤", {})
+    unrelated = Chunk("c3", "d3", "agent-interfaces.md", 0, "如何构建浏览器 Agent", {})
+    hits = [
+        RetrievedChunk(relevant, 1.0),
+        RetrievedChunk(supporting, 0.85),
+        RetrievedChunk(unrelated, 0.70),
+    ]
+    monkeypatch.setattr(kb, "query", lambda question, top_k: hits[:top_k])
+    monkeypatch.setattr(
+        kb._store,
+        "all_vectors",
+        lambda: ([[1.0], [0.8], [0.5]], [relevant, supporting, unrelated]),
+    )
+
+    chunks = kb.query_with_neighbors(
+        "RAG 如何构建",
+        top_k=3,
+        neighbor_window=0,
+        max_sources=3,
+    )
+
+    assert {item.chunk.source for item in chunks} == {"rag-design.md", "rag-guide.md"}
+    assert "agent-interfaces.md" not in {item.chunk.source for item in chunks}
 
 
 def test_lexical_overlap_rewards_exact_english_and_chinese_terms():

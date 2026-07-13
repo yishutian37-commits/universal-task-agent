@@ -136,9 +136,9 @@ class RAGClient:
             "question": question,
             "top_k": top_k,
             "expand": True,
-            "neighbor_window": 4,
-            "max_sources": 2,
-            "max_chars": 16_000,
+            "neighbor_window": 24,
+            "max_sources": 1,
+            "max_chars": 14_000,
         }
         if self.mode == "http":
             return self._normalize_query_result(self._http("POST", "/query", options))
