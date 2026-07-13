@@ -2001,53 +2001,10 @@ async function refreshResult(taskId) {
 }
 
 function renderMarkdown(text) {
-  if (!text) return "<p>无输出</p>";
-  const lines = text.split(/\r?\n/);
-  let html = "";
-  let listType = null;
-  const closeList = () => {
-    if (!listType) return;
-    html += `</${listType}>`;
-    listType = null;
-  };
-  const ensureList = (type) => {
-    if (listType === type) return;
-    closeList();
-    html += `<${type}>`;
-    listType = type;
-  };
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (!trimmed) continue;
-    const orderedMatch = trimmed.match(/^(\d+)[.、]\s+(.+)$/);
-    if (trimmed.startsWith("# ")) {
-      closeList();
-      html += `<h1>${renderInlineMarkdown(trimmed.slice(2))}</h1>`;
-    } else if (trimmed.startsWith("## ")) {
-      closeList();
-      html += `<h2>${renderInlineMarkdown(trimmed.slice(3))}</h2>`;
-    } else if (trimmed.startsWith("### ")) {
-      closeList();
-      html += `<h3>${renderInlineMarkdown(trimmed.slice(4))}</h3>`;
-    } else if (trimmed.startsWith("- ")) {
-      ensureList("ul");
-      html += `<li>${renderInlineMarkdown(trimmed.slice(2))}</li>`;
-    } else if (orderedMatch) {
-      ensureList("ol");
-      html += `<li>${renderInlineMarkdown(orderedMatch[2])}</li>`;
-    } else {
-      closeList();
-      html += `<p>${renderInlineMarkdown(trimmed)}</p>`;
-    }
+  if (window.UTAMarkdown && typeof window.UTAMarkdown.renderMarkdown === "function") {
+    return window.UTAMarkdown.renderMarkdown(text);
   }
-  closeList();
-  return html;
-}
-
-function renderInlineMarkdown(value) {
-  return escapeHtml(value)
-    .replace(/`([^`]+)`/g, "<code>$1</code>")
-    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+  return `<p>${escapeHtml(text || "无输出")}</p>`;
 }
 
 function escapeHtml(value) {

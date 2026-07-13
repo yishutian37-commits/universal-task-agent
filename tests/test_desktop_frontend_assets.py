@@ -488,15 +488,21 @@ def test_frontend_preserves_history_log_whitespace():
 
 
 def test_frontend_markdown_renderer_handles_common_markdown():
+    html = (FRONTEND_ROOT / "index.html").read_text(encoding="utf-8")
     js = (FRONTEND_ROOT / "app.js").read_text(encoding="utf-8")
+    markdown_js = (FRONTEND_ROOT / "markdown.js").read_text(encoding="utf-8")
     css = (FRONTEND_ROOT / "style.css").read_text(encoding="utf-8")
 
-    assert 'trimmed.startsWith("# ")' in js
-    assert "function renderInlineMarkdown" in js
-    assert "<strong>" in js
-    assert 'ensureList("ol")' in js
+    assert '<script src="markdown.js"></script>' in html
+    assert html.index('<script src="markdown.js"></script>') < html.index('<script src="app.js"></script>')
+    assert "window.UTAMarkdown.renderMarkdown" in js
+    assert "function renderMarkdown" in markdown_js
+    assert "renderTable" in markdown_js
+    assert "markdownCode" in markdown_js
     assert ".report h1" in css
-    assert ".report ol" in css
+    assert ".markdownTableWrap" in css
+    assert ".markdownCode" in css
+    assert ".messageBubble blockquote" in css
 
 
 def test_frontend_includes_chat_surface_and_detail_panel():
