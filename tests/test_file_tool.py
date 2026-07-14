@@ -63,6 +63,24 @@ def test_file_tool_reads_relative_text_file_from_workspace(tmp_path):
     assert result["workspace_root"] == str(tmp_path.resolve())
 
 
+def test_file_tool_ignores_runner_workspace_prefix_for_named_file_read(tmp_path):
+    source = tmp_path / "release-notes.md"
+    source.write_text("发布门禁已配置。", encoding="utf-8")
+    contextual_input = "\n\n".join(
+        [
+            f"当前工作区：{tmp_path}",
+            "所有相对文件路径都以此目录为根目录。",
+            "当前用户输入：\n请帮我读取并总结文件 release-notes.md",
+        ]
+    )
+
+    result = FileTool(project_root=tmp_path).run("read", {"user_input": contextual_input})
+
+    assert result["source_type"] == "file"
+    assert result["content"] == "发布门禁已配置。"
+    assert result["source"] == str(source)
+
+
 def test_file_tool_reads_common_code_file_from_workspace(tmp_path):
     source = tmp_path / "main.py"
     source.write_text("print('workspace')\n", encoding="utf-8")

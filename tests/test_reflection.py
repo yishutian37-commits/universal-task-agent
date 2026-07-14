@@ -35,3 +35,24 @@ def test_reflection_classifies_tool_error():
 
     assert feedback.failure_type == "tool_error"
     assert "tool_error: boom" in feedback.root_cause
+
+
+def test_reflection_requests_user_input_when_required_file_path_is_missing():
+    state = AgentState(task_id="task_test", user_input="读取那个文件", task_type="code_reading")
+    step = PlanStep(step_id=1, goal="读取目标文件")
+    result = ToolResult(
+        False,
+        "file_tool",
+        "read",
+        {},
+        error="tool_error: 文件路径不存在",
+    )
+    check = CheckResult(
+        passed=False,
+        failed_reasons=["工具执行失败：tool_error: 文件路径不存在"],
+        suggested_fix=["请提供正确文件路径"],
+    )
+
+    feedback = Reflection().analyze(state, step, result, check)
+
+    assert feedback.need_user_input is True

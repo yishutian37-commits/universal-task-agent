@@ -17,6 +17,7 @@ class FakeRunner:
         self.started_contexts = []
         self.cancelled_task_ids = []
         self.authorization_manager = FakeAuthorizationManager()
+        self.interaction_manager = FakeInteractionManager()
 
     def bind_window(self, window):
         self.window = window
@@ -65,6 +66,21 @@ class FakeAuthorizationManager:
     def reject(self, request_id, reason=""):
         self.rejected.append((request_id, reason))
         return {"ok": True, "request_id": request_id, "status": "rejected"}
+
+
+class FakeInteractionManager:
+    def __init__(self):
+        self.responses = []
+
+    def respond(self, request_id, *, task_id=None, accepted, response="", steps=None):
+        self.responses.append(
+            (request_id, task_id, accepted, response, list(steps or []))
+        )
+        return {
+            "ok": True,
+            "request_id": request_id,
+            "status": "accepted" if accepted else "rejected",
+        }
 
 
 class FakeDialogWindow:
@@ -438,6 +454,31 @@ def test_desktop_api_authorizes_and_rejects_operations(tmp_path, monkeypatch):
     assert rejected == {"ok": True, "request_id": "auth_2", "status": "rejected"}
     assert runner.authorization_manager.approved == [("auth_1", "user")]
     assert runner.authorization_manager.rejected == [("auth_2", "不允许")]
+
+
+def test_desktop_api_responds_to_task_interaction(tmp_path, monkeypatch):
+    monkeypatch.setenv("UTA_HOME", str(tmp_path / "uta"))
+    runner = FakeRunner()
+    api = DesktopAPI(settings_store=SettingsStore(), runner=runner)
+
+    result = api.respond_task_interaction(
+        "interaction_1",
+        True,
+        "补充内容",
+        ["新步骤一", "新步骤二"],
+        "task_owner",
+    )
+
+    assert result["ok"] is True
+    assert runner.interaction_manager.responses == [
+        (
+            "interaction_1",
+            "task_owner",
+            True,
+            "补充内容",
+            ["新步骤一", "新步骤二"],
+        )
+    ]
 
 
 def test_desktop_api_resumes_task_from_checkpoint(tmp_path, monkeypatch):

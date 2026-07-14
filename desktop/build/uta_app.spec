@@ -1,6 +1,7 @@
 # -*- mode: python ; coding: utf-8 -*-
 
 from pathlib import Path
+from PyInstaller.utils.hooks import copy_metadata
 
 
 ROOT = Path.cwd()
@@ -37,6 +38,7 @@ datas = [
     (str(README), "."),
     (str(CHANGELOG), "."),
 ]
+datas.extend(copy_metadata("uta"))
 datas.extend((str(item), f"source/{item.name}") for item in SOURCE_ITEMS if item.exists())
 
 a = Analysis(
@@ -183,8 +185,8 @@ app = BUNDLE(
     info_plist={
         "CFBundleName": "UTA Desktop",
         "CFBundleDisplayName": "UTA Desktop",
-        "CFBundleShortVersionString": "1.10.6",
-        "CFBundleVersion": "1.10.6",
+        "CFBundleShortVersionString": "1.11.0",
+        "CFBundleVersion": "1.11.0",
         "LSMinimumSystemVersion": "11.0",
         "NSHighResolutionCapable": True,
     },

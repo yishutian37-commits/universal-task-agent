@@ -1,12 +1,45 @@
 import re
+import json
+from dataclasses import replace
 from typing import Any
 
 from core.state import Plan, PlanStep, Task
+from core.tool_catalog import get_action_contract, validate_action_params
 
 
 class Planner:
-    def create_plan(self, task: Task, matched_skill: dict[str, Any] | None = None) -> Plan:
-        goals = self._goals_from_skill(matched_skill) or self._goals_for_task(task)
+    def __init__(self, llm_client=None, tool_catalog: list[dict[str, Any]] | None = None):
+        self.llm_client = llm_client
+        self.tool_catalog = list(tool_catalog or [])
+
+    def create_plan(
+        self,
+        task: Task,
+        matched_skill: dict[str, Any] | None = None,
+        failure_context: dict[str, Any] | None = None,
+        existing_plan: Plan | None = None,
+    ) -> Plan:
+        if failure_context is not None:
+            model_replan = self._create_model_plan(
+                task,
+                failure_context=failure_context,
+                existing_plan=existing_plan,
+            )
+            if model_replan is not None:
+                return model_replan
+            return self._fallback_replan(task, failure_context, existing_plan)
+
+        skill_goals = self._goals_from_skill(matched_skill)
+        if skill_goals:
+            return self._plan_from_goals(task, skill_goals, source="skill")
+
+        model_plan = self._create_model_plan(task)
+        if model_plan is not None:
+            return model_plan
+
+        return self._plan_from_goals(task, self._goals_for_task(task), source="template")
+
+    def _plan_from_goals(self, task: Task, goals: list[str], source: str) -> Plan:
         return Plan(
             plan_id=f"plan_{task.task_id}",
             task_id=task.task_id,
@@ -14,7 +47,238 @@ class Planner:
                 PlanStep(step_id=index, goal=goal, max_retries=self._max_retries_for_task(task.task_type))
                 for index, goal in enumerate(goals, start=1)
             ],
+            source=source,
+            requires_confirmation=task.task_type == "complex_task",
         )
+
+    def _create_model_plan(
+        self,
+        task: Task,
+        failure_context: dict[str, Any] | None = None,
+        existing_plan: Plan | None = None,
+    ) -> Plan | None:
+        chat_json = getattr(self.llm_client, "chat_json", None)
+        if not callable(chat_json):
+            return None
+        try:
+            payload = chat_json(
+                self._system_prompt(),
+                self._user_prompt(task, failure_context=failure_context, existing_plan=existing_plan),
+                schema=self._response_schema(),
+            )
+            return self._validate_model_plan(
+                task,
+                payload,
+                failure_context=failure_context,
+                existing_plan=existing_plan,
+            )
+        except Exception:
+            return None
+
+    def _validate_model_plan(
+        self,
+        task: Task,
+        payload: Any,
+        failure_context: dict[str, Any] | None = None,
+        existing_plan: Plan | None = None,
+    ) -> Plan | None:
+        if not isinstance(payload, dict):
+            return None
+        raw_steps = payload.get("steps")
+        completed_prefix = self._completed_prefix(existing_plan, failure_context)
+        if (
+            not isinstance(raw_steps, list)
+            or not raw_steps
+            or len(completed_prefix) + len(raw_steps) > 8
+        ):
+            return None
+
+        catalog_by_name = {
+            str(item.get("name")): item
+            for item in self.tool_catalog
+            if isinstance(item, dict) and item.get("name")
+        }
+        steps: list[PlanStep] = list(completed_prefix)
+        start_index = len(completed_prefix) + 1
+        for index, raw_step in enumerate(raw_steps, start=start_index):
+            if not isinstance(raw_step, dict):
+                return None
+            goal = raw_step.get("goal")
+            if not isinstance(goal, str) or not goal.strip():
+                return None
+
+            tool_hint = raw_step.get("tool_hint")
+            if tool_hint in (None, ""):
+                tool_hint = None
+            elif not isinstance(tool_hint, str) or tool_hint not in catalog_by_name:
+                return None
+
+            action_hint = raw_step.get("action_hint")
+            if action_hint in (None, ""):
+                action_hint = None
+            elif not isinstance(action_hint, str):
+                return None
+
+            inputs = raw_step.get("inputs") or {}
+            if not isinstance(inputs, dict):
+                return None
+            action_contract = None
+            if tool_hint is not None:
+                catalog_item = catalog_by_name[tool_hint]
+                effective_action = action_hint or str(catalog_item.get("default_action") or "")
+                action_contract = get_action_contract(catalog_item, effective_action)
+                if action_contract is None or not validate_action_params(
+                    action_contract.get("parameter_schema"),
+                    inputs,
+                ):
+                    return None
+            elif action_hint is not None:
+                return None
+            depends_on = raw_step.get("depends_on") or []
+            if not isinstance(depends_on, list) or any(
+                not isinstance(item, int) or isinstance(item, bool) or item < 1 or item >= index
+                for item in depends_on
+            ):
+                return None
+            success_criteria = raw_step.get("success_criteria") or []
+            if not isinstance(success_criteria, list) or any(
+                not isinstance(item, str) or not item.strip() for item in success_criteria
+            ):
+                return None
+
+            catalog_requires_auth = bool(
+                action_contract and action_contract.get("requires_authorization")
+            )
+            steps.append(
+                PlanStep(
+                    step_id=index,
+                    goal=goal.strip(),
+                    max_retries=self._max_retries_for_task(task.task_type),
+                    tool_hint=tool_hint,
+                    action_hint=action_hint.strip() if isinstance(action_hint, str) else None,
+                    inputs=dict(inputs),
+                    depends_on=list(depends_on),
+                    success_criteria=[item.strip() for item in success_criteria],
+                    requires_authorization=(
+                        catalog_requires_auth or bool(raw_step.get("requires_authorization"))
+                    ),
+                )
+            )
+
+        requires_confirmation = (
+            bool(payload.get("requires_confirmation"))
+            or task.task_type == "complex_task"
+            or any(step.requires_authorization for step in steps)
+        )
+        reason = payload.get("reason")
+        return Plan(
+            plan_id=(
+                f"plan_{task.task_id}_replan"
+                if failure_context is not None
+                else f"plan_{task.task_id}"
+            ),
+            task_id=task.task_id,
+            steps=steps,
+            source="replan" if failure_context is not None else "model",
+            requires_confirmation=requires_confirmation,
+            reason=reason.strip() if isinstance(reason, str) else "",
+        )
+
+    @staticmethod
+    def _system_prompt() -> str:
+        return (
+            "你是 UTA 的任务 Planner。只返回 JSON，不要输出解释。"
+            "将任务拆成 1 到 8 个可执行步骤，只能使用工具目录中的名称。"
+            "不确定工具时将 tool_hint 设为 null，不得虚构工具。"
+        )
+
+    def _user_prompt(
+        self,
+        task: Task,
+        failure_context: dict[str, Any] | None = None,
+        existing_plan: Plan | None = None,
+    ) -> str:
+        prompt = (
+            "请根据任务与工具目录生成结构化计划。\n"
+            "返回字段：steps、requires_confirmation、reason。\n"
+            "steps 每项字段：goal、tool_hint、action_hint、inputs、"
+            "depends_on、success_criteria、requires_authorization。\n"
+            f"任务：{task.user_input}\n"
+            f"任务类型：{task.task_type}\n"
+            f"意图：{task.intent}\n"
+            f"约束：{json.dumps(task.constraints, ensure_ascii=False)}\n"
+            f"缺失信息：{json.dumps(task.missing_info, ensure_ascii=False)}\n"
+            f"工具目录：{json.dumps(self.tool_catalog, ensure_ascii=False)}"
+        )
+        if failure_context is None:
+            return prompt
+        existing_steps = [
+            {"step_id": step.step_id, "goal": step.goal, "status": step.status}
+            for step in existing_plan.steps
+        ] if existing_plan is not None else []
+        return (
+            prompt
+            + "\n这是失败后的重新规划。只返回失败步骤及其后的新步骤，"
+            "不要重复已完成步骤。\n"
+            f"原计划：{json.dumps(existing_steps, ensure_ascii=False)}\n"
+            f"失败上下文：{json.dumps(failure_context, ensure_ascii=False)}"
+        )
+
+    def _completed_prefix(
+        self,
+        existing_plan: Plan | None,
+        failure_context: dict[str, Any] | None,
+    ) -> list[PlanStep]:
+        if existing_plan is None or failure_context is None:
+            return []
+        failed_step_id = int(failure_context.get("failed_step_id") or 1)
+        return [
+            replace(step, status="completed")
+            for step in existing_plan.steps
+            if step.step_id < failed_step_id and step.status == "completed"
+        ]
+
+    def _fallback_replan(
+        self,
+        task: Task,
+        failure_context: dict[str, Any],
+        existing_plan: Plan | None,
+    ) -> Plan:
+        base_plan = existing_plan or self._plan_from_goals(
+            task,
+            self._goals_for_task(task),
+            source="template",
+        )
+        failed_step_id = int(failure_context.get("failed_step_id") or 1)
+        repair_strategy = str(failure_context.get("repair_strategy") or "根据失败原因调整执行方式")
+        steps: list[PlanStep] = []
+        for step in base_plan.steps:
+            status = "completed" if step.step_id < failed_step_id and step.status == "completed" else "pending"
+            goal = step.goal
+            if step.step_id == failed_step_id:
+                goal = f"{goal}（修复：{repair_strategy}）"
+            steps.append(replace(step, goal=goal, status=status))
+        return Plan(
+            plan_id=f"plan_{task.task_id}_replan",
+            task_id=task.task_id,
+            steps=steps,
+            status="pending",
+            source="replan",
+            requires_confirmation=base_plan.requires_confirmation,
+            reason=f"根据失败原因重新规划：{repair_strategy}",
+        )
+
+    @staticmethod
+    def _response_schema() -> dict[str, Any]:
+        return {
+            "type": "object",
+            "required": ["steps", "requires_confirmation"],
+            "properties": {
+                "steps": {"type": "array", "minItems": 1, "maxItems": 8},
+                "requires_confirmation": {"type": "boolean"},
+                "reason": {"type": "string"},
+            },
+        }
 
     def _goals_from_skill(self, matched_skill: dict[str, Any] | None) -> list[str]:
         if not matched_skill:

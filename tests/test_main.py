@@ -32,6 +32,22 @@ class FakeParser:
         )
 
 
+class ParserWithPlanningClient(FakeParser):
+    def __init__(self, planning_payload):
+        super().__init__()
+        self.llm_client = FakePlanningClient(planning_payload)
+
+
+class FakePlanningClient:
+    def __init__(self, payload):
+        self.payload = payload
+        self.calls = []
+
+    def chat_json(self, system_prompt, user_prompt, schema=None):
+        self.calls.append((system_prompt, user_prompt, schema))
+        return self.payload
+
+
 class StaticSummaryTool(BaseTool):
     name = "static_summary_tool"
     description = "test tool"
@@ -200,6 +216,38 @@ def test_run_task_separates_saved_user_input_from_contextual_execution_input():
     assert parser.seen_user_inputs == [contextual_input]
     assert tool.seen_user_inputs == [contextual_input, contextual_input, contextual_input]
     assert memory_provider.saved_user_inputs == [raw_input]
+
+
+def test_run_task_passes_parser_llm_client_to_model_planner():
+    parser = ParserWithPlanningClient(
+        {
+            "steps": [
+                {
+                    "goal": "提取核心信息",
+                    "tool_hint": "text_tool",
+                    "action_hint": "process",
+                    "success_criteria": ["输出结构化摘要"],
+                }
+            ],
+            "requires_confirmation": False,
+            "reason": "单步总结任务",
+        }
+    )
+
+    state = run_task(
+        "帮我总结一段文本",
+        task_id="task_model_plan",
+        task_parser=parser,
+        tool_registry=make_static_summary_registry(),
+        memory_provider=False,
+        skill_loader=False,
+    )
+
+    assert state.status == "completed"
+    assert state.plan is not None
+    assert state.plan.source == "model"
+    assert [step.goal for step in state.plan.steps] == ["提取核心信息"]
+    assert parser.llm_client.calls
 
 
 def test_run_task_saves_checkpoints_during_execution():

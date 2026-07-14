@@ -186,6 +186,26 @@ def test_save_failed_task_writes_negative_rule(tmp_path):
     assert rule["source"] == "failed_task"
 
 
+def test_cancelled_task_is_kept_in_history_without_negative_rule(tmp_path):
+    memory_root = tmp_path / "memory"
+    provider = JsonMemoryProvider(memory_root)
+    state = AgentState(
+        task_id="task_cancelled",
+        user_input="执行复杂任务",
+        task_type="complex_task",
+        intent="execute_complex_task",
+        status="cancelled",
+        final_output="用户取消了计划执行",
+    )
+
+    provider.save_task(state)
+
+    history = read_json(memory_root / "task_history.json")
+    negative_rules = read_json(memory_root / "negative_rules.json")
+    assert history["tasks"][0]["status"] == "cancelled"
+    assert negative_rules["negative_rules"] == []
+
+
 def test_successful_tasks_update_skill_candidate(tmp_path):
     provider = JsonMemoryProvider(tmp_path / "memory")
 

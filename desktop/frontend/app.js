@@ -70,6 +70,15 @@ const els = {
   authorizationDetails: document.getElementById("authorizationDetails"),
   approveAuthorization: document.getElementById("approveAuthorization"),
   rejectAuthorization: document.getElementById("rejectAuthorization"),
+  taskInteractionModal: document.getElementById("taskInteractionModal"),
+  taskInteractionTitle: document.getElementById("taskInteractionTitle"),
+  taskInteractionQuestion: document.getElementById("taskInteractionQuestion"),
+  taskInteractionResponseGroup: document.getElementById("taskInteractionResponseGroup"),
+  taskInteractionResponse: document.getElementById("taskInteractionResponse"),
+  taskInteractionStepsGroup: document.getElementById("taskInteractionStepsGroup"),
+  taskInteractionSteps: document.getElementById("taskInteractionSteps"),
+  acceptTaskInteraction: document.getElementById("acceptTaskInteraction"),
+  rejectTaskInteraction: document.getElementById("rejectTaskInteraction"),
   recoveryModal: document.getElementById("recoveryModal"),
   recoveryTaskList: document.getElementById("recoveryTaskList"),
   closeRecovery: document.getElementById("closeRecovery"),
@@ -108,6 +117,7 @@ const state = {
   conversationId: null,
   messages: [],
   pendingAuthorization: null,
+  pendingInteraction: null,
   reportText: "",
   conversations: [],
   activePage: "conversation",
@@ -619,6 +629,83 @@ async function rejectAuthorization() {
   }
   closeAuthorizationModal();
   showToast("已拒绝", "操作不会执行");
+}
+
+const INTERACTION_OUTCOME_LABELS = {
+  accepted: "已继续",
+  rejected: "已拒绝",
+  cancelled: "已取消",
+  timeout: "等待超时",
+  timed_out: "等待超时"
+};
+
+function interactionOutcomeLabel(status) {
+  return INTERACTION_OUTCOME_LABELS[String(status || "")] || String(status || "已处理");
+}
+
+function showTaskInteractionModal(payload) {
+  const next = payload || {};
+  const requestId = String(next.request_id || "");
+  const taskId = String(next.task_id || state.taskId || "");
+  const currentRequestId = String((state.pendingInteraction && state.pendingInteraction.request_id) || "");
+  if (!requestId) return false;
+  if (taskId && state.taskId && taskId !== state.taskId) return false;
+  if (currentRequestId === requestId) return false;
+
+  state.pendingInteraction = { ...next, task_id: taskId };
+  const isPlan = next.kind === "plan_confirmation";
+  els.taskInteractionTitle.textContent = next.title || (isPlan ? "确认执行计划" : "补充任务信息");
+  els.taskInteractionQuestion.textContent = next.question || "请确认后继续。";
+  els.taskInteractionResponse.value = "";
+  els.taskInteractionResponseGroup.classList.toggle("hidden", isPlan);
+  els.taskInteractionStepsGroup.classList.toggle("hidden", !isPlan);
+  els.taskInteractionSteps.value = isPlan
+    ? (next.steps || []).map((step) => step.goal || "").filter(Boolean).join("\n")
+    : "";
+  els.rejectTaskInteraction.textContent = isPlan ? "取消任务" : "不再继续";
+  els.taskInteractionModal.classList.add("open");
+  (isPlan ? els.taskInteractionSteps : els.taskInteractionResponse).focus();
+  return true;
+}
+
+function closeTaskInteractionModal(requestId = "") {
+  const pendingRequestId = String((state.pendingInteraction && state.pendingInteraction.request_id) || "");
+  if (requestId && pendingRequestId && requestId !== pendingRequestId) return false;
+  els.taskInteractionModal.classList.remove("open");
+  state.pendingInteraction = null;
+  return true;
+}
+
+async function respondTaskInteraction(accepted) {
+  const pending = state.pendingInteraction;
+  const requestId = pending && pending.request_id;
+  if (!requestId) return;
+  const taskId = String(pending.task_id || state.taskId || "");
+  if (!taskId || (state.taskId && taskId !== state.taskId)) {
+    showToast("回复失败", "该交互请求不属于当前任务");
+    return;
+  }
+  const isPlan = pending.kind === "plan_confirmation";
+  const steps = isPlan && accepted
+    ? els.taskInteractionSteps.value.split(/\r?\n/).map((item) => item.trim()).filter(Boolean).slice(0, 8)
+    : [];
+  const response = isPlan ? "" : els.taskInteractionResponse.value.trim();
+  els.acceptTaskInteraction.disabled = true;
+  els.rejectTaskInteraction.disabled = true;
+  try {
+    const result = await callApi("respond_task_interaction", requestId, accepted, response, steps, taskId);
+    if (!result.ok) {
+      showToast("回复失败", result.error || "未知错误");
+      return;
+    }
+    closeTaskInteractionModal();
+    showToast(accepted ? "已继续" : "已取消", accepted ? "Agent 将从当前任务继续执行" : "任务不会继续执行");
+  } catch (error) {
+    showToast("回复失败", error.message || "无法回复任务");
+  } finally {
+    els.acceptTaskInteraction.disabled = false;
+    els.rejectTaskInteraction.disabled = false;
+  }
 }
 
 async function loadSettings() {
@@ -1432,6 +1519,7 @@ function renderSkillErrors(errors) {
 function resetRunSurface() {
   setTaskPanelOpen(false);
   setStopTaskVisible(false);
+  closeTaskInteractionModal();
   els.taskInput.readOnly = false;
   els.runTask.disabled = false;
   els.resumeTask.disabled = false;
@@ -1723,6 +1811,17 @@ async function resumeTask(taskId = "") {
     for (const earlyEvent of binding.events) {
       await handleProgress(earlyEvent);
     }
+    const pendingInteraction = result.pending_interaction || resumeContext.pending_interaction;
+    if (pendingInteraction && pendingInteraction.status === "pending") {
+      showTaskInteractionModal({
+        ...(pendingInteraction.payload || {}),
+        request_id: pendingInteraction.request_id,
+        task_id: pendingInteraction.task_id || resumeTaskId,
+        kind: pendingInteraction.kind,
+        status: pendingInteraction.status,
+        created_at: pendingInteraction.created_at
+      });
+    }
     if (!runLifecycle.isTerminalTask(resumeTaskId)) {
       setTaskPanelTab("progress");
       setTaskPanelOpen(true);
@@ -1827,6 +1926,11 @@ function sourceFor(event) {
     task_completed: "Result",
     cancelled: "Runner",
     authorization_required: "Authorization",
+    task_interaction_required: "User",
+    waiting_user: "User",
+    interaction_resolved: "User",
+    plan_confirmed: "Planner",
+    plan_updated: "Planner",
     error: "Error"
   };
   return map[event.type] || event.type;
@@ -1853,6 +1957,11 @@ function messageFor(event) {
   if (event.type === "task_completed") return `任务结束：${data.status}`;
   if (event.type === "cancelled") return "任务已停止";
   if (event.type === "authorization_required") return data.summary || "等待用户授权";
+  if (event.type === "task_interaction_required") return data.question || "等待用户确认";
+  if (event.type === "waiting_user") return data.question || "等待用户补充信息";
+  if (event.type === "interaction_resolved") return `用户交互：${interactionOutcomeLabel(data.status)}`;
+  if (event.type === "plan_confirmed") return "用户已确认执行计划";
+  if (event.type === "plan_updated") return `用户已修改为 ${(data.steps || []).length} 个步骤`;
   if (event.type === "error") return data.message || "未知错误";
   return JSON.stringify(data);
 }
@@ -1937,6 +2046,31 @@ async function handleProgress(event) {
     });
     showAuthorizationModal(data);
   }
+  if (event.type === "task_interaction_required") {
+    appendAssistantProgress(taskId, data.kind === "plan_confirmation" ? "等待你确认执行计划" : "等待你补充任务信息");
+    updateAssistantForContext(context, {
+      content: data.question || "需要你补充信息后才能继续。",
+      status: "running"
+    });
+    showTaskInteractionModal(data);
+  }
+  if (event.type === "interaction_resolved") {
+    const outcome = interactionOutcomeLabel(data.status);
+    closeTaskInteractionModal(String(data.request_id || ""));
+    appendAssistantProgress(taskId, `用户交互：${outcome}`);
+    if (["rejected", "cancelled", "timeout", "timed_out"].includes(data.status)) {
+      const timedOut = data.status === "timeout" || data.status === "timed_out";
+      setStatus(timedOut ? "error" : "done", timedOut ? "等待超时" : outcome);
+      updateAssistantForContext(context, {
+        content: timedOut ? "等待回复已超时，任务仍可从恢复中心继续。" : `交互${outcome}，任务未继续执行。`,
+        status: timedOut ? "failed" : "completed"
+      });
+    }
+  }
+  if (event.type === "plan_updated") {
+    renderPlan(data.steps || []);
+    appendAssistantProgress(taskId, `已按你的修改更新为 ${(data.steps || []).length} 个步骤`);
+  }
   if (event.type === "replanned") markStep(data.failed_step_id, "active", "重新规划");
   if (event.type === "verified") {
     appendAssistantProgress(taskId, `校验${data.passed ? "通过" : "未通过"}：步骤 ${data.step_id}`);
@@ -1949,11 +2083,12 @@ async function handleProgress(event) {
   if (event.type === "task_completed") {
     setStopTaskVisible(false);
     unlockComposerIfIdle();
-    setStatus(data.status === "completed" ? "done" : "error", data.status === "completed" ? "已完成" : "失败");
+    const cancelled = data.status === "cancelled";
+    setStatus(data.status === "completed" || cancelled ? "done" : "error", data.status === "completed" ? "已完成" : (cancelled ? "已取消" : "失败"));
     state.reportText = data.final_output || "";
     updateAssistantForContext(context, {
       content: state.reportText || "未生成输出",
-      status: data.status === "completed" ? "completed" : "failed"
+      status: data.status === "completed" || cancelled ? "completed" : "failed"
     });
     if (els.report) {
       els.report.className = "report hidden";
@@ -2043,6 +2178,8 @@ function bindEvents() {
   els.clearKey.addEventListener("click", clearKey);
   els.approveAuthorization.addEventListener("click", approveAuthorization);
   els.rejectAuthorization.addEventListener("click", rejectAuthorization);
+  els.acceptTaskInteraction.addEventListener("click", () => respondTaskInteraction(true));
+  els.rejectTaskInteraction.addEventListener("click", () => respondTaskInteraction(false));
   els.closeRecovery.addEventListener("click", closeRecoveryCenter);
   els.recoveryModal.addEventListener("click", (event) => {
     if (event.target === els.recoveryModal) closeRecoveryCenter();

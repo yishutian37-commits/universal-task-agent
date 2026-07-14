@@ -36,10 +36,16 @@ class TaskParser:
                 schema=None,
             )
         except Exception:
-            return self._fallback_task(task_id, current_input)
+            return self._ensure_required_info(
+                self._fallback_task(task_id, current_input),
+                current_input,
+            )
 
         if not isinstance(payload, dict):
-            return self._fallback_task(task_id, current_input)
+            return self._ensure_required_info(
+                self._fallback_task(task_id, current_input),
+                current_input,
+            )
 
         if self._looks_like_history_query(current_input):
             return self._history_query_task(task_id, current_input)
@@ -50,7 +56,7 @@ class TaskParser:
         if self._looks_like_complex_task(current_input) and task_type in {"summarize", "code_reading", "unknown"}:
             return self._complex_task(task_id, current_input)
 
-        return Task(
+        return self._ensure_required_info(Task(
             task_id=task_id,
             user_input=current_input,
             task_type=task_type,
@@ -59,7 +65,27 @@ class TaskParser:
             expected_output=self._string_or_default(payload.get("expected_output"), "unknown"),
             constraints=self._list_or_empty(payload.get("constraints")),
             missing_info=self._list_or_empty(payload.get("missing_info")),
-        )
+        ), current_input)
+
+    @staticmethod
+    def _ensure_required_info(task: Task, user_input: str) -> Task:
+        normalized = "".join(str(user_input or "").lower().split())
+        normalized = re.sub(r"[。.!！?？]+$", "", normalized)
+        summary_without_source = normalized in {
+            "总结",
+            "总结一下",
+            "帮我总结",
+            "帮我总结一下",
+            "请总结",
+            "请总结一下",
+            "请帮我总结",
+            "请帮我总结一下",
+            "摘要",
+            "生成摘要",
+        }
+        if task.task_type == "summarize" and summary_without_source and not task.missing_info:
+            task.missing_info = ["需要总结的文本或文件"]
+        return task
 
     @staticmethod
     def _current_user_input(user_input: str) -> str:
@@ -73,6 +99,8 @@ class TaskParser:
         return (
             "你是 UTA 的 Task Parser。只返回 JSON，不要输出解释。"
             "task_type 只能是 summarize、data_analysis、research、code_reading、geo_analysis、history_query、langchain_tool、complex_task、unknown。"
+            "missing_info 只填写不补充就无法安全开始任务的必要信息；"
+            "可选格式、篇幅、语气或可使用默认值的信息不算缺失。"
         )
 
     @staticmethod

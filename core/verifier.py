@@ -1,7 +1,8 @@
 import re
+import json
 from pathlib import Path
 
-from core.state import AgentState, CheckResult, PlanStep, ToolResult
+from core.state import AgentState, CheckResult, CriterionResult, PlanStep, ToolResult
 
 
 SUMMARY_REQUIRED_SECTIONS = ["摘要", "核心观点", "风险点"]
@@ -10,9 +11,194 @@ RESEARCH_REQUIRED_SECTIONS = ["结论", "关键发现", "来源", "注意事项"
 CODE_REQUIRED_SECTIONS = ["任务链路", "关键文件", "模块职责", "调用顺序", "状态与记忆", "桌面端入口", "风险点", "下一步建议"]
 CODE_REQUIRED_FILES = ["main.py", "core/loop.py", "core/router.py", "core/verifier.py"]
 GEO_REQUIRED_SECTIONS = ["事实输入", "事实缺口", "问题矩阵", "内容Brief", "平台合规", "规则来源", "下一步建议"]
+DETERMINISTIC_TOOL_NAMES = {
+    "langchain_directory_create_tool",
+    "langchain_file_write_tool",
+    "langchain_file_delete_tool",
+    "langchain_shell_tool",
+    "langchain_python_repl_tool",
+}
 
 
 class Verifier:
+    def check_criteria(
+        self,
+        state: AgentState,
+        step: PlanStep,
+        result: ToolResult,
+        *,
+        plan_id: str,
+        attempt: int = 1,
+    ) -> list[CriterionResult]:
+        return [
+            self._check_criterion(
+                state,
+                step,
+                result,
+                criterion,
+                plan_id=plan_id,
+                attempt=attempt,
+            )
+            for criterion in step.success_criteria
+        ]
+
+    def _check_criterion(
+        self,
+        state: AgentState,
+        step: PlanStep,
+        result: ToolResult,
+        criterion: str,
+        *,
+        plan_id: str,
+        attempt: int,
+    ) -> CriterionResult:
+        base = {
+            "task_id": state.task_id,
+            "plan_id": plan_id,
+            "step_id": step.step_id,
+            "criterion": criterion,
+            "attempt": attempt,
+        }
+        if not result.success:
+            return CriterionResult(
+                **base,
+                status="failed",
+                passed=False,
+                source="deterministic",
+                evidence=[{"kind": "tool_error", "error": result.error or "unknown error"}],
+                failure_reason="工具执行失败，无法满足成功标准",
+            )
+
+        if result.tool_name in DETERMINISTIC_TOOL_NAMES:
+            check = self.check(state, step, result)
+            evidence = self._deterministic_evidence(state, step, result)
+            if check.passed:
+                return CriterionResult(
+                    **base,
+                    status="passed",
+                    passed=True,
+                    source="deterministic",
+                    evidence=evidence,
+                )
+            return CriterionResult(
+                **base,
+                status="failed",
+                passed=False,
+                source="deterministic",
+                evidence=evidence,
+                failure_reason="；".join(check.failed_reasons) or "缺少确定性执行证据",
+            )
+
+        text_key, text = self._criterion_text(result)
+        evidence = (
+            [{"kind": "tool_result", "key": text_key, "preview": text[:500]}]
+            if text
+            else [{"kind": "tool_result", "keys": sorted(result.result)}]
+        )
+        if (
+            state.task_type == "summarize"
+            and result.tool_name in {"text_tool", "report_tool"}
+            and any(marker in criterion for marker in ("结构化摘要", "结构化总结"))
+        ):
+            summary_check = self._check_summary(result)
+            if summary_check.passed:
+                return CriterionResult(
+                    **base,
+                    status="passed",
+                    passed=True,
+                    source="deterministic",
+                    evidence=evidence,
+                )
+            return CriterionResult(
+                **base,
+                status="failed",
+                passed=False,
+                source="deterministic",
+                evidence=evidence,
+                failure_reason="；".join(summary_check.failed_reasons),
+            )
+
+        if "包含" in criterion:
+            expected = self._contained_terms(criterion)
+            missing = [term for term in expected if term not in text]
+            if expected and not missing:
+                return CriterionResult(
+                    **base,
+                    status="passed",
+                    passed=True,
+                    source="tool_result",
+                    evidence=evidence,
+                )
+            return CriterionResult(
+                **base,
+                status="failed",
+                passed=False,
+                source="tool_result",
+                evidence=evidence,
+                failure_reason=(
+                    "工具输出缺少：" + "、".join(missing)
+                    if missing
+                    else "成功标准未声明可核对的包含项"
+                ),
+            )
+
+        if criterion in text or (
+            any(marker in criterion for marker in ("读取到", "已获得", "已生成", "已输出", "已经创建", "已经写入", "完成"))
+            and bool(text or result.result)
+        ):
+            return CriterionResult(
+                **base,
+                status="passed",
+                passed=True,
+                source="tool_result",
+                evidence=evidence,
+            )
+
+        return CriterionResult(
+            **base,
+            status="indeterminate",
+            passed=False,
+            source="unverified",
+            evidence=evidence,
+            failure_reason="现有工具输出和证据无法判定该成功标准",
+        )
+
+    @staticmethod
+    def _criterion_text(result: ToolResult) -> tuple[str, str]:
+        for key in ("message", "report_markdown", "summary_markdown", "content", "output"):
+            value = result.result.get(key)
+            if isinstance(value, str) and value.strip():
+                return key, value.strip()
+            if isinstance(value, (dict, list)) and value:
+                return key, json.dumps(value, ensure_ascii=False)
+        return "", ""
+
+    @staticmethod
+    def _contained_terms(criterion: str) -> list[str]:
+        expected = criterion.split("包含", 1)[1]
+        return [
+            item.strip(" ：:。；;，,、")
+            for item in re.split(r"(?:、|，|,|和|与|及)", expected)
+            if item.strip(" ：:。；;，,、")
+        ]
+
+    @staticmethod
+    def _deterministic_evidence(
+        state: AgentState,
+        step: PlanStep,
+        result: ToolResult,
+    ) -> list[dict]:
+        evidence = []
+        for key in ("path", "trash_path", "cwd", "command", "returncode", "output"):
+            value = result.result.get(key)
+            if value not in (None, ""):
+                evidence.append({"kind": "tool_result", "key": key, key: value})
+        for bucket in ("files", "changes", "artifacts"):
+            for item in state.evidence.get(bucket, []):
+                if item.get("step_id") == step.step_id:
+                    evidence.append({"kind": bucket, **item})
+        return evidence
+
     def check(self, *args) -> CheckResult:
         if len(args) == 1:
             state = None

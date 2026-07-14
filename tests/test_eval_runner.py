@@ -11,6 +11,18 @@ def test_core_chinese_scenarios_pass_offline_evaluation():
     assert report["total"] >= 12
     assert report["failed"] == 0
     assert report["passed"] == report["total"]
+    assert {
+        "structured_plan",
+        "dynamic_tool_route",
+        "failure_replan",
+        "invalid_action_contract",
+        "failed_success_criteria",
+        "edited_plan_rebinding",
+        "interaction_restart",
+        "waiting_user",
+        "plan_rejected",
+        "authorization_rejected",
+    }.issubset({case["id"] for case in cases})
 
 
 def test_evaluation_report_explains_failed_expectations(tmp_path):

@@ -334,6 +334,29 @@
     </section>
   </div>
 
+  <div class="modalBackdrop" id="taskInteractionModal" role="dialog" aria-modal="true" aria-labelledby="taskInteractionTitle">
+    <section class="modal interactionModalPanel">
+      <header>
+        <h2 id="taskInteractionTitle">需要你确认</h2>
+      </header>
+      <div class="interactionBody">
+        <p id="taskInteractionQuestion">请补充任务信息。</p>
+        <label id="taskInteractionResponseGroup">
+          <span>补充内容</span>
+          <textarea id="taskInteractionResponse" rows="4" placeholder="输入需要补充的信息"></textarea>
+        </label>
+        <label class="hidden" id="taskInteractionStepsGroup">
+          <span>执行步骤（每行一步）</span>
+          <textarea id="taskInteractionSteps" rows="8" placeholder="每行填写一个执行步骤"></textarea>
+        </label>
+      </div>
+      <footer>
+        <button class="button secondary" type="button" id="rejectTaskInteraction">取消任务</button>
+        <button class="button primary" type="button" id="acceptTaskInteraction">确认并继续</button>
+      </footer>
+    </section>
+  </div>
+
   <div class="modalBackdrop" id="recoveryModal" role="dialog" aria-modal="true" aria-labelledby="recoveryTitle">
     <section class="modal recoveryModalPanel">
       <header>

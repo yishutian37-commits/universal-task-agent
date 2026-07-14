@@ -44,7 +44,7 @@ class JsonMemoryProvider(BaseMemoryProvider):
         if state.status == "completed":
             self._save_lesson(state)
             self._update_skill_candidate(state)
-        else:
+        elif state.status == "failed":
             self._save_negative_rule(state)
 
     def _save_task_history(self, state: AgentState) -> None:

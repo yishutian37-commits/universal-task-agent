@@ -54,6 +54,12 @@ class PlanStep:
     goal: str
     status: str = "pending"
     max_retries: int = 2
+    tool_hint: str | None = None
+    action_hint: str | None = None
+    inputs: dict[str, Any] = field(default_factory=dict)
+    depends_on: list[int] = field(default_factory=list)
+    success_criteria: list[str] = field(default_factory=list)
+    requires_authorization: bool = False
 
 
 @dataclass
@@ -62,6 +68,9 @@ class Plan:
     task_id: str
     steps: list[PlanStep]
     status: str = "pending"
+    source: str = "template"
+    requires_confirmation: bool = False
+    reason: str = ""
 
 
 @dataclass
@@ -93,6 +102,20 @@ class CheckResult:
 
 
 @dataclass
+class CriterionResult:
+    task_id: str
+    plan_id: str
+    step_id: int
+    criterion: str
+    status: str
+    passed: bool
+    source: str
+    evidence: list[dict[str, Any]] = field(default_factory=list)
+    failure_reason: str = ""
+    attempt: int = 1
+
+
+@dataclass
 class Feedback:
     failure_type: str
     root_cause: str
@@ -110,6 +133,8 @@ class AgentState:
     workspace_path: str | None = None
     task_type: str = "unknown"
     intent: str = ""
+    constraints: list[str] = field(default_factory=list)
+    missing_info: list[str] = field(default_factory=list)
     status: str = "initialized"
     current_step_id: int = 0
     max_replans: int = 1
@@ -120,8 +145,11 @@ class AgentState:
     current_action: Action | None = None
     results: list[ToolResult] = field(default_factory=list)
     checks: list[CheckResult] = field(default_factory=list)
+    criterion_results: list[CriterionResult] = field(default_factory=list)
     feedbacks: list[Feedback] = field(default_factory=list)
     evidence: dict[str, list[dict[str, Any]]] = field(default_factory=lambda: _evidence_payload({}))
+    pending_interaction: dict[str, Any] | None = None
+    interaction_history: list[dict[str, Any]] = field(default_factory=list)
     final_output: str | None = None
     memory_saved: bool = False
     created_at: str = field(default_factory=current_timestamp)
@@ -143,12 +171,20 @@ class AgentState:
             workspace_path=payload.get("workspace_path"),
             task_type=str(payload.get("task_type") or "unknown"),
             intent=str(payload.get("intent") or ""),
+            constraints=[str(item) for item in payload.get("constraints") or []],
+            missing_info=[str(item) for item in payload.get("missing_info") or []],
             status=str(payload.get("status") or "initialized"),
             current_step_id=int(payload.get("current_step_id") or 0),
             max_replans=int(payload.get("max_replans") or 1),
             replan_count=int(payload.get("replan_count") or 0),
             replan_events=_list_of_dicts(payload.get("replan_events")),
             evidence=_evidence_payload(payload.get("evidence")),
+            pending_interaction=(
+                dict(payload.get("pending_interaction"))
+                if isinstance(payload.get("pending_interaction"), dict)
+                else None
+            ),
+            interaction_history=_list_of_dicts(payload.get("interaction_history")),
             final_output=payload.get("final_output"),
             memory_saved=bool(payload.get("memory_saved") or False),
             created_at=str(payload.get("created_at") or current_timestamp()),
@@ -165,10 +201,19 @@ class AgentState:
                         goal=str(step.get("goal") or ""),
                         status=str(step.get("status") or "pending"),
                         max_retries=int(step.get("max_retries") or 2),
+                        tool_hint=str(step.get("tool_hint")) if step.get("tool_hint") else None,
+                        action_hint=str(step.get("action_hint")) if step.get("action_hint") else None,
+                        inputs=dict(step.get("inputs") or {}),
+                        depends_on=[int(item) for item in step.get("depends_on") or []],
+                        success_criteria=[str(item) for item in step.get("success_criteria") or []],
+                        requires_authorization=bool(step.get("requires_authorization") or False),
                     )
                     for step in _list_of_dicts(plan_payload.get("steps"))
                 ],
                 status=str(plan_payload.get("status") or "pending"),
+                source=str(plan_payload.get("source") or "template"),
+                requires_confirmation=bool(plan_payload.get("requires_confirmation") or False),
+                reason=str(plan_payload.get("reason") or ""),
             )
         action_payload = payload.get("current_action")
         if isinstance(action_payload, dict):
@@ -200,6 +245,21 @@ class AgentState:
                 score=item.get("score"),
             )
             for item in _list_of_dicts(payload.get("checks"))
+        ]
+        state.criterion_results = [
+            CriterionResult(
+                task_id=str(item.get("task_id") or state.task_id),
+                plan_id=str(item.get("plan_id") or (state.plan.plan_id if state.plan else "")),
+                step_id=int(item.get("step_id") or 0),
+                criterion=str(item.get("criterion") or ""),
+                status=str(item.get("status") or ("passed" if item.get("passed") else "failed")),
+                passed=bool(item.get("passed") or False),
+                source=str(item.get("source") or "unknown"),
+                evidence=_list_of_dicts(item.get("evidence")),
+                failure_reason=str(item.get("failure_reason") or ""),
+                attempt=int(item.get("attempt") or 1),
+            )
+            for item in _list_of_dicts(payload.get("criterion_results"))
         ]
         state.feedbacks = [
             Feedback(

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import multiprocessing
 import sys
+from importlib.metadata import version as distribution_version
 
 from desktop.api import DesktopAPI
 from desktop.paths import resource_path
@@ -31,5 +32,15 @@ def main(debug: bool = False) -> None:
     webview.start(debug=debug)
 
 
+def cli_main(argv: list[str] | None = None, *, debug: bool = False) -> int:
+    args = list(sys.argv[1:] if argv is None else argv)
+    if "--version" in args:
+        print(f"UTA Desktop {distribution_version('uta')}")
+        return 0
+
+    main(debug=debug)
+    return 0
+
+
 if __name__ == "__main__":
-    main(debug=True)
+    raise SystemExit(cli_main(debug=True))

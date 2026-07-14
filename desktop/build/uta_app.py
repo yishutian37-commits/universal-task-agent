@@ -6,8 +6,8 @@ import sys
 if getattr(sys, "frozen", False):
     multiprocessing.freeze_support()
 
-from desktop.app import main
+from desktop.app import cli_main
 
 
 if __name__ == "__main__":
-    main(debug=False)
+    raise SystemExit(cli_main(debug=False))

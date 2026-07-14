@@ -48,7 +48,7 @@ class FileTool(BaseTool):
 
     def run(self, action_name: str, params: dict[str, Any]) -> dict[str, Any]:
         del action_name
-        user_input = str(params.get("user_input", ""))
+        user_input = self._current_user_input(str(params.get("user_input", "")))
         if self._looks_like_workspace_listing(user_input):
             return self._list_workspace()
         file_path = self._find_existing_path(user_input)
@@ -85,6 +85,13 @@ class FileTool(BaseTool):
             "file_kind": "text",
             "workspace_root": str(self.project_root),
         }
+
+    @staticmethod
+    def _current_user_input(user_input: str) -> str:
+        matches = list(re.finditer(r"(?:^|\n)当前用户输入[:：]\s*", str(user_input or "")))
+        if not matches:
+            return str(user_input or "").strip()
+        return str(user_input or "")[matches[-1].end() :].strip()
 
     def _find_existing_path(self, text: str) -> Path | None:
         for token in self._supported_path_tokens(text):

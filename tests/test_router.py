@@ -2,6 +2,39 @@ import pytest
 
 from core.router import Router
 from core.state import AgentState, PlanStep, ToolResult
+from tools.base_tool import BaseTool
+
+
+class _Tool(BaseTool):
+    def __init__(self, name):
+        self.name = name
+        self.description = f"{name} description"
+
+
+class _ContractTool(BaseTool):
+    name = "file_tool"
+    description = "read one file"
+    default_action = "read"
+    action_contracts = {
+        "read": {
+            "parameter_schema": {
+                "type": "object",
+                "properties": {"path": {"type": "string"}},
+                "required": ["path"],
+                "additionalProperties": False,
+            }
+        }
+    }
+
+
+class FakeRoutingClient:
+    def __init__(self, payload):
+        self.payload = payload
+        self.calls = []
+
+    def chat_json(self, system_prompt, user_prompt, schema=None):
+        self.calls.append((system_prompt, user_prompt, schema))
+        return self.payload
 
 
 def route(goal: str):
@@ -15,6 +48,195 @@ def test_router_routes_reading_goal_to_file_tool():
     assert action.tool_name == "file_tool"
     assert action.action_name == "read"
     assert action.reason
+
+
+def test_router_uses_valid_structured_step_hint_and_merges_inputs():
+    registry = {"file_tool": _Tool("file_tool")}
+    state = AgentState(task_id="task_hint", user_input="读取 README")
+    step = PlanStep(
+        step_id=1,
+        goal="读取项目说明",
+        tool_hint="file_tool",
+        action_hint="read",
+        inputs={"path": "README.md"},
+    )
+
+    action = Router(tool_registry=registry).choose_tool(state, step)
+
+    assert action.tool_name == "file_tool"
+    assert action.action_name == "read"
+    assert action.params["path"] == "README.md"
+    assert action.params["user_input"] == "读取 README"
+    assert action.params["goal"] == "读取项目说明"
+
+
+def test_router_ignores_unregistered_step_hint_and_falls_back_to_rules():
+    registry = {"text_tool": _Tool("text_tool")}
+    state = AgentState(task_id="task_hint", user_input="提取核心信息")
+    step = PlanStep(step_id=1, goal="提取核心信息", tool_hint="invented_tool")
+
+    action = Router(tool_registry=registry).choose_tool(state, step)
+
+    assert action.tool_name == "text_tool"
+    assert action.action_name == "process"
+
+
+def test_router_rejects_registered_tool_with_unknown_hinted_action():
+    registry = {"text_tool": _Tool("text_tool")}
+    state = AgentState(task_id="task_hint", user_input="提取核心信息")
+    step = PlanStep(
+        step_id=1,
+        goal="提取核心信息",
+        tool_hint="text_tool",
+        action_hint="delete",
+    )
+
+    action = Router(tool_registry=registry).choose_tool(state, step)
+
+    assert action.tool_name == "text_tool"
+    assert action.action_name == "process"
+
+
+def test_model_router_selects_only_registered_tool_and_preserves_runtime_context():
+    client = FakeRoutingClient(
+        {
+            "tool_name": "report_tool",
+            "action_name": "generate",
+            "params": {"format": "markdown", "user_input": "伪造的输入"},
+            "reason": "需要生成报告",
+        }
+    )
+    registry = {
+        "text_tool": _Tool("text_tool"),
+        "report_tool": _Tool("report_tool"),
+    }
+    state = AgentState(task_id="task_model_route", user_input="生成一份结论报告")
+    state.results.append(
+        ToolResult(
+            success=True,
+            tool_name="text_tool",
+            action_name="process",
+            result={"summary": "上一步结论"},
+        )
+    )
+
+    action = Router(llm_client=client, tool_registry=registry).choose_tool(
+        state,
+        PlanStep(step_id=2, goal="将结论组织成报告"),
+    )
+
+    assert action.tool_name == "report_tool"
+    assert action.action_name == "generate"
+    assert action.params["format"] == "markdown"
+    assert action.params["user_input"] == "生成一份结论报告"
+    assert action.params["previous_result"] == {"summary": "上一步结论"}
+    assert client.calls
+    assert "report_tool" in client.calls[0][1]
+
+
+def test_model_router_falls_back_to_rules_for_unregistered_tool():
+    client = FakeRoutingClient(
+        {
+            "tool_name": "invented_tool",
+            "action_name": "run",
+            "params": {},
+            "reason": "模型选择",
+        }
+    )
+    registry = {"text_tool": _Tool("text_tool")}
+
+    action = Router(llm_client=client, tool_registry=registry).choose_tool(
+        AgentState(task_id="task_model_route", user_input="提取核心信息"),
+        PlanStep(step_id=1, goal="提取核心信息"),
+    )
+
+    assert action.tool_name == "text_tool"
+    assert action.action_name == "process"
+
+
+def test_model_router_rejects_unknown_action_for_registered_tool():
+    client = FakeRoutingClient(
+        {
+            "tool_name": "file_tool",
+            "action_name": "delete",
+            "params": {"path": "README.md"},
+            "reason": "错误 action",
+        }
+    )
+
+    action = Router(
+        llm_client=client,
+        tool_registry={"file_tool": _ContractTool()},
+    ).choose_tool(
+        AgentState(task_id="task_model_route", user_input="读取 README"),
+        PlanStep(step_id=1, goal="读取 README"),
+    )
+
+    assert action.tool_name == "unsupported_task"
+
+
+def test_model_router_rejects_parameters_that_violate_action_contract():
+    client = FakeRoutingClient(
+        {
+            "tool_name": "file_tool",
+            "action_name": "read",
+            "params": {"path": 42},
+            "reason": "错误参数",
+        }
+    )
+
+    action = Router(
+        llm_client=client,
+        tool_registry={"file_tool": _ContractTool()},
+    ).choose_tool(
+        AgentState(task_id="task_model_route", user_input="读取 README"),
+        PlanStep(step_id=1, goal="读取 README"),
+    )
+
+    assert action.tool_name == "unsupported_task"
+
+
+def test_model_router_accepts_action_and_parameters_from_contract():
+    client = FakeRoutingClient(
+        {
+            "tool_name": "file_tool",
+            "action_name": "read",
+            "params": {"path": "README.md"},
+            "reason": "读取项目说明",
+        }
+    )
+
+    action = Router(
+        llm_client=client,
+        tool_registry={"file_tool": _ContractTool()},
+    ).choose_tool(
+        AgentState(task_id="task_model_route", user_input="读取 README"),
+        PlanStep(step_id=1, goal="读取 README"),
+    )
+
+    assert action.tool_name == "file_tool"
+    assert action.action_name == "read"
+    assert action.params["path"] == "README.md"
+
+
+def test_model_router_cannot_bypass_local_computer_safety_boundary():
+    client = FakeRoutingClient(
+        {
+            "tool_name": "file_tool",
+            "action_name": "read",
+            "params": {},
+            "reason": "尝试执行",
+        }
+    )
+    registry = {"file_tool": _Tool("file_tool")}
+
+    action = Router(llm_client=client, tool_registry=registry).choose_tool(
+        AgentState(task_id="task_safety", user_input="帮我操作本地电脑并点击鼠标"),
+        PlanStep(step_id=1, goal="点击鼠标"),
+    )
+
+    assert action.tool_name == "unsupported_task"
+    assert client.calls == []
 
 
 def test_router_routes_text_goal_to_text_tool():
@@ -185,6 +407,10 @@ def test_router_uses_current_request_for_dangerous_tool_input():
 def test_router_selects_workspace_file_tool(user_input):
     state = AgentState(task_id="task_workspace", user_input=user_input, task_type="langchain_tool")
 
-    action = Router().choose_tool(state, PlanStep(step_id=1, goal="调用工具处理工作区文件请求"))
+    action = Router(tool_registry={"file_tool": _Tool("file_tool")}).choose_tool(
+        state,
+        PlanStep(step_id=1, goal="调用工具处理工作区文件请求"),
+    )
 
     assert action.tool_name == "file_tool"
+    assert action.action_name == "read"

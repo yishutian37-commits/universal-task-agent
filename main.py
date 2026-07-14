@@ -35,6 +35,8 @@ def create_initial_state(
 def apply_task_to_state(state: AgentState, task) -> None:
     state.task_type = task.task_type
     state.intent = task.intent
+    state.constraints = list(task.constraints)
+    state.missing_info = list(task.missing_info)
     state.touch()
 
 
@@ -69,11 +71,13 @@ def run_task(
     resume_from_checkpoint: bool = False,
     conversation_id: str | None = None,
     workspace_path: str | None = None,
+    interaction_manager=None,
 ) -> AgentState:
     execution_input = task
     saved_user_input = display_user_input if display_user_input is not None else task
     checkpoint_task_id = task_id or generate_task_id()
     loaded_state = None
+    planning_client = getattr(task_parser, "llm_client", None)
     if resume_from_checkpoint and checkpoint_store is not None:
         loaded_state = checkpoint_store.load(checkpoint_task_id)
 
@@ -104,6 +108,7 @@ def run_task(
             checkpoint_store=checkpoint_store,
         )
         parser = task_parser if task_parser is not None else TaskParser()
+        planning_client = getattr(parser, "llm_client", None)
         parsed_task = parser.parse(state.task_id, execution_input)
         apply_task_to_state(state, parsed_task)
         emit_progress(
@@ -130,6 +135,8 @@ def run_task(
         tool_registry=tool_registry,
         on_progress=on_progress,
         checkpoint_store=checkpoint_store,
+        llm_client=planning_client,
+        interaction_manager=interaction_manager,
     )
     if memory_provider is False:
         state.memory_saved = False

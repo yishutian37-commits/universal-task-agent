@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from core.checkpoint_store import CheckpointStore
+from core.interaction import TaskInteractionManager
 from desktop.events import desktop_event
 from desktop.paths import resource_path, uta_home
 from desktop.settings_store import SettingsStore
@@ -51,6 +52,7 @@ class TaskRunner:
             else CheckpointStore(self.memory_root / "checkpoints")
         )
         self.authorization_manager = AuthorizationManager(on_request=self._emit_authorization_request)
+        self.interaction_manager = TaskInteractionManager(on_request=self._emit_interaction_request)
         self._lock = threading.Lock()
         self._thread: threading.Thread | None = None
         self._running_task_id: str | None = None
@@ -142,14 +144,11 @@ class TaskRunner:
         )
         self._thread = thread
         thread.start()
+        recovery_context = self._checkpoint_recovery_context(checkpoint)
         return {
             "ok": True,
-            "task_id": checkpoint.task_id,
             "status": "running",
-            "conversation_id": checkpoint.conversation_id or "",
-            "workspace_path": str(Path(checkpoint.workspace_path).expanduser().resolve())
-            if checkpoint.workspace_path
-            else "",
+            **recovery_context,
         }
 
     def get_resume_context(self, task_id: str) -> dict[str, Any]:
@@ -166,9 +165,43 @@ class TaskRunner:
             workspace_path = str(workspace)
         return {
             "ok": True,
+            "workspace_path": workspace_path,
+            **self._checkpoint_recovery_context(
+                checkpoint,
+                workspace_path=workspace_path,
+            ),
+        }
+
+    @staticmethod
+    def _checkpoint_recovery_context(
+        checkpoint,
+        *,
+        workspace_path: str | None = None,
+    ) -> dict[str, Any]:
+        payload = checkpoint.to_dict()
+        resolved_workspace = workspace_path
+        if resolved_workspace is None:
+            resolved_workspace = (
+                str(Path(checkpoint.workspace_path).expanduser().resolve())
+                if checkpoint.workspace_path
+                else ""
+            )
+        completed_step_ids = [
+            step.step_id
+            for step in (checkpoint.plan.steps if checkpoint.plan is not None else [])
+            if step.status == "completed"
+        ]
+        return {
             "task_id": checkpoint.task_id,
             "conversation_id": checkpoint.conversation_id or "",
-            "workspace_path": workspace_path,
+            "workspace_path": resolved_workspace,
+            "pending_interaction": payload.get("pending_interaction"),
+            "completed_step_ids": completed_step_ids,
+            "evidence": payload.get("evidence") or {
+                "files": [],
+                "changes": [],
+                "artifacts": [],
+            },
         }
 
     def get_result(self, task_id: str) -> dict[str, Any]:
@@ -192,6 +225,7 @@ class TaskRunner:
             if self._running_task_id != task_id:
                 return {"ok": False, "error": "任务不在运行中"}
             self._cancel_event.set()
+        self.interaction_manager.cancel_for_task(task_id)
         return {"ok": True, "task_id": task_id, "status": "cancelling"}
 
     def wait_for_task(self, task_id: str, timeout: float | None = None) -> dict[str, Any]:
@@ -251,6 +285,7 @@ class TaskRunner:
                     additional_roots=[uta_home() / "skills"],
                 ),
                 on_progress=self._emit_progress,
+                interaction_manager=self.interaction_manager,
             )
             with self._lock:
                 self._results[task_id].update(
@@ -325,6 +360,14 @@ class TaskRunner:
         event = {
             "type": "authorization_required",
             "task_id": self._running_task_id or "",
+            "data": request,
+        }
+        self._emit_progress_safely(event)
+
+    def _emit_interaction_request(self, request: dict[str, Any]) -> None:
+        event = {
+            "type": "task_interaction_required",
+            "task_id": self._running_task_id or str(request.get("task_id") or ""),
             "data": request,
         }
         self._emit_progress_safely(event)

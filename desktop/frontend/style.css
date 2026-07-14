@@ -929,6 +929,40 @@ pre {
   padding: 16px;
 }
 
+.interactionModalPanel {
+  width: min(620px, 100%);
+}
+
+.interactionBody {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 16px;
+}
+
+.interactionBody > p {
+  margin: 0 0 14px;
+  color: var(--text);
+  line-height: 1.65;
+}
+
+.interactionBody label {
+  padding: 0;
+}
+
+.interactionBody textarea {
+  width: 100%;
+  min-height: 108px;
+  resize: vertical;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  color: var(--text);
+  background: var(--surface-0);
+  font: inherit;
+  line-height: 1.55;
+}
+
 .authorizationBody p {
   margin: 0;
   color: var(--text);

@@ -320,6 +320,25 @@ class DesktopAPI:
             return {"ok": False, "error": "授权管理器不可用"}
         return manager.reject(str(request_id or ""), reason=str(reason or "用户拒绝授权"))
 
+    def respond_task_interaction(
+        self,
+        request_id: str,
+        accepted: bool,
+        response: str = "",
+        steps: list | None = None,
+        task_id: str = "",
+    ) -> dict[str, Any]:
+        manager = getattr(self.runner, "interaction_manager", None)
+        if manager is None:
+            return {"ok": False, "error": "任务交互管理器不可用"}
+        return manager.respond(
+            str(request_id or ""),
+            task_id=str(task_id or "") or None,
+            accepted=accepted is True,
+            response=str(response or ""),
+            steps=list(steps or []),
+        )
+
     # ---- 对话 ----
 
     def list_conversations(self) -> dict[str, Any]:

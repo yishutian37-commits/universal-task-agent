@@ -98,6 +98,47 @@ def test_frontend_task_panel_and_stop_control_follow_run_lifecycle():
     assert 'els.stopTask.addEventListener("click", stopTask);' in js
 
 
+def test_frontend_supports_missing_info_and_plan_confirmation_interactions():
+    html = (FRONTEND_ROOT / "index.html").read_text(encoding="utf-8")
+    js = (FRONTEND_ROOT / "app.js").read_text(encoding="utf-8")
+
+    assert 'id="taskInteractionModal"' in html
+    assert 'id="taskInteractionResponse"' in html
+    assert 'id="taskInteractionSteps"' in html
+    assert 'event.type === "task_interaction_required"' in js
+    assert "showTaskInteractionModal(data);" in js
+    assert 'callApi("respond_task_interaction"' in js
+    assert "state.pendingInteraction" in js
+
+
+def test_frontend_deduplicates_and_task_binds_replayed_interactions():
+    js = (FRONTEND_ROOT / "app.js").read_text(encoding="utf-8")
+    show_start = js.index("function showTaskInteractionModal")
+    show_end = js.index("function closeTaskInteractionModal", show_start)
+    show = js[show_start:show_end]
+    respond_start = js.index("async function respondTaskInteraction")
+    respond_end = js.index("async function loadSettings", respond_start)
+    respond = js[respond_start:respond_end]
+    progress_start = js.index("async function handleProgress")
+    progress = js[progress_start:]
+
+    assert "currentRequestId === requestId" in show
+    assert "taskId && state.taskId && taskId !== state.taskId" in show
+    assert "return false;" in show
+    assert "pending.task_id || state.taskId" in respond
+    assert 'callApi("respond_task_interaction", requestId, accepted, response, steps, taskId)' in respond
+    assert 'event.type === "interaction_resolved"' in progress
+    assert 'rejected: "已拒绝"' in js
+    assert 'cancelled: "已取消"' in js
+    assert 'timeout: "等待超时"' in js
+    assert "resumeContext.pending_interaction" in js
+    run_start = js.index("async function runTask")
+    resume_start = js.index("async function resumeTask")
+    stop_start = js.index("async function stopTask", resume_start)
+    assert "resumeContext.pending_interaction" not in js[run_start:resume_start]
+    assert "resumeContext.pending_interaction" in js[resume_start:stop_start]
+
+
 def test_frontend_uses_recovery_center_instead_of_manual_task_id_prompt():
     html = (FRONTEND_ROOT / "index.html").read_text(encoding="utf-8")
     js = (FRONTEND_ROOT / "app.js").read_text(encoding="utf-8")

@@ -13,5 +13,61 @@
   {"id": "workspace_read", "input": "当前工作区有哪些文件", "expect": {"message_kind": "task", "task_type": "langchain_tool", "plan_steps": 1, "first_tool": "file_tool"}},
   {"id": "directory_create", "input": "在工作区创建一个名叫测试的文件夹", "expect": {"message_kind": "task", "task_type": "langchain_tool", "plan_steps": 1, "first_tool": "langchain_directory_create_tool"}},
   {"id": "file_write", "input": "创建文件 note.txt 并写入 hello", "expect": {"message_kind": "task", "task_type": "langchain_tool", "plan_steps": 1, "first_tool": "langchain_file_write_tool"}},
-  {"id": "file_delete", "input": "删除文件 note.txt", "expect": {"message_kind": "task", "task_type": "langchain_tool", "plan_steps": 1, "first_tool": "langchain_file_delete_tool"}}
+  {"id": "file_delete", "input": "删除文件 note.txt", "expect": {"message_kind": "task", "task_type": "langchain_tool", "plan_steps": 1, "first_tool": "langchain_file_delete_tool"}},
+  {
+    "id": "structured_plan",
+    "scenario": "structured_plan",
+    "input": "读取 README 并生成总结",
+    "model_payload": {"steps": [{"goal": "读取 README", "tool_hint": "file_tool", "action_hint": "read"}, {"goal": "生成总结", "tool_hint": "report_tool", "action_hint": "generate", "depends_on": [1]}], "requires_confirmation": false},
+    "tools": ["file_tool", "report_tool"],
+    "expect": {"plan_source": "model", "plan_steps": 2, "first_tool_hint": "file_tool"}
+  },
+  {
+    "id": "dynamic_tool_route",
+    "scenario": "dynamic_tool_route",
+    "input": "把已有结论整理成报告",
+    "model_payload": {"tool_name": "report_tool", "action_name": "generate", "params": {"format": "markdown"}, "reason": "生成报告"},
+    "tools": ["text_tool", "report_tool"],
+    "expect": {"selected_tool": "report_tool", "selected_action": "generate"}
+  },
+  {
+    "id": "failure_replan",
+    "scenario": "failure_replan",
+    "input": "总结文本",
+    "model_payload": {"steps": [{"goal": "重新提取并补齐风险点", "tool_hint": "text_tool", "action_hint": "process", "depends_on": [1]}], "requires_confirmation": false},
+    "tools": ["text_tool"],
+    "expect": {"plan_source": "replan", "preserved_completed_steps": 1, "resume_step_id": 2}
+  },
+  {
+    "id": "invalid_action_contract",
+    "scenario": "invalid_action_contract",
+    "input": "把结论整理为报告",
+    "model_payload": {"tool_name": "report_tool", "action_name": "publish", "params": {}, "reason": "使用不存在的 action"},
+    "tools": ["report_tool"],
+    "expect": {"selected_tool": "report_tool", "selected_action": "generate", "invalid_action_executed": false, "tool_runs": 1}
+  },
+  {
+    "id": "failed_success_criteria",
+    "scenario": "failed_success_criteria",
+    "input": "生成带来源的结论",
+    "tools": ["report_tool"],
+    "expect": {"status": "failed", "criterion_status": "failed", "tool_runs": 1}
+  },
+  {
+    "id": "edited_plan_rebinding",
+    "scenario": "edited_plan_rebinding",
+    "input": "请按我修改后的计划执行",
+    "tools": ["file_tool", "text_tool"],
+    "expect": {"status": "completed", "plan_source": "user_edited", "selected_tool": "text_tool", "file_runs": 0, "text_runs": 1}
+  },
+  {
+    "id": "interaction_restart",
+    "scenario": "interaction_restart",
+    "input": "从等待确认的 checkpoint 继续",
+    "tools": ["text_tool"],
+    "expect": {"status": "completed", "replayed_request_id": "eval_restart_stable", "completed_prefix": 1, "tool_runs": 1}
+  },
+  {"id": "waiting_user", "scenario": "waiting_user", "input": "帮我总结", "expect": {"status": "completed", "interaction_status": "accepted", "missing_info_count": 0}},
+  {"id": "plan_rejected", "scenario": "plan_rejected", "input": "执行复杂任务：[1]总结 [2]列出风险", "expect": {"status": "cancelled", "interaction_status": "rejected", "tool_runs": 0}},
+  {"id": "authorization_rejected", "scenario": "authorization_rejected", "input": "执行 shell 命令 echo hello", "expect": {"authorization_status": "rejected", "command_executed": false}}
 ]

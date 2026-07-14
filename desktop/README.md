@@ -8,6 +8,8 @@
 
 桌面端主任务页采用“聊天主界面 + 执行详情侧栏”。发送消息后，任务仍走 `main.run_task()`，右侧同步显示 Planner 步骤、实时日志和 state.json。
 
+v1.11.0 中，任务页会在信息不足时显示补充信息弹窗，在复杂或高风险计划执行前显示计划确认弹窗。交互请求会在展示前写入 checkpoint，应用重启后使用原 `task_id` 和 request id 重放；重复回复不会重复执行步骤。用户可以每行编辑一个步骤，修改后的待执行步骤会重新路由，高风险工具仍需要逐次授权。自动化、真实桌面和发布产物门禁均已通过，v1.11.0 已正式发布。
+
 左侧“技能包”页会显示：
 
 - 运行时 Skill，例如 `geo_analysis`。
@@ -30,7 +32,7 @@ GEO 示例：
 
 ```bash
 .venv/bin/python -m pip install -r requirements-desktop.txt
-.venv/bin/python desktop/app.py
+.venv/bin/python -m desktop.app
 ```
 
 ## 构建 macOS 应用
@@ -50,6 +52,6 @@ bash desktop/build/build_macos.sh
 
 - 短期记忆：当前任务或历史任务的 `state.json` 和 log。
 - 长期记忆：`~/.uta/memory/*.json`，包括任务历史、经验、负向规则和 Skill 候选。
-- 当前版本只读展示记忆，不支持编辑或删除。
+- 记忆中心支持搜索、编辑、停用、重新启用和删除长期事实；原任务 state/log 仍作为只读运行记录。
 
 运行时配置和任务产物写入 `~/.uta/`，不会写入代码仓。

@@ -1,8 +1,9 @@
 from pathlib import Path
 from types import SimpleNamespace
 
-from core.loop import run_minimal_loop
-from core.state import AgentState, Plan, PlanStep, ToolResult
+from core.loop import _apply_plan_edits, _request_user_interaction, run_minimal_loop
+from core.interaction import InteractionDecision
+from core.state import AgentState, CriterionResult, Plan, PlanStep, ToolResult
 from tools.base_tool import BaseTool
 from tools.langchain_adapter import LangChainToolAdapter
 from tools.langchain_common_tools import (
@@ -91,6 +92,190 @@ class AutoApproveAuthorization:
         return SimpleNamespace(approved=True, approved_by="test", reason="")
 
 
+class RecordingRejectAuthorization:
+    def __init__(self):
+        self.requests = []
+
+    def request(self, operation, timeout=None):
+        del timeout
+        self.requests.append(operation)
+        return SimpleNamespace(approved=False, approved_by="", reason="用户拒绝授权")
+
+
+class ImmediateInteractionManager:
+    def __init__(self, decisions):
+        self.decisions = list(decisions)
+        self.requests = []
+
+    def request(
+        self,
+        kind,
+        payload,
+        task_id,
+        request_id=None,
+        created_at=None,
+        timeout=None,
+    ):
+        self.requests.append(
+            {
+                "kind": kind,
+                "payload": payload,
+                "task_id": task_id,
+                "request_id": request_id,
+                "created_at": created_at,
+                "timeout": timeout,
+            }
+        )
+        return self.decisions.pop(0)
+
+
+class ReplayInteractionManager:
+    def __init__(self, *, accepted=True, status="accepted", response=""):
+        self.accepted = accepted
+        self.status = status
+        self.response = response
+        self.requests = []
+
+    def request(
+        self,
+        kind,
+        payload,
+        task_id,
+        request_id=None,
+        created_at=None,
+        timeout=None,
+    ):
+        self.requests.append(
+            {
+                "kind": kind,
+                "payload": payload,
+                "task_id": task_id,
+                "request_id": request_id,
+                "created_at": created_at,
+                "timeout": timeout,
+            }
+        )
+        return InteractionDecision(
+            request_id=request_id or "",
+            accepted=self.accepted,
+            status=self.status,
+            response=self.response,
+        )
+
+
+class RecordingCheckpointStore:
+    def __init__(self):
+        self.snapshots = []
+
+    def save(self, state):
+        self.snapshots.append(AgentState.from_dict(state.to_dict()))
+
+
+def test_interaction_checkpoint_precedes_display_and_terminal_decision_precedes_clear():
+    state = AgentState(task_id="task_durable_order", user_input="继续任务")
+    manager = ReplayInteractionManager(response="/tmp/input.md")
+    checkpoints = RecordingCheckpointStore()
+    events = []
+
+    def record_event(event):
+        events.append(event)
+        if event["type"] == "waiting_user":
+            saved = checkpoints.snapshots[-1]
+            assert saved.pending_interaction is not None
+            assert saved.pending_interaction["request_id"] == event["data"]["request_id"]
+            assert saved.pending_interaction["task_id"] == state.task_id
+            assert saved.pending_interaction["status"] == "pending"
+
+    decision = _request_user_interaction(
+        state,
+        manager,
+        "missing_info",
+        {"title": "补充信息", "question": "请提供文件路径"},
+        on_progress=record_event,
+        checkpoint_store=checkpoints,
+    )
+
+    assert decision.accepted is True
+    assert [event["type"] for event in events] == ["waiting_user", "interaction_resolved"]
+    assert manager.requests[0]["request_id"].startswith("interaction_")
+    assert manager.requests[0]["created_at"]
+    terminal = next(
+        snapshot
+        for snapshot in checkpoints.snapshots
+        if snapshot.pending_interaction
+        and snapshot.pending_interaction.get("status") == "accepted"
+    )
+    assert terminal.interaction_history[-1]["status"] == "accepted"
+    assert terminal.interaction_history[-1]["accepted"] is True
+    assert terminal.pending_interaction["response"] == "/tmp/input.md"
+    assert checkpoints.snapshots[-1].pending_interaction is None
+    assert state.pending_interaction is None
+
+
+def test_loop_replays_checkpointed_interaction_with_same_identity():
+    state = AgentState(
+        task_id="task_replay_pending",
+        user_input="帮我总结",
+        task_type="summarize",
+        intent="summarize_article",
+        status="waiting_user",
+        missing_info=["需要总结的文本"],
+    )
+    state.pending_interaction = {
+        "request_id": "interaction_replay_stable",
+        "task_id": state.task_id,
+        "kind": "missing_info",
+        "payload": {
+            "title": "补充任务信息",
+            "question": "请补充以下信息：需要总结的文本",
+            "missing_info": ["需要总结的文本"],
+        },
+        "status": "pending",
+        "created_at": "2026-07-14T20:00:00",
+    }
+    manager = ReplayInteractionManager(response="库存接口已完成联调。")
+    registry = {
+        "file_tool": EchoTool("file"),
+        "text_tool": EchoTool(VALID_SUMMARY_REPORT),
+        "report_tool": EchoTool(VALID_SUMMARY_REPORT),
+    }
+
+    updated = run_minimal_loop(
+        state,
+        tool_registry=registry,
+        interaction_manager=manager,
+    )
+
+    assert updated.status == "completed"
+    assert manager.requests[0]["request_id"] == "interaction_replay_stable"
+    assert manager.requests[0]["task_id"] == "task_replay_pending"
+    assert manager.requests[0]["created_at"] == "2026-07-14T20:00:00"
+    assert updated.interaction_history[-1]["request_id"] == "interaction_replay_stable"
+
+
+def test_interaction_timeout_records_explicit_recoverable_status():
+    state = AgentState(task_id="task_timeout_state", user_input="继续任务")
+    manager = ReplayInteractionManager(
+        accepted=False,
+        status="timeout",
+        response="等待用户回复超时",
+    )
+    checkpoints = RecordingCheckpointStore()
+
+    _request_user_interaction(
+        state,
+        manager,
+        "missing_info",
+        {"question": "请提供文件路径"},
+        checkpoint_store=checkpoints,
+    )
+
+    assert state.status == "timed_out"
+    assert state.interaction_history[-1]["status"] == "timeout"
+    assert state.interaction_history[-1]["response"] == "等待用户回复超时"
+    assert checkpoints.snapshots[-1].status == "timed_out"
+
+
 def test_minimal_loop_fails_unknown_task_instead_of_claiming_mock_success():
     state = AgentState(
         task_id="task_test",
@@ -112,6 +297,531 @@ def test_minimal_loop_fails_unknown_task_instead_of_claiming_mock_success():
     assert len(updated.checks) == 1
     assert updated.checks[0].passed is False
     assert "不支持" in updated.final_output
+
+
+def test_loop_requests_missing_information_before_planning_and_continues():
+    manager = ImmediateInteractionManager(
+        [
+            InteractionDecision(
+                request_id="interaction_1",
+                accepted=True,
+                status="accepted",
+                response="文本内容是：库存接口已完成联调。",
+            )
+        ]
+    )
+    state = AgentState(
+        task_id="task_missing_info",
+        user_input="帮我总结",
+        task_type="summarize",
+        intent="summarize_article",
+        missing_info=["需要总结的文本"],
+    )
+    registry = {
+        "file_tool": EchoTool("file"),
+        "text_tool": EchoTool(VALID_SUMMARY_REPORT),
+        "report_tool": EchoTool(VALID_SUMMARY_REPORT),
+    }
+
+    updated = run_minimal_loop(
+        state,
+        tool_registry=registry,
+        interaction_manager=manager,
+    )
+
+    assert updated.status == "completed"
+    assert manager.requests[0]["kind"] == "missing_info"
+    assert "需要总结的文本" in manager.requests[0]["payload"]["question"]
+    assert "库存接口已完成联调" in updated.execution_input
+    assert updated.missing_info == []
+    assert updated.pending_interaction is None
+    assert updated.interaction_history[-1]["status"] == "accepted"
+
+
+def test_loop_retries_current_step_once_after_user_supplies_missing_path():
+    class MissingThenSuccessfulFileTool(BaseTool):
+        name = "file_tool"
+        description = "fails until user supplies a path"
+
+        def __init__(self):
+            self.calls = 0
+            self.inputs = []
+
+        def run(self, action_name, params):
+            del action_name
+            self.calls += 1
+            self.inputs.append(params.get("user_input"))
+            if self.calls == 1:
+                raise FileNotFoundError("文件路径不存在")
+            return {"message": "已读取文件"}
+
+    class SingleStepPlanner:
+        def create_plan(self, task, matched_skill=None, failure_context=None, existing_plan=None):
+            del matched_skill, failure_context, existing_plan
+            return Plan(
+                plan_id=f"plan_{task.task_id}",
+                task_id=task.task_id,
+                steps=[PlanStep(step_id=1, goal="读取目标文件", max_retries=0)],
+            )
+
+    tool = MissingThenSuccessfulFileTool()
+    manager = ImmediateInteractionManager(
+        [
+            InteractionDecision(
+                request_id="interaction_path",
+                accepted=True,
+                status="accepted",
+                response="正确路径是 /tmp/input.md",
+            )
+        ]
+    )
+    state = AgentState(
+        task_id="task_step_input",
+        user_input="读取那个文件",
+        task_type="summarize",
+        intent="read_file",
+        max_replans=0,
+    )
+
+    updated = run_minimal_loop(
+        state,
+        tool_registry={"file_tool": tool},
+        planner=SingleStepPlanner(),
+        interaction_manager=manager,
+    )
+
+    assert updated.status == "completed"
+    assert tool.calls == 2
+    assert "正确路径是 /tmp/input.md" in tool.inputs[1]
+
+
+def test_loop_allows_user_to_edit_complex_plan_before_execution():
+    class ConfirmablePlanner:
+        def create_plan(self, task, matched_skill=None, failure_context=None, existing_plan=None):
+            del matched_skill, failure_context, existing_plan
+            return Plan(
+                plan_id=f"plan_{task.task_id}",
+                task_id=task.task_id,
+                requires_confirmation=True,
+                steps=[
+                    PlanStep(step_id=1, goal="分析需求"),
+                    PlanStep(step_id=2, goal="生成总结"),
+                ],
+            )
+
+    manager = ImmediateInteractionManager(
+        [
+            InteractionDecision(
+                request_id="interaction_plan",
+                accepted=True,
+                status="accepted",
+                steps=["总结核心观点"],
+            )
+        ]
+    )
+    state = AgentState(
+        task_id="task_confirm_plan",
+        user_input="帮我完成复杂文本任务",
+        task_type="complex_task",
+        intent="execute_complex_task",
+    )
+
+    updated = run_minimal_loop(
+        state,
+        tool_registry={"text_tool": EchoTool("已完成总结")},
+        planner=ConfirmablePlanner(),
+        interaction_manager=manager,
+    )
+
+    assert updated.status == "completed"
+    assert manager.requests[0]["kind"] == "plan_confirmation"
+    assert updated.plan.source == "user_edited"
+    assert [step.goal for step in updated.plan.steps] == ["总结核心观点"]
+
+
+def test_apply_plan_edits_preserves_completed_prefix_and_clears_changed_bindings():
+    plan = Plan(
+        plan_id="plan_edit",
+        task_id="task_edit",
+        steps=[
+            PlanStep(
+                step_id=1,
+                goal="读取输入",
+                status="completed",
+                tool_hint="file_tool",
+                action_hint="read",
+                inputs={"path": "README.md"},
+                success_criteria=["读取成功"],
+            ),
+            PlanStep(
+                step_id=2,
+                goal="生成报告",
+                tool_hint="report_tool",
+                action_hint="generate",
+                inputs={"format": "markdown"},
+                depends_on=[1],
+                success_criteria=["报告完成"],
+                requires_authorization=True,
+            ),
+        ],
+    )
+
+    edited = _apply_plan_edits(plan, ["不要修改已完成步骤", "提取核心信息"])
+
+    assert edited is True
+    assert plan.steps[0].goal == "读取输入"
+    assert plan.steps[0].status == "completed"
+    assert plan.steps[0].tool_hint == "file_tool"
+    assert plan.steps[1].goal == "提取核心信息"
+    assert plan.steps[1].tool_hint is None
+    assert plan.steps[1].action_hint is None
+    assert plan.steps[1].inputs == {}
+    assert plan.steps[1].depends_on == []
+    assert plan.steps[1].success_criteria == []
+    assert plan.steps[1].requires_authorization is False
+
+
+def test_loop_rebinds_user_edited_step_to_new_safe_tool():
+    class ConfirmablePlanner:
+        def create_plan(self, task, matched_skill=None, failure_context=None, existing_plan=None):
+            del matched_skill, failure_context, existing_plan
+            return Plan(
+                plan_id=f"plan_{task.task_id}",
+                task_id=task.task_id,
+                requires_confirmation=True,
+                steps=[
+                    PlanStep(
+                        step_id=1,
+                        goal="读取项目文件",
+                        tool_hint="file_tool",
+                        action_hint="read",
+                        inputs={"path": "README.md"},
+                    )
+                ],
+            )
+
+    manager = ImmediateInteractionManager(
+        [
+            InteractionDecision(
+                request_id="interaction_rebind",
+                accepted=True,
+                status="accepted",
+                steps=["提取核心信息"],
+            )
+        ]
+    )
+    file_tool = CountingTool("不应读取")
+    text_tool = CountingTool("已提取核心信息")
+    state = AgentState(
+        task_id="task_rebind",
+        user_input="处理这段文字",
+        task_type="complex_task",
+    )
+
+    updated = run_minimal_loop(
+        state,
+        tool_registry={"file_tool": file_tool, "text_tool": text_tool},
+        planner=ConfirmablePlanner(),
+        interaction_manager=manager,
+    )
+
+    assert updated.status == "completed"
+    assert file_tool.calls == 0
+    assert text_tool.calls == 1
+    assert updated.results[0].tool_name == "text_tool"
+
+
+def test_loop_requires_declared_success_criteria_before_completing_step():
+    class CriteriaPlanner:
+        def create_plan(self, task, matched_skill=None, failure_context=None, existing_plan=None):
+            del matched_skill, failure_context, existing_plan
+            return Plan(
+                plan_id=f"plan_{task.task_id}",
+                task_id=task.task_id,
+                steps=[
+                    PlanStep(
+                        step_id=1,
+                        goal="生成结论",
+                        max_retries=0,
+                        tool_hint="report_tool",
+                        action_hint="generate",
+                        success_criteria=["结果包含来源"],
+                    )
+                ],
+            )
+
+    state = AgentState(
+        task_id="task_criteria_gate",
+        user_input="生成结论",
+        task_type="complex_task",
+        max_replans=0,
+    )
+
+    updated = run_minimal_loop(
+        state,
+        tool_registry={"report_tool": EchoTool("只有结论，没有引用")},
+        planner=CriteriaPlanner(),
+    )
+
+    assert updated.status == "failed"
+    assert updated.plan.steps[0].status == "failed"
+    assert updated.criterion_results[0].criterion == "结果包含来源"
+    assert updated.criterion_results[0].passed is False
+    assert "来源" in updated.checks[-1].failed_reasons[0]
+
+
+def test_loop_passes_criterion_failures_to_replan_context():
+    class CriteriaReplanner:
+        def __init__(self):
+            self.failure_context = None
+
+        def create_plan(self, task, matched_skill=None, failure_context=None, existing_plan=None):
+            del matched_skill, existing_plan
+            if failure_context is None:
+                return Plan(
+                    plan_id=f"plan_{task.task_id}",
+                    task_id=task.task_id,
+                    steps=[
+                        PlanStep(step_id=1, goal="读取输入", status="completed"),
+                        PlanStep(
+                            step_id=2,
+                            goal="生成报告",
+                            max_retries=0,
+                            tool_hint="report_tool",
+                            action_hint="generate",
+                            success_criteria=["结果包含来源"],
+                        ),
+                    ],
+                )
+            self.failure_context = failure_context
+            return Plan(
+                plan_id=f"plan_{task.task_id}_replan",
+                task_id=task.task_id,
+                source="replan",
+                steps=[
+                    PlanStep(step_id=1, goal="读取输入", status="completed"),
+                    PlanStep(
+                        step_id=2,
+                        goal="补齐来源",
+                        tool_hint="report_tool",
+                        action_hint="generate",
+                        success_criteria=["结果包含来源"],
+                    ),
+                ],
+            )
+
+    planner = CriteriaReplanner()
+    report = SequenceReportTool(["只有结论", "结论和来源：https://example.com"])
+    state = AgentState(
+        task_id="task_criteria_replan",
+        user_input="生成报告",
+        task_type="complex_task",
+        max_replans=1,
+    )
+    state.results.append(
+        ToolResult(True, "file_tool", "read", {"message": "input"}, step_id=1)
+    )
+
+    updated = run_minimal_loop(
+        state,
+        tool_registry={"report_tool": report},
+        planner=planner,
+    )
+
+    assert updated.status == "completed"
+    assert planner.failure_context is not None
+    assert planner.failure_context["criterion_results"][0]["criterion"] == "结果包含来源"
+    assert planner.failure_context["criterion_results"][0]["passed"] is False
+    assert updated.replan_count == 1
+
+
+def test_loop_resume_keeps_completed_criterion_results_without_reevaluating():
+    state = AgentState(
+        task_id="task_criteria_resume",
+        user_input="继续任务",
+        task_type="complex_task",
+        status="running",
+    )
+    state.plan = Plan(
+        plan_id="plan_task_criteria_resume",
+        task_id=state.task_id,
+        status="running",
+        steps=[
+            PlanStep(step_id=1, goal="读取输入", status="completed", success_criteria=["已读取"]),
+            PlanStep(step_id=2, goal="生成结构化报告", status="pending"),
+        ],
+    )
+    state.results.append(ToolResult(True, "file_tool", "read", {"message": "input"}, step_id=1))
+    state.criterion_results.append(
+        CriterionResult(
+            task_id=state.task_id,
+            plan_id=state.plan.plan_id,
+            step_id=1,
+            criterion="已读取",
+            status="passed",
+            passed=True,
+            source="tool_result",
+            evidence=[{"key": "message", "preview": "input"}],
+        )
+    )
+
+    updated = run_minimal_loop(
+        state,
+        tool_registry={"report_tool": EchoTool("结果")},
+    )
+
+    assert updated.status == "completed"
+    assert len([item for item in updated.criterion_results if item.step_id == 1]) == 1
+
+
+def test_loop_user_edited_dangerous_goal_still_requests_tool_authorization(tmp_path):
+    target = tmp_path / "edited-folder"
+
+    class ConfirmablePlanner:
+        def create_plan(self, task, matched_skill=None, failure_context=None, existing_plan=None):
+            del matched_skill, failure_context, existing_plan
+            return Plan(
+                plan_id=f"plan_{task.task_id}",
+                task_id=task.task_id,
+                requires_confirmation=True,
+                steps=[
+                    PlanStep(
+                        step_id=1,
+                        goal="读取工作区",
+                        max_retries=0,
+                        tool_hint="file_tool",
+                        action_hint="read",
+                    )
+                ],
+            )
+
+    manager = ImmediateInteractionManager(
+        [
+            InteractionDecision(
+                request_id="interaction_dangerous_rebind",
+                accepted=True,
+                status="accepted",
+                steps=[f"创建文件夹 {target}"],
+            )
+        ]
+    )
+    authorization = RecordingRejectAuthorization()
+    dangerous_tool = DirectoryCreateLangChainTool(
+        authorization_manager=authorization,
+        enabled=True,
+        allowed_roots=[tmp_path],
+    )
+    state = AgentState(
+        task_id="task_dangerous_rebind",
+        user_input=f"创建文件夹 {target}",
+        task_type="langchain_tool",
+        workspace_path=str(tmp_path),
+        max_replans=0,
+    )
+
+    updated = run_minimal_loop(
+        state,
+        tool_registry={
+            "file_tool": CountingTool("不应读取"),
+            "langchain_directory_create_tool": LangChainToolAdapter(dangerous_tool),
+        },
+        planner=ConfirmablePlanner(),
+        interaction_manager=manager,
+    )
+
+    assert updated.status == "failed"
+    assert len(authorization.requests) == 1
+    assert authorization.requests[0]["tool_name"] == "langchain_directory_create_tool"
+    assert not target.exists()
+
+
+def test_loop_stops_after_dangerous_tool_authorization_is_rejected(tmp_path):
+    target = tmp_path / "rejected-folder"
+
+    class DangerousPlanner:
+        def create_plan(self, task, matched_skill=None, failure_context=None, existing_plan=None):
+            del matched_skill, failure_context, existing_plan
+            return Plan(
+                plan_id=f"plan_{task.task_id}",
+                task_id=task.task_id,
+                steps=[
+                    PlanStep(
+                        step_id=1,
+                        goal=f"创建文件夹 {target}",
+                        max_retries=2,
+                    )
+                ],
+            )
+
+    authorization = RecordingRejectAuthorization()
+    dangerous_tool = DirectoryCreateLangChainTool(
+        authorization_manager=authorization,
+        enabled=True,
+        allowed_roots=[tmp_path],
+    )
+    state = AgentState(
+        task_id="task_reject_dangerous_authorization",
+        user_input=f"创建文件夹 {target}",
+        task_type="langchain_tool",
+        workspace_path=str(tmp_path),
+        max_replans=1,
+    )
+
+    updated = run_minimal_loop(
+        state,
+        tool_registry={
+            "langchain_directory_create_tool": LangChainToolAdapter(dangerous_tool),
+        },
+        planner=DangerousPlanner(),
+    )
+
+    assert updated.status == "failed"
+    assert len(authorization.requests) == 1
+    assert len(updated.results) == 1
+    assert updated.replan_count == 0
+    assert "用户拒绝授权" in updated.final_output
+    assert not target.exists()
+
+
+def test_loop_cancels_when_user_rejects_plan():
+    class ConfirmablePlanner:
+        def create_plan(self, task, matched_skill=None, failure_context=None, existing_plan=None):
+            del matched_skill, failure_context, existing_plan
+            return Plan(
+                plan_id=f"plan_{task.task_id}",
+                task_id=task.task_id,
+                requires_confirmation=True,
+                steps=[PlanStep(step_id=1, goal="总结核心观点")],
+            )
+
+    tool = CountingTool("不应执行")
+    manager = ImmediateInteractionManager(
+        [
+            InteractionDecision(
+                request_id="interaction_reject",
+                accepted=False,
+                status="rejected",
+                response="先不执行",
+            )
+        ]
+    )
+    state = AgentState(
+        task_id="task_reject_plan",
+        user_input="帮我完成复杂任务",
+        task_type="complex_task",
+        intent="execute_complex_task",
+    )
+
+    updated = run_minimal_loop(
+        state,
+        tool_registry={"text_tool": tool},
+        planner=ConfirmablePlanner(),
+        interaction_manager=manager,
+    )
+
+    assert updated.status == "cancelled"
+    assert updated.final_output == "用户取消了计划执行"
+    assert tool.calls == 0
 
 
 def test_loop_executes_full_planned_summary_flow():
@@ -459,6 +1169,73 @@ def test_loop_replans_once_without_rerunning_completed_steps():
     assert updated.final_output == VALID_SUMMARY_REPORT
 
 
+def test_loop_passes_failure_evidence_to_replanner_and_uses_changed_step():
+    class CapturingReplanner:
+        def __init__(self):
+            self.failure_context = None
+            self.existing_plan = None
+
+        def create_plan(self, task, matched_skill=None, failure_context=None, existing_plan=None):
+            del matched_skill
+            if failure_context is None:
+                return Plan(
+                    plan_id=f"plan_{task.task_id}",
+                    task_id=task.task_id,
+                    steps=[
+                        PlanStep(step_id=1, goal="读取输入内容"),
+                        PlanStep(step_id=2, goal="提取核心信息", max_retries=0),
+                        PlanStep(step_id=3, goal="生成结构化报告"),
+                    ],
+                )
+            self.failure_context = failure_context
+            self.existing_plan = existing_plan
+            return Plan(
+                plan_id=f"plan_{task.task_id}_replan",
+                task_id=task.task_id,
+                source="replan",
+                steps=[
+                    PlanStep(step_id=1, goal="读取输入内容", status="completed"),
+                    PlanStep(step_id=2, goal="重新提取核心信息并补齐小节"),
+                    PlanStep(step_id=3, goal="生成结构化报告"),
+                ],
+            )
+
+    planner = CapturingReplanner()
+    file_tool = CountingTool("file")
+    text_tool = SequenceTextTool(
+        [
+            "## 摘要\n缺少小节。",
+            VALID_SUMMARY_REPORT,
+        ]
+    )
+    registry = {
+        "file_tool": file_tool,
+        "text_tool": text_tool,
+        "report_tool": EchoTool(VALID_SUMMARY_REPORT),
+    }
+    state = AgentState(
+        task_id="task_replan_context",
+        user_input="帮我总结",
+        task_type="summarize",
+        intent="summarize_article",
+        max_replans=1,
+    )
+    state.evidence["files"].append({"path": "input.md", "step_id": 1})
+
+    updated = run_minimal_loop(state, tool_registry=registry, planner=planner)
+
+    assert updated.status == "completed"
+    assert file_tool.calls == 1
+    assert planner.failure_context is not None
+    assert planner.failure_context["failed_step_id"] == 2
+    assert planner.failure_context["failed_reasons"]
+    assert planner.failure_context["completed_steps"][0]["step_id"] == 1
+    assert planner.failure_context["evidence"]["files"]
+    assert planner.existing_plan is not None
+    assert updated.plan.source == "replan"
+    assert updated.plan.steps[1].goal == "重新提取核心信息并补齐小节"
+
+
 def test_loop_resumes_existing_plan_without_rerunning_completed_steps():
     file_tool = CountingTool("file")
     text_tool = CountingTool(VALID_SUMMARY_REPORT)
@@ -520,6 +1297,52 @@ def test_loop_resumes_existing_plan_without_rerunning_completed_steps():
     assert [step.status for step in updated.plan.steps] == ["completed", "completed", "completed"]
     assert events[0]["type"] == "plan_resumed"
     assert events[0]["data"]["resume_step_id"] == 2
+
+
+def test_loop_resumes_legacy_checkpoint_without_rerunning_completed_steps():
+    file_tool = CountingTool("file")
+    text_tool = CountingTool(VALID_SUMMARY_REPORT)
+    report_tool = CountingTool(VALID_SUMMARY_REPORT)
+    registry = {
+        "file_tool": file_tool,
+        "text_tool": text_tool,
+        "report_tool": report_tool,
+    }
+    state = AgentState.from_dict(
+        {
+            "task_id": "task_legacy_resume",
+            "user_input": "帮我总结",
+            "task_type": "summarize",
+            "status": "running",
+            "current_step_id": 2,
+            "plan": {
+                "plan_id": "plan_task_legacy_resume",
+                "task_id": "task_legacy_resume",
+                "status": "running",
+                "steps": [
+                    {"step_id": 1, "goal": "读取输入内容", "status": "completed"},
+                    {"step_id": 2, "goal": "提取核心信息", "status": "running"},
+                    {"step_id": 3, "goal": "生成结构化报告", "status": "pending"},
+                ],
+            },
+            "results": [
+                {
+                    "success": True,
+                    "tool_name": "file_tool",
+                    "action_name": "read",
+                    "result": {"message": "旧 checkpoint 已读取"},
+                    "step_id": 1,
+                }
+            ],
+        }
+    )
+
+    updated = run_minimal_loop(state, tool_registry=registry)
+
+    assert updated.status == "completed"
+    assert file_tool.calls == 0
+    assert text_tool.calls == 1
+    assert report_tool.calls == 1
 
 
 def test_loop_fails_when_replan_budget_is_exhausted():

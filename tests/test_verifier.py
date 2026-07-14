@@ -33,6 +33,159 @@ def test_verifier_fails_unsuccessful_tool_result():
     assert check.suggested_fix == ["检查工具名称或工具实现"]
 
 
+def test_verifier_step_criteria_all_pass_with_tool_output_evidence():
+    state = AgentState(task_id="task_criteria", user_input="生成总结")
+    step = PlanStep(
+        step_id=1,
+        goal="生成总结",
+        success_criteria=["结果包含摘要和风险点"],
+    )
+    result = ToolResult(
+        success=True,
+        tool_name="report_tool",
+        action_name="generate",
+        result={"message": "摘要：完成联调。风险点：暂无。"},
+        step_id=1,
+    )
+
+    criteria = Verifier().check_criteria(state, step, result, plan_id="plan_criteria")
+
+    assert len(criteria) == 1
+    assert criteria[0].passed is True
+    assert criteria[0].status == "passed"
+    assert criteria[0].source == "tool_result"
+    assert criteria[0].evidence[0]["key"] == "message"
+
+
+def test_verifier_step_criterion_fails_when_required_content_is_missing():
+    state = AgentState(task_id="task_criteria", user_input="生成总结")
+    step = PlanStep(step_id=1, goal="生成总结", success_criteria=["结果包含来源"])
+    result = ToolResult(
+        success=True,
+        tool_name="report_tool",
+        action_name="generate",
+        result={"message": "只有摘要，没有引用信息。"},
+        step_id=1,
+    )
+
+    criteria = Verifier().check_criteria(state, step, result, plan_id="plan_criteria")
+
+    assert criteria[0].passed is False
+    assert criteria[0].status == "failed"
+    assert "来源" in criteria[0].failure_reason
+
+
+def test_verifier_step_criterion_is_indeterminate_without_verifiable_signal():
+    state = AgentState(task_id="task_criteria", user_input="评估质量")
+    step = PlanStep(step_id=1, goal="评估质量", success_criteria=["质量达到优秀"])
+    result = ToolResult(
+        success=True,
+        tool_name="text_tool",
+        action_name="process",
+        result={"message": "处理完成"},
+        step_id=1,
+    )
+
+    criteria = Verifier().check_criteria(state, step, result, plan_id="plan_criteria")
+
+    assert criteria[0].passed is False
+    assert criteria[0].status == "indeterminate"
+    assert criteria[0].source == "unverified"
+
+
+def test_verifier_structured_summary_criterion_uses_deterministic_section_check():
+    state = AgentState(
+        task_id="task_structured_summary",
+        user_input="生成总结",
+        task_type="summarize",
+    )
+    step = PlanStep(
+        step_id=1,
+        goal="提取核心信息",
+        success_criteria=["输出结构化摘要"],
+    )
+    result = ToolResult(
+        True,
+        "text_tool",
+        "process",
+        {
+            "message": "## 摘要\n完成联调。\n## 核心观点\n流程清晰。\n## 风险点\n暂无。"
+        },
+        step_id=1,
+    )
+
+    criterion = Verifier().check_criteria(
+        state,
+        step,
+        result,
+        plan_id="plan_structured_summary",
+    )[0]
+
+    assert criterion.passed is True
+    assert criterion.status == "passed"
+    assert criterion.source == "deterministic"
+
+
+def test_verifier_structured_summary_criterion_records_missing_sections():
+    state = AgentState(
+        task_id="task_incomplete_summary",
+        user_input="生成总结",
+        task_type="summarize",
+    )
+    step = PlanStep(
+        step_id=1,
+        goal="提取核心信息",
+        success_criteria=["输出结构化摘要"],
+    )
+    result = ToolResult(
+        True,
+        "text_tool",
+        "process",
+        {"message": "只有一句结论。"},
+        step_id=1,
+    )
+
+    criterion = Verifier().check_criteria(
+        state,
+        step,
+        result,
+        plan_id="plan_incomplete_summary",
+    )[0]
+
+    assert criterion.passed is False
+    assert criterion.status == "failed"
+    assert criterion.source == "deterministic"
+    assert "缺少必要小节" in criterion.failure_reason
+
+
+def test_verifier_step_without_criteria_preserves_legacy_behavior():
+    state = AgentState(task_id="task_legacy", user_input="处理内容")
+    step = PlanStep(step_id=1, goal="处理内容")
+    result = ToolResult(True, "text_tool", "process", {"message": "完成"}, step_id=1)
+
+    assert Verifier().check_criteria(state, step, result, plan_id="plan_legacy") == []
+
+
+def test_verifier_high_risk_file_criterion_requires_filesystem_evidence(tmp_path):
+    target = tmp_path / "verified.txt"
+    target.write_text("done", encoding="utf-8")
+    state = AgentState(task_id="task_write", user_input="写文件", workspace_path=str(tmp_path))
+    step = PlanStep(step_id=1, goal="写入文件", success_criteria=["文件已经创建"])
+    result = ToolResult(
+        success=True,
+        tool_name="langchain_file_write_tool",
+        action_name="invoke",
+        result={"path": str(target), "mode": "create", "bytes_written": 4},
+        step_id=1,
+    )
+
+    criteria = Verifier().check_criteria(state, step, result, plan_id="plan_write")
+
+    assert criteria[0].passed is True
+    assert criteria[0].source == "deterministic"
+    assert criteria[0].evidence[0]["path"] == str(target.resolve())
+
+
 def test_verifier_passes_complete_summary_report():
     state = AgentState(task_id="task_test", user_input="帮我总结", task_type="summarize")
     step = PlanStep(step_id=3, goal="生成结构化报告")

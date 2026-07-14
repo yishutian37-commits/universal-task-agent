@@ -182,7 +182,16 @@ def test_parser_fills_missing_fields():
     assert task.input_type == "unknown"
     assert task.expected_output == "unknown"
     assert task.constraints == []
-    assert task.missing_info == []
+    assert task.missing_info == ["需要总结的文本或文件"]
+
+
+def test_parser_fallback_requests_source_for_summary_without_content():
+    parser = TaskParser(FakeClient(error=LLMClientError("offline")))
+
+    task = parser.parse("task_summary_missing", "请帮我总结一下")
+
+    assert task.task_type == "summarize"
+    assert task.missing_info == ["需要总结的文本或文件"]
 
 
 def test_parser_normalizes_non_list_fields():
@@ -196,7 +205,7 @@ def test_parser_normalizes_non_list_fields():
         )
     )
 
-    task = parser.parse("task_1", "帮我总结")
+    task = parser.parse("task_1", "帮我总结这段文本：库存正常")
 
     assert task.constraints == []
     assert task.missing_info == []
