@@ -54,7 +54,6 @@ def test_factory_routes_md():
 
 def test_factory_rejects_unknown():
     from rag.loaders.base import LoaderFactory
-    from rag.errors import UnsupportedSourceError
 
     factory = LoaderFactory.for_text()
     with pytest.raises(UnsupportedSourceError):

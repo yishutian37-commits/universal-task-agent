@@ -12,7 +12,6 @@ RAG 知识库。以后文档更新后重跑此脚本即可（ingest 幂等，按
 from __future__ import annotations
 
 import json
-import os
 import sys
 from pathlib import Path
 
@@ -96,9 +95,6 @@ def seed(
 
     kb = create_default_kb(db_path=db_path, use_real_models=use_real_models)
 
-    # 需要把 JSON 转成文本的文件，用临时 LoadedDoc 直接喂
-    from rag.loaders.base import LoadedDoc
-
     ingested = 0
     skipped = 0
     errors = []
@@ -112,7 +108,6 @@ def seed(
         try:
             if full.suffix == ".json":
                 # JSON 转可读文本，直接走 chunker（绕过 TextLoader 的扩展名检查）
-                import os
                 import uuid
                 from datetime import datetime
 

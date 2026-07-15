@@ -57,6 +57,14 @@ def compact_text(text: str) -> str:
     return "".join(str(text or "").strip().lower().split())
 
 
+def current_user_input(text: str) -> str:
+    """从带会话上下文的输入中取出当前请求及其后续补充。"""
+    matches = list(re.finditer(r"(?:^|\n)当前用户输入[:：]\s*", str(text or "")))
+    if not matches:
+        return str(text or "").strip()
+    return str(text or "")[matches[-1].end() :].strip()
+
+
 def looks_like_workspace_file_request(text: str) -> bool:
     normalized = compact_text(text)
     if any(compact_text(marker) in normalized for marker in WORKSPACE_FILE_MARKERS):

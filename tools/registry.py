@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from desktop.paths import resource_path, uta_home
+from desktop.paths import uta_home
 from tools.base_tool import BaseTool
 from tools.code_tool import CodeTool
 from tools.file_tool import FileTool

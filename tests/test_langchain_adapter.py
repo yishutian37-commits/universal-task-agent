@@ -52,6 +52,23 @@ def test_langchain_adapter_builds_query_input_from_user_input():
     assert result["output"] == "received"
 
 
+def test_langchain_adapter_fallback_query_excludes_older_conversation_input():
+    from tools.langchain_adapter import LangChainToolAdapter
+
+    langchain_tool = FakeLangChainTool(output="received")
+    adapter = LangChainToolAdapter(langchain_tool)
+    contextual_input = "\n\n".join(
+        [
+            "前文：计算 100 + 200",
+            "当前用户输入：\n计算 2 + 3",
+        ]
+    )
+
+    adapter.run("invoke", {"user_input": contextual_input})
+
+    assert langchain_tool.calls == [{"query": "计算 2 + 3"}]
+
+
 def test_langchain_adapter_prefers_query_over_goal():
     from tools.langchain_adapter import LangChainToolAdapter
 

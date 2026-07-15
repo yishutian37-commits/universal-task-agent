@@ -51,3 +51,17 @@ def test_macos_archive_omits_metadata_that_breaks_clean_extraction_signatures():
 
     for flag in ("--norsrc", "--noextattr", "--noqtn", "--noacl"):
         assert flag in build_script
+
+
+def test_macos_archive_replaces_old_zip_instead_of_inheriting_its_quarantine():
+    root = Path(__file__).resolve().parents[1]
+    build_script = (root / "desktop" / "build" / "build_macos.sh").read_text(encoding="utf-8")
+
+    archive_assignment = 'ARCHIVE_PATH="dist/UTA Desktop-macos.zip"'
+    remove_archive = 'rm -f "$ARCHIVE_PATH"'
+    create_archive = "ditto -c -k"
+
+    assert archive_assignment in build_script
+    assert remove_archive in build_script
+    assert build_script.index(archive_assignment) < build_script.index(remove_archive)
+    assert build_script.index(remove_archive) < build_script.index(create_archive)

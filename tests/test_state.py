@@ -147,6 +147,25 @@ def test_agent_state_round_trips_structured_plan_and_task_context():
     assert restored.plan.steps[1].success_criteria == ["报告包含结论和依据"]
 
 
+def test_agent_state_round_trip_preserves_disabled_retry_budgets():
+    state = AgentState(
+        task_id="task_no_retry",
+        user_input="只执行一次",
+        max_replans=0,
+    )
+    state.plan = Plan(
+        plan_id="plan_no_retry",
+        task_id=state.task_id,
+        steps=[PlanStep(step_id=1, goal="执行操作", max_retries=0)],
+    )
+
+    restored = AgentState.from_dict(state.to_dict())
+
+    assert restored.max_replans == 0
+    assert restored.plan is not None
+    assert restored.plan.steps[0].max_retries == 0
+
+
 def test_agent_state_round_trips_pending_interaction_and_history():
     state = AgentState(task_id="task_interaction", user_input="处理文件")
     state.pending_interaction = {

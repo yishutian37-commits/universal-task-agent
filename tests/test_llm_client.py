@@ -1,5 +1,7 @@
-import pytest
+import ssl
 from types import SimpleNamespace
+
+import pytest
 
 from llm.llm_client import LLMClient, LLMClientError
 
@@ -140,6 +142,11 @@ def test_default_transport_can_disable_ssl_verification(monkeypatch):
 
 def test_default_transport_uses_certifi_when_ssl_verification_enabled(monkeypatch):
     captured = {}
+    ssl_context = object()
+
+    def fake_create_default_context(*, cafile):
+        captured["cafile"] = cafile
+        return ssl_context
 
     class FakeClient:
         def __init__(self, timeout, verify):
@@ -163,6 +170,7 @@ def test_default_transport_uses_certifi_when_ssl_verification_enabled(monkeypatc
             return {"choices": [{"message": {"content": "ok"}}]}
 
     monkeypatch.setattr("llm.llm_client.certifi.where", lambda: "/tmp/cacert.pem")
+    monkeypatch.setattr(ssl, "create_default_context", fake_create_default_context)
     monkeypatch.setattr("llm.llm_client.httpx.Client", FakeClient)
     client = LLMClient(
         api_key="key",
@@ -172,7 +180,8 @@ def test_default_transport_uses_certifi_when_ssl_verification_enabled(monkeypatc
     )
 
     assert client.chat("sys", "user") == "ok"
-    assert captured["verify"] == "/tmp/cacert.pem"
+    assert captured["cafile"] == "/tmp/cacert.pem"
+    assert captured["verify"] is ssl_context
 
 
 def test_from_config_enables_curl_fallback_by_default(monkeypatch):

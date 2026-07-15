@@ -1,9 +1,6 @@
 import threading
 import time
 
-import pytest
-
-
 def test_authorization_manager_emits_request_and_returns_approval():
     from tools.authorization import AuthorizationManager
 
@@ -83,3 +80,31 @@ def test_authorization_manager_reports_unknown_request_id():
 
     assert manager.approve("missing") == {"ok": False, "error": "授权请求不存在"}
     assert manager.reject("missing") == {"ok": False, "error": "授权请求不存在"}
+
+
+def test_authorization_manager_cancel_all_wakes_pending_requests():
+    from tools.authorization import AuthorizationManager
+
+    emitted = []
+    manager = AuthorizationManager(on_request=emitted.append)
+    result_holder = {}
+    thread = threading.Thread(
+        target=lambda: result_holder.update(
+            decision=manager.request({"tool_name": "langchain_shell_tool"}, timeout=10)
+        )
+    )
+    thread.start()
+
+    deadline = time.time() + 1
+    while not emitted and time.time() < deadline:
+        time.sleep(0.01)
+
+    assert emitted
+    cancelled = manager.cancel_all(reason="任务已取消")
+    thread.join(timeout=1)
+
+    assert cancelled == 1
+    assert thread.is_alive() is False
+    assert result_holder["decision"].approved is False
+    assert result_holder["decision"].status == "cancelled"
+    assert result_holder["decision"].reason == "任务已取消"

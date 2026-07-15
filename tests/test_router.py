@@ -403,6 +403,57 @@ def test_router_uses_current_request_for_dangerous_tool_input():
     assert action.params["tool_input"] == {"query": current_input}
 
 
+def test_router_includes_user_supplement_in_dangerous_tool_input_without_history():
+    current_input = "创建文件"
+    supplemented_input = "\n\n".join(
+        [
+            "前文：删除文件 /tmp/old.txt",
+            f"当前用户输入：\n{current_input}",
+            "用户补充信息：\n路径是 /tmp/new.txt，内容是 hello",
+        ]
+    )
+    state = AgentState(
+        task_id="task_supplemented_tool_input",
+        user_input=current_input,
+        execution_input=supplemented_input,
+        task_type="langchain_tool",
+    )
+
+    action = Router().choose_tool(
+        state,
+        PlanStep(step_id=1, goal="调用 LangChain 工具处理请求"),
+    )
+
+    assert action.tool_name == "langchain_file_write_tool"
+    assert action.params["tool_input"] == {
+        "query": "创建文件\n\n用户补充信息：\n路径是 /tmp/new.txt，内容是 hello"
+    }
+    assert "/tmp/old.txt" not in action.params["tool_input"]["query"]
+
+
+def test_router_passes_only_current_input_to_safe_langchain_tool():
+    current_input = "计算 2 + 3"
+    state = AgentState(
+        task_id="task_contextual_calculator",
+        user_input=current_input,
+        execution_input="\n\n".join(
+            [
+                "前文：计算 100 + 200",
+                f"当前用户输入：\n{current_input}",
+            ]
+        ),
+        task_type="langchain_tool",
+    )
+
+    action = Router().choose_tool(
+        state,
+        PlanStep(step_id=1, goal="调用 LangChain 工具处理请求"),
+    )
+
+    assert action.tool_name == "langchain_calculator_tool"
+    assert action.params["tool_input"] == {"query": current_input}
+
+
 @pytest.mark.parametrize("user_input", ["当前工作区有哪些文件", "读取 README.md 的内容"])
 def test_router_selects_workspace_file_tool(user_input):
     state = AgentState(task_id="task_workspace", user_input=user_input, task_type="langchain_tool")

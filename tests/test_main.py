@@ -106,6 +106,12 @@ class FakeMemoryProvider:
         return {}
 
 
+class FailingMemoryProvider:
+    def save_task(self, state):
+        del state
+        raise OSError("memory disk unavailable")
+
+
 class CapturingMemoryProvider:
     def __init__(self):
         self.saved_user_inputs = []
@@ -735,6 +741,31 @@ def test_run_task_saves_memory_with_injected_provider():
 
     assert state.memory_saved is True
     assert memory_provider.saved_task_ids == ["task_test"]
+
+
+def test_run_task_keeps_successful_result_when_memory_persistence_fails():
+    events = []
+
+    state = run_task(
+        "帮我总结一段文本",
+        task_id="task_memory_failure",
+        task_parser=FakeParser(),
+        tool_registry=make_static_summary_registry(),
+        memory_provider=FailingMemoryProvider(),
+        skill_loader=False,
+        on_progress=events.append,
+    )
+
+    assert state.status == "completed"
+    assert state.final_output == VALID_SUMMARY_REPORT
+    assert state.memory_saved is False
+    memory_event = next(event for event in events if event["type"] == "memory_saved")
+    assert memory_event["data"] == {
+        "saved": False,
+        "error": "memory disk unavailable",
+    }
+    assert events[-1]["type"] == "task_completed"
+    assert events[-1]["data"]["status"] == "completed"
 
 
 def test_run_task_can_disable_memory():

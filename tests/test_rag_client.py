@@ -20,8 +20,6 @@ def md_file(tmp_path: Path) -> Path:
 
 
 def test_embedded_mode_default():
-    import os
-
     client = RAGClient(api_url="")
     assert client.mode == "embedded"
 

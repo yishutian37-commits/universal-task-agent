@@ -87,6 +87,28 @@ def test_shell_tool_executes_after_authorization(tmp_path):
     assert result["authorized_by"] == "tester"
 
 
+def test_shell_tool_uses_current_input_instead_of_older_conversation_command(tmp_path):
+    from tools.langchain_common_tools import ShellLangChainTool
+
+    runner = FakeShellRunner()
+    tool = ShellLangChainTool(
+        authorization_manager=FakeAuthorizationManager(approved_decision()),
+        enabled=True,
+        allowed_roots=[tmp_path],
+        command_runner=runner,
+    )
+    query = "\n\n".join(
+        [
+            "以下是同一对话前文。\n- 用户：执行 shell 命令 echo old",
+            "当前用户输入：\n执行 shell 命令 echo current",
+        ]
+    )
+
+    tool.invoke({"query": query})
+
+    assert runner.calls == [("echo current", str(tmp_path), 10)]
+
+
 def test_shell_tool_rejects_dangerous_command(tmp_path):
     from tools.langchain_common_tools import ShellLangChainTool
 
@@ -223,6 +245,28 @@ def test_directory_create_tool_creates_named_folder_in_current_workspace(tmp_pat
     assert (tmp_path / "测试").is_dir()
 
 
+def test_file_write_tool_accepts_path_and_content_from_user_supplement(tmp_path):
+    from tools.langchain_common_tools import FileWriteLangChainTool
+
+    tool = FileWriteLangChainTool(
+        authorization_manager=FakeAuthorizationManager(approved_decision()),
+        enabled=True,
+        allowed_roots=[tmp_path],
+    )
+    output_path = tmp_path / "note.txt"
+    query = "\n\n".join(
+        [
+            "当前用户输入：\n创建文件",
+            f"用户补充信息：\n文件路径是 {output_path}，内容是 hello",
+        ]
+    )
+
+    result = tool.invoke({"query": query})
+
+    assert result["path"] == str(output_path)
+    assert output_path.read_text(encoding="utf-8") == "hello"
+
+
 def test_directory_create_tool_rejects_target_outside_allowed_roots(tmp_path):
     from tools.langchain_common_tools import DirectoryCreateLangChainTool
 
@@ -350,6 +394,26 @@ def test_python_repl_tool_executes_after_authorization(tmp_path):
     assert result["authorized_by"] == "tester"
 
 
+def test_python_repl_tool_uses_current_input_instead_of_older_conversation_code(tmp_path):
+    from tools.langchain_common_tools import PythonReplLangChainTool
+
+    tool = PythonReplLangChainTool(
+        authorization_manager=FakeAuthorizationManager(approved_decision()),
+        enabled=True,
+        allowed_roots=[tmp_path],
+    )
+    query = "\n\n".join(
+        [
+            "以下是同一对话前文。\n- 用户：运行 Python 代码 result = 1",
+            "当前用户输入：\n运行 Python 代码 result = 2",
+        ]
+    )
+
+    result = tool.invoke({"query": query})
+
+    assert result["result_repr"] == "2"
+
+
 def test_python_repl_tool_rejects_forbidden_import_before_authorization(tmp_path):
     from tools.langchain_common_tools import PythonReplLangChainTool
 
@@ -429,6 +493,33 @@ def test_file_delete_tool_extracts_local_file_path_from_query(tmp_path):
 
     assert not target.exists()
     assert Path(result["trash_path"]).read_text(encoding="utf-8") == "old"
+
+
+def test_file_delete_tool_uses_current_input_instead_of_older_conversation_path(tmp_path):
+    from tools.langchain_common_tools import FileDeleteLangChainTool
+
+    old_target = tmp_path / "old.txt"
+    current_target = tmp_path / "current.txt"
+    old_target.write_text("old", encoding="utf-8")
+    current_target.write_text("current", encoding="utf-8")
+    tool = FileDeleteLangChainTool(
+        authorization_manager=FakeAuthorizationManager(approved_decision()),
+        enabled=True,
+        allowed_roots=[tmp_path],
+        trash_root=tmp_path / "trash",
+    )
+    query = "\n\n".join(
+        [
+            f"以下是同一对话前文。\n- 用户：删除文件 {old_target}",
+            f"当前用户输入：\n删除文件 {current_target}",
+        ]
+    )
+
+    result = tool.invoke({"query": query})
+
+    assert old_target.read_text(encoding="utf-8") == "old"
+    assert not current_target.exists()
+    assert Path(result["trash_path"]).read_text(encoding="utf-8") == "current"
 
 
 def test_file_delete_tool_rejects_deleting_allowed_root(tmp_path):

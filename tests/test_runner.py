@@ -10,8 +10,6 @@ import threading
 import time
 from pathlib import Path
 
-import pytest
-
 from core.checkpoint_store import CheckpointStore
 from core.loop import run_minimal_loop
 from core.state import AgentState, Plan, PlanStep, ToolResult
@@ -239,6 +237,86 @@ def test_cancel_running_task_sets_cancelled_status():
 
     assert final["status"] == "cancelled"
     assert final["final_output"] is None
+
+
+def test_cancel_running_task_releases_pending_authorization():
+    class RecordingAuthorizationManager:
+        def __init__(self):
+            self.reasons = []
+
+        def cancel_all(self, reason=""):
+            self.reasons.append(reason)
+            return 1
+
+    runner = _make_runner(SlowTaskSimulator(delay=0.05, steps=50))
+    authorization_manager = RecordingAuthorizationManager()
+    runner.authorization_manager = authorization_manager
+    task_id = runner.start("测试授权取消")
+    time.sleep(0.1)
+
+    result = runner.cancel(task_id)
+
+    assert result["ok"] is True
+    assert authorization_manager.reasons == ["任务已取消"]
+    runner.wait_for_task(task_id, timeout=5)
+
+
+def test_wait_for_task_joins_the_requested_task_thread():
+    class RecordingThread:
+        def __init__(self):
+            self.join_timeouts = []
+
+        def join(self, timeout=None):
+            self.join_timeouts.append(timeout)
+
+    runner = _make_runner()
+    requested_thread = RecordingThread()
+    latest_thread = RecordingThread()
+    runner._threads = {
+        "task_requested": requested_thread,
+        "task_latest": latest_thread,
+    }
+    runner._thread = latest_thread
+    runner._results["task_requested"] = {
+        "task_id": "task_requested",
+        "status": "running",
+        "final_output": None,
+        "state": None,
+        "events": [],
+        "error": None,
+    }
+
+    runner.wait_for_task("task_requested", timeout=0.25)
+
+    assert requested_thread.join_timeouts == [0.25]
+    assert latest_thread.join_timeouts == []
+
+
+def test_cancel_racing_with_task_error_reaches_cancelled_terminal_state():
+    class ErrorAfterRelease:
+        def __init__(self):
+            self.started = threading.Event()
+            self.release = threading.Event()
+
+        def __call__(self, user_input, **kwargs):
+            del user_input, kwargs
+            self.started.set()
+            self.release.wait(timeout=2)
+            raise RuntimeError("late task failure")
+
+    task = ErrorAfterRelease()
+    runner = _make_runner(task)
+    task_id = runner.start("测试取消与异常竞态")
+    assert task.started.wait(timeout=1)
+
+    cancelled = runner.cancel(task_id)
+    task.release.set()
+    final = runner.wait_for_task(task_id, timeout=2)
+
+    assert cancelled["ok"] is True
+    assert final["status"] == "cancelled"
+    assert final["error"] is None
+    assert any(event["type"] == "cancelled" for event in final["events"])
 
 
 def test_resume_task_loads_checkpoint_and_runs_with_resume_flag():

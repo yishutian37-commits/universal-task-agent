@@ -3,7 +3,7 @@ from types import SimpleNamespace
 
 from core.loop import _apply_plan_edits, _request_user_interaction, run_minimal_loop
 from core.interaction import InteractionDecision
-from core.state import AgentState, CriterionResult, Plan, PlanStep, ToolResult
+from core.state import Action, AgentState, CriterionResult, Plan, PlanStep, ToolResult
 from tools.base_tool import BaseTool
 from tools.langchain_adapter import LangChainToolAdapter
 from tools.langchain_common_tools import (
@@ -253,6 +253,48 @@ def test_loop_replays_checkpointed_interaction_with_same_identity():
     assert updated.interaction_history[-1]["request_id"] == "interaction_replay_stable"
 
 
+def test_loop_consumes_checkpointed_terminal_interaction_without_prompting_again():
+    class UnexpectedInteractionManager:
+        def request(self, *args, **kwargs):
+            raise AssertionError("terminal interaction must not be requested again")
+
+    state = AgentState(
+        task_id="task_replay_terminal",
+        user_input="帮我总结",
+        status="waiting_user",
+    )
+    state.pending_interaction = {
+        "request_id": "interaction_terminal",
+        "task_id": state.task_id,
+        "kind": "missing_info",
+        "payload": {"question": "请补充文本"},
+        "status": "accepted",
+        "accepted": True,
+        "response": "库存接口已完成联调。",
+        "steps": [],
+        "created_at": "2026-07-14T20:00:00",
+        "decided_at": "2026-07-14T20:01:00",
+    }
+    state.interaction_history.append(dict(state.pending_interaction))
+
+    decision = _request_user_interaction(
+        state,
+        UnexpectedInteractionManager(),
+        "missing_info",
+        {"question": "请补充文本"},
+    )
+
+    assert decision.accepted is True
+    assert decision.response == "库存接口已完成联调。"
+    assert state.pending_interaction is None
+    assert state.status == "running"
+    assert [
+        item["request_id"]
+        for item in state.interaction_history
+        if item.get("request_id") == "interaction_terminal"
+    ] == ["interaction_terminal"]
+
+
 def test_interaction_timeout_records_explicit_recoverable_status():
     state = AgentState(task_id="task_timeout_state", user_input="继续任务")
     manager = ReplayInteractionManager(
@@ -299,6 +341,79 @@ def test_minimal_loop_fails_unknown_task_instead_of_claiming_mock_success():
     assert "不支持" in updated.final_output
 
 
+def test_loop_rejects_empty_plan_instead_of_claiming_completion():
+    class EmptyPlanner:
+        def create_plan(self, task, matched_skill=None, failure_context=None, existing_plan=None):
+            del matched_skill, failure_context, existing_plan
+            return Plan(plan_id=f"plan_{task.task_id}", task_id=task.task_id, steps=[])
+
+    state = AgentState(task_id="task_empty_plan", user_input="执行任务")
+
+    updated = run_minimal_loop(state, planner=EmptyPlanner())
+
+    assert updated.status == "failed"
+    assert updated.plan is not None
+    assert updated.plan.status == "failed"
+    assert updated.final_output == "计划没有可执行步骤"
+
+
+def test_loop_fails_safely_when_required_information_has_no_interaction_channel():
+    state = AgentState(
+        task_id="task_missing_without_channel",
+        user_input="帮我总结",
+        missing_info=["需要总结的文本"],
+    )
+
+    updated = run_minimal_loop(state, interaction_manager=None)
+
+    assert updated.status == "failed"
+    assert updated.final_output == "缺少任务必需信息：需要总结的文本"
+    assert updated.plan is None
+
+
+def test_loop_uses_structured_tool_result_as_completed_task_output():
+    class SingleStepPlanner:
+        def create_plan(self, task, matched_skill=None, failure_context=None, existing_plan=None):
+            del matched_skill, failure_context, existing_plan
+            return Plan(
+                plan_id=f"plan_{task.task_id}",
+                task_id=task.task_id,
+                steps=[PlanStep(step_id=1, goal="创建输出")],
+            )
+
+    class StructuredRouter:
+        def choose_tool(self, state, step):
+            return Action(
+                action_id=f"action_{state.task_id}_{step.step_id}",
+                step_id=step.step_id,
+                tool_name="structured_tool",
+                action_name="run",
+                params={},
+                reason="test",
+            )
+
+    class StructuredTool(BaseTool):
+        name = "structured_tool"
+        description = "returns structured data"
+
+        def run(self, action_name, params):
+            del action_name, params
+            return {"path": "/tmp/output.txt", "created": True}
+
+    state = AgentState(task_id="task_structured_output", user_input="创建输出")
+
+    updated = run_minimal_loop(
+        state,
+        tool_registry={"structured_tool": StructuredTool()},
+        planner=SingleStepPlanner(),
+        router=StructuredRouter(),
+    )
+
+    assert updated.status == "completed"
+    assert '"path": "/tmp/output.txt"' in updated.final_output
+    assert '"created": true' in updated.final_output
+
+
 def test_loop_requests_missing_information_before_planning_and_continues():
     manager = ImmediateInteractionManager(
         [
@@ -336,6 +451,32 @@ def test_loop_requests_missing_information_before_planning_and_continues():
     assert updated.missing_info == []
     assert updated.pending_interaction is None
     assert updated.interaction_history[-1]["status"] == "accepted"
+
+
+def test_loop_does_not_clear_missing_information_after_empty_confirmation():
+    manager = ImmediateInteractionManager(
+        [
+            InteractionDecision(
+                request_id="interaction_empty_missing_info",
+                accepted=True,
+                status="accepted",
+                response="   ",
+            )
+        ]
+    )
+    state = AgentState(
+        task_id="task_empty_missing_info",
+        user_input="帮我总结",
+        task_type="summarize",
+        missing_info=["需要总结的文本"],
+    )
+
+    updated = run_minimal_loop(state, interaction_manager=manager)
+
+    assert updated.status == "failed"
+    assert updated.missing_info == ["需要总结的文本"]
+    assert updated.plan is None
+    assert updated.final_output == "用户未提供任务所需信息"
 
 
 def test_loop_retries_current_step_once_after_user_supplies_missing_path():
@@ -393,6 +534,99 @@ def test_loop_retries_current_step_once_after_user_supplies_missing_path():
     assert updated.status == "completed"
     assert tool.calls == 2
     assert "正确路径是 /tmp/input.md" in tool.inputs[1]
+
+
+def test_loop_user_supplement_completes_missing_file_write_arguments(tmp_path):
+    output_path = tmp_path / "supplemented.txt"
+    manager = ImmediateInteractionManager(
+        [
+            InteractionDecision(
+                request_id="interaction_file_write_arguments",
+                accepted=True,
+                status="accepted",
+                response=f"文件路径是 {output_path}，内容是 hello",
+            )
+        ]
+    )
+    tool = FileWriteLangChainTool(
+        authorization_manager=AutoApproveAuthorization(),
+        enabled=True,
+        allowed_roots=[tmp_path],
+    )
+    state = AgentState(
+        task_id="task_supplement_file_write",
+        user_input="创建文件",
+        task_type="langchain_tool",
+        workspace_path=str(tmp_path),
+        max_replans=0,
+    )
+
+    updated = run_minimal_loop(
+        state,
+        tool_registry={
+            "langchain_file_write_tool": LangChainToolAdapter(tool),
+        },
+        interaction_manager=manager,
+    )
+
+    assert updated.status == "completed"
+    assert manager.requests[0]["kind"] == "step_input"
+    assert output_path.read_text(encoding="utf-8") == "hello"
+    assert len(updated.results) == 2
+    assert updated.results[0].success is False
+    assert updated.results[1].success is True
+
+
+def test_loop_does_not_retry_step_after_empty_user_supplement():
+    class MissingPathTool(BaseTool):
+        name = "file_tool"
+        description = "requires a path"
+
+        def __init__(self):
+            self.calls = 0
+
+        def run(self, action_name, params):
+            del action_name, params
+            self.calls += 1
+            raise FileNotFoundError("文件路径不存在")
+
+    class SingleStepPlanner:
+        def create_plan(self, task, matched_skill=None, failure_context=None, existing_plan=None):
+            del matched_skill, failure_context, existing_plan
+            return Plan(
+                plan_id=f"plan_{task.task_id}",
+                task_id=task.task_id,
+                steps=[PlanStep(step_id=1, goal="读取文件", max_retries=0)],
+            )
+
+    manager = ImmediateInteractionManager(
+        [
+            InteractionDecision(
+                request_id="interaction_empty_step_input",
+                accepted=True,
+                status="accepted",
+                response="  ",
+            )
+        ]
+    )
+    tool = MissingPathTool()
+    state = AgentState(
+        task_id="task_empty_step_input",
+        user_input="读取那个文件",
+        task_type="summarize",
+        max_replans=0,
+    )
+
+    updated = run_minimal_loop(
+        state,
+        tool_registry={"file_tool": tool},
+        planner=SingleStepPlanner(),
+        interaction_manager=manager,
+    )
+
+    assert updated.status == "failed"
+    assert updated.final_output == "用户未提供当前步骤所需信息"
+    assert tool.calls == 1
 
 
 def test_loop_allows_user_to_edit_complex_plan_before_execution():

@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from core.intent_rules import current_user_input
 from tools.base_tool import BaseTool
 
 
@@ -44,7 +45,7 @@ class LangChainToolAdapter(BaseTool):
         for key in ("query", "user_input", "goal"):
             value = params.get(key)
             if isinstance(value, str) and value.strip():
-                return {"query": value.strip()}
+                return {"query": current_user_input(value)}
 
         return {"query": ""}
 

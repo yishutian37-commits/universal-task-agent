@@ -2,6 +2,7 @@ from pathlib import Path
 import re
 from typing import Any
 
+from core.intent_rules import current_user_input
 from tools.base_tool import BaseTool
 
 
@@ -88,10 +89,7 @@ class FileTool(BaseTool):
 
     @staticmethod
     def _current_user_input(user_input: str) -> str:
-        matches = list(re.finditer(r"(?:^|\n)当前用户输入[:：]\s*", str(user_input or "")))
-        if not matches:
-            return str(user_input or "").strip()
-        return str(user_input or "")[matches[-1].end() :].strip()
+        return current_user_input(user_input)
 
     def _find_existing_path(self, text: str) -> Path | None:
         for token in self._supported_path_tokens(text):

@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import re
 import shutil
+import ssl
 import subprocess
 from collections.abc import Iterable, Iterator
 from typing import Any, Callable
@@ -154,7 +155,7 @@ class LLMClient:
         payload: dict[str, Any],
         timeout: int,
     ) -> dict[str, Any]:
-        verify: str | bool = certifi.where() if self.ssl_verify else False
+        verify = self._httpx_verify()
         try:
             with httpx.Client(timeout=timeout, verify=verify) as client:
                 response = client.post(endpoint, headers=headers, json=payload)
@@ -179,7 +180,7 @@ class LLMClient:
         payload: dict[str, Any],
         timeout: int,
     ) -> Iterator[str]:
-        verify: str | bool = certifi.where() if self.ssl_verify else False
+        verify = self._httpx_verify()
         try:
             with httpx.Client(timeout=timeout, verify=verify) as client:
                 with client.stream("POST", endpoint, headers=headers, json=payload) as response:
@@ -192,6 +193,11 @@ class LLMClient:
             raise LLMClientError(f"LLM HTTP error {exc.response.status_code}: {exc.response.text}") from exc
         except httpx.RequestError as exc:
             raise LLMClientError(f"LLM network error: {exc}") from exc
+
+    def _httpx_verify(self) -> ssl.SSLContext | bool:
+        if not self.ssl_verify:
+            return False
+        return ssl.create_default_context(cafile=certifi.where())
 
     @staticmethod
     def _parse_stream_line(line: str | bytes) -> str | None:

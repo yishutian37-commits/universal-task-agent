@@ -137,6 +137,7 @@ const state = {
 };
 
 const runLifecycle = window.UTAShell.createRunLifecycle();
+let runPreflightActive = false;
 const memoryOperations = window.UTAShell.createMemoryOperationLifecycle();
 const terminalSync = {
   syncedTaskIds: new Set(),
@@ -690,6 +691,11 @@ async function respondTaskInteraction(accepted) {
     ? els.taskInteractionSteps.value.split(/\r?\n/).map((item) => item.trim()).filter(Boolean).slice(0, 8)
     : [];
   const response = isPlan ? "" : els.taskInteractionResponse.value.trim();
+  if (!isPlan && accepted && !response) {
+    showToast("请输入补充信息", "请输入需要补充的信息后再继续");
+    els.taskInteractionResponse.focus();
+    return;
+  }
   els.acceptTaskInteraction.disabled = true;
   els.rejectTaskInteraction.disabled = true;
   try {
@@ -1519,6 +1525,7 @@ function renderSkillErrors(errors) {
 function resetRunSurface() {
   setTaskPanelOpen(false);
   setStopTaskVisible(false);
+  closeAuthorizationModal();
   closeTaskInteractionModal();
   els.taskInput.readOnly = false;
   els.runTask.disabled = false;
@@ -1544,7 +1551,7 @@ function resetRunSurface() {
 
 async function runTask(options = {}) {
   const workspaceRetry = options && options.workspaceRetry === true;
-  if (runLifecycle.isBusy()) {
+  if (runLifecycle.isBusy() || runPreflightActive) {
     showToast("任务运行中", "当前版本一次只运行一个任务");
     return;
   }
@@ -1557,7 +1564,11 @@ async function runTask(options = {}) {
     return;
   }
 
+  const requestRevision = state.conversationRevision;
+  const requestConversationId = state.conversationId;
+
   if (!workspaceRetry) {
+    runPreflightActive = true;
     try {
       const requirements = await callApi("get_message_requirements", text);
       if (requirements.workspace_required && !state.workspacePath && !requestAttachments.length) {
@@ -1567,11 +1578,17 @@ async function runTask(options = {}) {
     } catch (error) {
       showToast("无法检查工作区", error.message);
       return;
+    } finally {
+      runPreflightActive = false;
     }
   }
 
-  const requestRevision = state.conversationRevision;
-  const requestConversationId = state.conversationId;
+  if (state.conversationRevision !== requestRevision) return;
+  if (runLifecycle.isBusy()) {
+    showToast("任务运行中", "当前版本一次只运行一个任务");
+    return;
+  }
+
   resetRunSurface();
   const attachmentLabel = requestAttachments.length
     ? `\n\n附件：${requestAttachments.map((item) => item.name).join("、")}`
@@ -1751,7 +1768,7 @@ async function discardRecoveryTask(taskId) {
 }
 
 async function resumeTask(taskId = "") {
-  if (runLifecycle.isBusy()) {
+  if (runLifecycle.isBusy() || runPreflightActive) {
     showToast("任务运行中", "当前版本一次只运行一个任务");
     return;
   }
@@ -1770,6 +1787,10 @@ async function resumeTask(taskId = "") {
     await openConversation(resumeContext.conversation_id);
     if (state.conversationId !== resumeContext.conversation_id) return;
   }
+  if (runLifecycle.isBusy() || runPreflightActive) {
+    showToast("任务运行中", "当前版本一次只运行一个任务");
+    return;
+  }
 
   resetRunSurface();
   state.taskId = resumeTaskId;
@@ -1783,11 +1804,16 @@ async function resumeTask(taskId = "") {
     conversationRevision: state.conversationRevision,
     assistantId: assistant.id
   });
+  if (!requestContext) {
+    showToast("任务运行中", "当前版本一次只运行一个任务");
+    return;
+  }
   setStatus("running", "恢复中");
   els.taskIdLabel.textContent = resumeTaskId;
   els.taskInput.readOnly = true;
   els.runTask.disabled = true;
   els.resumeTask.disabled = true;
+  els.attachFiles.disabled = true;
 
   try {
     const result = await callApi("resume_task", resumeTaskId);
@@ -2081,6 +2107,8 @@ async function handleProgress(event) {
   }
 
   if (event.type === "task_completed") {
+    closeAuthorizationModal();
+    closeTaskInteractionModal();
     setStopTaskVisible(false);
     unlockComposerIfIdle();
     const cancelled = data.status === "cancelled";
@@ -2100,6 +2128,8 @@ async function handleProgress(event) {
   }
 
   if (event.type === "error") {
+    closeAuthorizationModal();
+    closeTaskInteractionModal();
     setStopTaskVisible(false);
     unlockComposerIfIdle();
     setStatus("error", "失败");
@@ -2109,6 +2139,8 @@ async function handleProgress(event) {
   }
 
   if (event.type === "cancelled") {
+    closeAuthorizationModal();
+    closeTaskInteractionModal();
     setStopTaskVisible(false);
     unlockComposerIfIdle();
     setStatus("done", "已停止");

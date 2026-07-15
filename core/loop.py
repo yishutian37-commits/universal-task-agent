@@ -12,6 +12,7 @@ from core.evidence import (
     snapshot_workspace,
 )
 from core.executor import Executor
+from core.interaction import InteractionDecision
 from core.planner import Planner
 from core.reflection import Reflection
 from core.router import Router
@@ -202,14 +203,22 @@ def _request_user_interaction(
     checkpoint_store=None,
 ):
     restored = state.pending_interaction if isinstance(state.pending_interaction, dict) else None
-    can_replay = bool(
+    restored_matches = bool(
         restored
         and restored.get("request_id")
         and str(restored.get("task_id") or state.task_id) == state.task_id
         and str(restored.get("kind") or "") == kind
-        and str(restored.get("status") or "pending") == "pending"
     )
-    if can_replay:
+    restored_status = str(restored.get("status") or "pending") if restored_matches else ""
+    can_replay = restored_matches and restored_status == "pending"
+    can_consume = restored_matches and restored_status in {
+        "accepted",
+        "rejected",
+        "cancelled",
+        "timeout",
+        "timed_out",
+    }
+    if can_replay or can_consume:
         request_id = str(restored.get("request_id") or "")
         created_at = str(restored.get("created_at") or state.updated_at)
         restored_payload = restored.get("payload")
@@ -222,39 +231,49 @@ def _request_user_interaction(
         created_at = state.updated_at
         request_payload = dict(payload)
 
-    state.status = "waiting_user"
-    state.pending_interaction = {
-        "request_id": request_id,
-        "task_id": state.task_id,
-        "kind": kind,
-        "payload": request_payload,
-        "status": "pending",
-        "created_at": created_at,
-    }
-    state.touch()
-    _emit_progress(
-        on_progress,
-        "waiting_user",
-        state,
-        {
-            **request_payload,
+    if can_consume:
+        decision = InteractionDecision(
+            request_id=request_id,
+            accepted=bool(restored.get("accepted")),
+            status=restored_status,
+            response=str(restored.get("response") or ""),
+            steps=list(restored.get("steps") or []),
+        )
+        decided_at = str(restored.get("decided_at") or state.updated_at)
+    else:
+        state.status = "waiting_user"
+        state.pending_interaction = {
             "request_id": request_id,
             "task_id": state.task_id,
             "kind": kind,
+            "payload": request_payload,
             "status": "pending",
             "created_at": created_at,
-        },
-        checkpoint_store=checkpoint_store,
-    )
-    decision = interaction_manager.request(
-        kind,
-        request_payload,
-        task_id=state.task_id,
-        request_id=request_id,
-        created_at=created_at,
-    )
-    state.touch()
-    decided_at = state.updated_at
+        }
+        state.touch()
+        _emit_progress(
+            on_progress,
+            "waiting_user",
+            state,
+            {
+                **request_payload,
+                "request_id": request_id,
+                "task_id": state.task_id,
+                "kind": kind,
+                "status": "pending",
+                "created_at": created_at,
+            },
+            checkpoint_store=checkpoint_store,
+        )
+        decision = interaction_manager.request(
+            kind,
+            request_payload,
+            task_id=state.task_id,
+            request_id=request_id,
+            created_at=created_at,
+        )
+        state.touch()
+        decided_at = state.updated_at
     decision_record = {
         "request_id": request_id,
         "task_id": state.task_id,
@@ -266,7 +285,11 @@ def _request_user_interaction(
         "created_at": created_at,
         "decided_at": decided_at,
     }
-    state.interaction_history.append(decision_record)
+    if not any(
+        str(item.get("request_id") or "") == request_id
+        for item in state.interaction_history
+    ):
+        state.interaction_history.append(decision_record)
     state.pending_interaction = {
         **state.pending_interaction,
         "status": decision.status,
@@ -280,7 +303,7 @@ def _request_user_interaction(
     state.pending_interaction = None
     if decision.accepted:
         state.status = "running"
-    elif decision.status == "timeout":
+    elif decision.status in {"timeout", "timed_out"}:
         state.status = "timed_out"
     else:
         state.status = "cancelled"
@@ -423,7 +446,14 @@ def run_minimal_loop(
     verifier = Verifier()
     reflection = Reflection()
 
-    if state.missing_info and interaction_manager is not None:
+    if state.missing_info and interaction_manager is None:
+        state.status = "failed"
+        state.final_output = "缺少任务必需信息：" + "；".join(state.missing_info)
+        state.touch()
+        _save_checkpoint(checkpoint_store, state)
+        return state
+
+    if state.missing_info:
         question = "请补充以下信息：" + "；".join(state.missing_info)
         decision = _request_user_interaction(
             state,
@@ -436,9 +466,14 @@ def run_minimal_loop(
         if not decision.accepted:
             state.final_output = "用户未提供任务所需信息"
             return state
-        if decision.response.strip():
-            base_input = state.execution_input or state.user_input
-            state.execution_input = f"{base_input}\n\n用户补充信息：\n{decision.response.strip()}"
+        if not decision.response.strip():
+            state.status = "failed"
+            state.final_output = "用户未提供任务所需信息"
+            state.touch()
+            _save_checkpoint(checkpoint_store, state)
+            return state
+        base_input = state.execution_input or state.user_input
+        state.execution_input = f"{base_input}\n\n用户补充信息：\n{decision.response.strip()}"
         state.missing_info = []
 
     if state.plan is None:
@@ -456,6 +491,13 @@ def run_minimal_loop(
             else None
         )
         event_type = "plan_resumed"
+    if not state.plan.steps:
+        state.plan.status = "failed"
+        state.status = "failed"
+        state.final_output = "计划没有可执行步骤"
+        state.touch()
+        _save_checkpoint(checkpoint_store, state)
+        return state
     state.status = "running"
     _emit_progress(
         on_progress,
@@ -639,9 +681,22 @@ def run_minimal_loop(
                 if not decision.accepted:
                     state.final_output = "用户取消了当前步骤"
                     return state
-                if decision.response.strip():
-                    base_input = state.execution_input or state.user_input
-                    state.execution_input = f"{base_input}\n\n用户补充信息：\n{decision.response.strip()}"
+                if not decision.response.strip():
+                    step.status = "failed"
+                    state.plan.status = "failed"
+                    state.status = "failed"
+                    state.final_output = "用户未提供当前步骤所需信息"
+                    state.touch()
+                    _emit_progress(
+                        on_progress,
+                        "step_done",
+                        state,
+                        {"step_id": step.step_id, "status": step.status},
+                        checkpoint_store=checkpoint_store,
+                    )
+                    return state
+                base_input = state.execution_input or state.user_input
+                state.execution_input = f"{base_input}\n\n用户补充信息：\n{decision.response.strip()}"
                 user_input_requested_steps.add(step.step_id)
                 attempt += 1
                 if attempt > step.max_retries:
@@ -736,7 +791,7 @@ def run_minimal_loop(
     if state.task_type == "complex_task":
         state.final_output = _complex_task_output(state)
     elif state.results:
-        state.final_output = state.results[-1].result.get("message", "")
+        state.final_output = _result_text(state.results[-1])
 
     if all(step.status == "completed" for step in state.plan.steps):
         state.plan.status = "completed"

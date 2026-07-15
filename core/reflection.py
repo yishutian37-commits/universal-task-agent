@@ -32,6 +32,11 @@ class Reflection:
                 "未提供",
                 "缺少输入",
                 "路径不存在",
+                "缺少文件路径",
+                "缺少目录路径",
+                "缺少删除路径",
+                "缺少 shell 命令",
+                "缺少 python 代码",
                 "no such file",
                 "missing input",
             )

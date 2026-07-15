@@ -54,7 +54,7 @@ class TaskRunner:
         self.authorization_manager = AuthorizationManager(on_request=self._emit_authorization_request)
         self.interaction_manager = TaskInteractionManager(on_request=self._emit_interaction_request)
         self._lock = threading.Lock()
-        self._thread: threading.Thread | None = None
+        self._threads: dict[str, threading.Thread] = {}
         self._running_task_id: str | None = None
         self._cancel_event = threading.Event()
         self._results: dict[str, dict[str, Any]] = {}
@@ -96,7 +96,8 @@ class TaskRunner:
             name=f"uta-desktop-{task_id}",
             daemon=True,
         )
-        self._thread = thread
+        with self._lock:
+            self._threads[task_id] = thread
         thread.start()
         return task_id
 
@@ -142,7 +143,8 @@ class TaskRunner:
             name=f"uta-desktop-resume-{checkpoint.task_id}",
             daemon=True,
         )
-        self._thread = thread
+        with self._lock:
+            self._threads[checkpoint.task_id] = thread
         thread.start()
         recovery_context = self._checkpoint_recovery_context(checkpoint)
         return {
@@ -225,11 +227,15 @@ class TaskRunner:
             if self._running_task_id != task_id:
                 return {"ok": False, "error": "任务不在运行中"}
             self._cancel_event.set()
+        cancel_authorizations = getattr(self.authorization_manager, "cancel_all", None)
+        if callable(cancel_authorizations):
+            cancel_authorizations(reason="任务已取消")
         self.interaction_manager.cancel_for_task(task_id)
         return {"ok": True, "task_id": task_id, "status": "cancelling"}
 
     def wait_for_task(self, task_id: str, timeout: float | None = None) -> dict[str, Any]:
-        thread = self._thread
+        with self._lock:
+            thread = self._threads.get(task_id)
         if thread is not None:
             thread.join(timeout=timeout)
         return self.get_result(task_id)
@@ -296,23 +302,16 @@ class TaskRunner:
                     }
                 )
         except TaskCancelledError:
-            with self._lock:
-                self._results[task_id].update(
-                    {
-                        "status": "cancelled",
-                        "final_output": None,
-                    }
-                )
-            self._emit_progress_safely(
-                {"type": "cancelled", "task_id": task_id, "data": {}}
-            )
+            self._finish_cancelled(task_id)
         except Exception as exc:
+            if self._cancel_event.is_set():
+                self._finish_cancelled(task_id)
+                return
             event = {
                 "type": "error",
                 "task_id": task_id,
                 "data": {"message": str(exc)},
             }
-            self._emit_progress(event)
             with self._lock:
                 self._results[task_id].update(
                     {
@@ -321,10 +320,25 @@ class TaskRunner:
                         "traceback": traceback.format_exc(),
                     }
                 )
+            self._emit_progress_safely(event)
         finally:
             with self._lock:
                 if self._running_task_id == task_id:
                     self._running_task_id = None
+                self._threads.pop(task_id, None)
+
+    def _finish_cancelled(self, task_id: str) -> None:
+        with self._lock:
+            self._results[task_id].update(
+                {
+                    "status": "cancelled",
+                    "final_output": None,
+                    "error": None,
+                }
+            )
+        self._emit_progress_safely(
+            {"type": "cancelled", "task_id": task_id, "data": {}}
+        )
 
     def _emit_progress(self, event: dict[str, Any]) -> None:
         # 取消检查点：loop 在每次 LLM 调用前后都会调 on_progress（即此方法），

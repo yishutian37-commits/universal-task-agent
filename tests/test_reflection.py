@@ -1,5 +1,6 @@
 from core.reflection import Reflection
 from core.state import AgentState, CheckResult, PlanStep, ToolResult
+import pytest
 
 
 def test_reflection_classifies_incomplete_output():
@@ -51,6 +52,31 @@ def test_reflection_requests_user_input_when_required_file_path_is_missing():
         passed=False,
         failed_reasons=["工具执行失败：tool_error: 文件路径不存在"],
         suggested_fix=["请提供正确文件路径"],
+    )
+
+    feedback = Reflection().analyze(state, step, result, check)
+
+    assert feedback.need_user_input is True
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        "tool_error: 缺少文件路径",
+        "tool_error: 缺少目录路径或目录名称",
+        "tool_error: 缺少删除路径",
+        "tool_error: 缺少 Shell 命令",
+        "tool_error: 缺少 Python 代码",
+    ],
+)
+def test_reflection_requests_user_input_for_missing_tool_arguments(error):
+    state = AgentState(task_id="task_missing_argument", user_input="执行操作")
+    step = PlanStep(step_id=1, goal="执行操作")
+    result = ToolResult(False, "langchain_tool", "invoke", {}, error=error)
+    check = CheckResult(
+        passed=False,
+        failed_reasons=[f"工具执行失败：{error}"],
+        suggested_fix=["检查工具名称或工具实现"],
     )
 
     feedback = Reflection().analyze(state, step, result, check)

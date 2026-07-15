@@ -286,6 +286,12 @@ def test_fallback_replan_changes_failed_step_with_repair_strategy():
     planner = Planner()
     existing_plan = planner.create_plan(make_task("summarize"))
     existing_plan.steps[0].status = "completed"
+    existing_plan.steps[1].status = "failed"
+    existing_plan.steps[1].tool_hint = "text_tool"
+    existing_plan.steps[1].action_hint = "process"
+    existing_plan.steps[1].inputs = {"format": "stale"}
+    existing_plan.steps[1].success_criteria = ["旧标准"]
+    existing_plan.steps[1].requires_authorization = True
 
     plan = planner.create_plan(
         make_task("summarize"),
@@ -300,6 +306,12 @@ def test_fallback_replan_changes_failed_step_with_repair_strategy():
     assert plan.steps[0].status == "completed"
     assert plan.steps[1].goal != existing_plan.steps[1].goal
     assert "补齐必要小节" in plan.steps[1].goal
+    assert plan.steps[1].status == "pending"
+    assert plan.steps[1].tool_hint is None
+    assert plan.steps[1].action_hint is None
+    assert plan.steps[1].inputs == {}
+    assert plan.steps[1].success_criteria == []
+    assert plan.steps[1].requires_authorization is False
 
 
 def test_planner_creates_data_analysis_plan():

@@ -36,6 +36,15 @@ def _evidence_payload(value: Any) -> dict[str, list[dict[str, Any]]]:
     }
 
 
+def _int_or_default(value: Any, default: int) -> int:
+    if value is None:
+        return default
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
 @dataclass
 class Task:
     task_id: str
@@ -175,7 +184,7 @@ class AgentState:
             missing_info=[str(item) for item in payload.get("missing_info") or []],
             status=str(payload.get("status") or "initialized"),
             current_step_id=int(payload.get("current_step_id") or 0),
-            max_replans=int(payload.get("max_replans") or 1),
+            max_replans=_int_or_default(payload.get("max_replans"), 1),
             replan_count=int(payload.get("replan_count") or 0),
             replan_events=_list_of_dicts(payload.get("replan_events")),
             evidence=_evidence_payload(payload.get("evidence")),
@@ -200,7 +209,7 @@ class AgentState:
                         step_id=int(step.get("step_id") or 0),
                         goal=str(step.get("goal") or ""),
                         status=str(step.get("status") or "pending"),
-                        max_retries=int(step.get("max_retries") or 2),
+                        max_retries=_int_or_default(step.get("max_retries"), 2),
                         tool_hint=str(step.get("tool_hint")) if step.get("tool_hint") else None,
                         action_hint=str(step.get("action_hint")) if step.get("action_hint") else None,
                         inputs=dict(step.get("inputs") or {}),

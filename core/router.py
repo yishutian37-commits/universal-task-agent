@@ -1,7 +1,7 @@
 import json
 from typing import Any
 
-from core.intent_rules import langchain_tool_name
+from core.intent_rules import current_user_input, langchain_tool_name
 from core.state import Action, AgentState, PlanStep
 from core.tool_catalog import build_tool_catalog, get_action_contract, validate_action_params
 
@@ -208,7 +208,7 @@ class Router:
         return any(keyword in text for keyword in self.LOCAL_COMPUTER_ACTION_KEYWORDS)
 
     def _langchain_action(self, state: AgentState, step: PlanStep) -> Action:
-        text = state.user_input
+        text = current_user_input(state.execution_input or state.user_input)
         tool_name = langchain_tool_name(text)
         if tool_name is None:
             return self._unsupported_action(state, step, "没有匹配到安全 LangChain 工具")
@@ -221,14 +221,8 @@ class Router:
             action_name,
             f"LangChain 工具路由：{tool_name}",
         )
-        if tool_name in {
-            "langchain_directory_create_tool",
-            "langchain_file_delete_tool",
-            "langchain_file_write_tool",
-            "langchain_shell_tool",
-            "langchain_python_repl_tool",
-        }:
-            action.params["tool_input"] = {"query": state.user_input}
+        if tool_name.startswith("langchain_"):
+            action.params["tool_input"] = {"query": text}
         return action
 
     def _unsupported_action(self, state: AgentState, step: PlanStep, reason: str) -> Action:

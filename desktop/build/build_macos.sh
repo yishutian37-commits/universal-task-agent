@@ -64,9 +64,11 @@ echo "==> 构建 UTA Desktop.app"
   --noconfirm
 
 echo "==> 打包 zip"
+ARCHIVE_PATH="dist/UTA Desktop-macos.zip"
+rm -f "$ARCHIVE_PATH"
 if command -v ditto >/dev/null 2>&1; then
   ditto -c -k --keepParent --norsrc --noextattr --noqtn --noacl \
-    "dist/UTA Desktop.app" "dist/UTA Desktop-macos.zip"
+    "dist/UTA Desktop.app" "$ARCHIVE_PATH"
 else
   (cd dist && zip -qr "UTA Desktop-macos.zip" "UTA Desktop.app")
 fi

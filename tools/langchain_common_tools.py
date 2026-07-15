@@ -19,6 +19,7 @@ from zoneinfo import ZoneInfo
 
 import httpx
 
+from core.intent_rules import current_user_input
 from tools.search_tool import SearchTool
 
 
@@ -31,13 +32,6 @@ def _text_from_input(tool_input: Any, *keys: str) -> str:
             if isinstance(value, str) and value.strip():
                 return value.strip()
     return ""
-
-
-def _current_user_input(text: str) -> str:
-    matches = list(re.finditer(r"(?:^|\n)当前用户输入[:：]\s*", str(text or "")))
-    if not matches:
-        return str(text or "").strip()
-    return str(text or "")[matches[-1].end() :].strip()
 
 
 def _path_within_roots(path: Path, allowed_roots: list[Path]) -> bool:
@@ -431,7 +425,7 @@ class ShellLangChainTool:
         }
 
     def _command_from_input(self, tool_input: Any) -> str:
-        command = _text_from_input(tool_input, "command", "query")
+        command = current_user_input(_text_from_input(tool_input, "command", "query"))
         command = re.sub(r"^(请|帮我|请帮我)?(执行|运行)?\s*(shell|终端)?\s*(命令)?[:：]?", "", command, flags=re.IGNORECASE).strip()
         if not command:
             raise ValueError("缺少 Shell 命令")
@@ -544,7 +538,7 @@ class DirectoryCreateLangChainTool:
         path_text = _text_from_input(tool_input, "path", "target_path")
         if path_text:
             return path_text
-        query = _current_user_input(_text_from_input(tool_input, "query"))
+        query = current_user_input(_text_from_input(tool_input, "query"))
         desktop_match = re.search(
             r"(?:在)?桌面(?:上)?(?:创建|新建)(?:一个)?(?:名为|名叫|名字叫|叫)?\s*[‘’“”\"']?(.+?)[‘’“”\"']?(?:的)?(?:文件夹|目录)",
             query,
@@ -653,10 +647,14 @@ class FileWriteLangChainTool:
         if path_text:
             return path_text, content
 
-        query = _text_from_input(tool_input, "query")
+        query = current_user_input(_text_from_input(tool_input, "query"))
         match = re.search(r"(?:写入文件|创建文件|覆盖文件|追加文件)\s+(\S+)\s+内容\s+(.+)", query, flags=re.DOTALL)
         if match:
             return match.group(1), match.group(2)
+        path_match = re.search(r"(?:文件)?路径(?:是|为|[:：])\s*([^\s，,]+)", query)
+        content_match = re.search(r"内容(?:是|为|[:：])\s*(.+)", query, flags=re.DOTALL)
+        if path_match and content_match:
+            return path_match.group(1), content_match.group(1).strip()
         raise ValueError("缺少文件路径")
 
     def _request_authorization(self, operation: dict[str, Any]):
@@ -726,7 +724,7 @@ class PythonReplLangChainTool:
     def invoke(self, tool_input: Any) -> dict[str, Any]:
         if not self.enabled:
             raise PermissionError("高风险工具未启用")
-        code = _text_from_input(tool_input, "code", "query")
+        code = current_user_input(_text_from_input(tool_input, "code", "query"))
         code = self._code_from_text(code)
         if not code:
             raise ValueError("缺少 Python 代码")
@@ -880,7 +878,7 @@ class FileDeleteLangChainTool:
         path_text = _text_from_input(tool_input, "path", "target_path")
         if path_text:
             return path_text
-        query = _text_from_input(tool_input, "query")
+        query = current_user_input(_text_from_input(tool_input, "query"))
         match = re.search(r"(?:删除文件|删除目录|删除本地文件|移除文件|移除目录|移除本地文件)\s+(\S+)", query)
         if match:
             return match.group(1)

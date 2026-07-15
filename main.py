@@ -138,17 +138,25 @@ def run_task(
         llm_client=planning_client,
         interaction_manager=interaction_manager,
     )
+    memory_error = ""
     if memory_provider is False:
         state.memory_saved = False
     else:
         provider = memory_provider if memory_provider is not None else JsonMemoryProvider()
-        provider.save_task(state)
-        state.memory_saved = True
+        try:
+            provider.save_task(state)
+            state.memory_saved = True
+        except Exception as exc:
+            state.memory_saved = False
+            memory_error = str(exc)
+    memory_event = {"saved": state.memory_saved}
+    if memory_error:
+        memory_event["error"] = memory_error
     emit_progress(
         on_progress,
         "memory_saved",
         state,
-        {"saved": state.memory_saved},
+        memory_event,
         checkpoint_store=checkpoint_store,
     )
     emit_progress(

@@ -94,6 +94,20 @@ class AuthorizationManager:
         pending.event.set()
         return {"ok": True, "request_id": request_id, "status": "rejected"}
 
+    def cancel_all(self, reason: str = "") -> int:
+        with self._lock:
+            pending_items = list(self._pending.items())
+            self._pending.clear()
+        for request_id, pending in pending_items:
+            pending.decision = AuthorizationDecision(
+                request_id=request_id,
+                approved=False,
+                status="cancelled",
+                reason=reason or "任务已取消",
+            )
+            pending.event.set()
+        return len(pending_items)
+
     def _pop_pending(self, request_id: str) -> _PendingAuthorization | None:
         with self._lock:
             return self._pending.pop(str(request_id or ""), None)

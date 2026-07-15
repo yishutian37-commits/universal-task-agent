@@ -111,6 +111,18 @@ def test_frontend_supports_missing_info_and_plan_confirmation_interactions():
     assert "state.pendingInteraction" in js
 
 
+def test_frontend_rejects_empty_missing_info_response_before_api_call():
+    js = (FRONTEND_ROOT / "app.js").read_text(encoding="utf-8")
+    respond_start = js.index("async function respondTaskInteraction")
+    respond_end = js.index("async function loadSettings", respond_start)
+    respond = js[respond_start:respond_end]
+    empty_guard = respond.index("if (!isPlan && accepted && !response)")
+    api_call = respond.index('callApi("respond_task_interaction"')
+
+    assert empty_guard < api_call
+    assert "请输入需要补充的信息" in respond[empty_guard:api_call]
+
+
 def test_frontend_deduplicates_and_task_binds_replayed_interactions():
     js = (FRONTEND_ROOT / "app.js").read_text(encoding="utf-8")
     show_start = js.index("function showTaskInteractionModal")
@@ -273,6 +285,66 @@ def test_frontend_guards_late_run_results_after_conversation_switch():
     assert "state.conversationRevision === requestRevision" in js[finally_start:js.index("async function resumeTask", finally_start)]
 
 
+def test_frontend_serializes_run_preflight_and_rechecks_resume_after_async_lookup():
+    js = (FRONTEND_ROOT / "app.js").read_text(encoding="utf-8")
+    run_start = js.index("async function runTask")
+    resume_start = js.index("async function resumeTask", run_start)
+    stop_start = js.index("async function stopTask", resume_start)
+    run = js[run_start:resume_start]
+    resume = js[resume_start:stop_start]
+
+    assert "let runPreflightActive = false;" in js[:run_start]
+    assert "runLifecycle.isBusy() || runPreflightActive" in run
+    assert "runPreflightActive = true;" in run
+    assert "runPreflightActive = false;" in run
+    assert run.index("runPreflightActive = false;") < run.index("resetRunSurface();")
+    resume_lookup = resume.index('await callApi("get_resume_context", resumeTaskId)')
+    resume_reset = resume.index("resetRunSurface();")
+    assert "if (runLifecycle.isBusy() || runPreflightActive)" in resume[resume_lookup:resume_reset]
+    begin_request = resume.index("runLifecycle.beginRequest")
+    request_use = resume.index("requestContext.requestId")
+    assert "if (!requestContext)" in resume[begin_request:request_use]
+    assert "els.attachFiles.disabled = true;" in resume
+
+
+def test_frontend_drops_preflight_result_after_conversation_switch():
+    js = (FRONTEND_ROOT / "app.js").read_text(encoding="utf-8")
+    run_start = js.index("async function runTask")
+    resume_start = js.index("async function resumeTask", run_start)
+    run = js[run_start:resume_start]
+
+    capture = run.index("const requestRevision = state.conversationRevision;")
+    requirements = run.index('await callApi("get_message_requirements", text)')
+    reset = run.index("resetRunSurface();")
+    revision_guard = run.index(
+        "if (state.conversationRevision !== requestRevision)",
+        requirements,
+    )
+
+    assert capture < requirements < revision_guard < reset
+
+
+def test_frontend_closes_pending_modals_on_reset_and_terminal_events():
+    js = (FRONTEND_ROOT / "app.js").read_text(encoding="utf-8")
+    reset_start = js.index("function resetRunSurface")
+    reset_end = js.index("async function runTask", reset_start)
+    progress_start = js.index("async function handleProgress")
+    completed_start = js.index('if (event.type === "task_completed")', progress_start)
+    error_start = js.index('if (event.type === "error")', completed_start)
+    cancelled_start = js.index('if (event.type === "cancelled")', error_start)
+    progress_end = js.index("async function refreshResult", cancelled_start)
+
+    assert "closeAuthorizationModal();" in js[reset_start:reset_end]
+    assert "closeTaskInteractionModal();" in js[reset_start:reset_end]
+    for branch in [
+        js[completed_start:error_start],
+        js[error_start:cancelled_start],
+        js[cancelled_start:progress_end],
+    ]:
+        assert "closeAuthorizationModal();" in branch
+        assert "closeTaskInteractionModal();" in branch
+
+
 def test_frontend_clears_shared_composer_only_when_activating_a_conversation():
     js = (FRONTEND_ROOT / "app.js").read_text(encoding="utf-8")
 
@@ -328,11 +400,11 @@ def test_frontend_includes_memory_view():
     assert 'class="workspace memoryCenterWorkspace hidden" id="memoryView"' in html
     for name in ["long-term", "session", "learning", "archive"]:
         assert f'id="memoryTab-{name}"' in html
-        assert f'role="tab"' in html
+        assert 'role="tab"' in html
         assert f'aria-controls="memoryPanel-{name}"' in html
         assert f'data-memory-tab="{name}"' in html
         assert f'id="memoryPanel-{name}"' in html
-        assert f'role="tabpanel"' in html
+        assert 'role="tabpanel"' in html
         assert f'aria-labelledby="memoryTab-{name}"' in html
         assert f'data-memory-panel="{name}"' in html
     assert 'id="memoryConversationShortTerm"' in html

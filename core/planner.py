@@ -257,6 +257,19 @@ class Planner:
             goal = step.goal
             if step.step_id == failed_step_id:
                 goal = f"{goal}（修复：{repair_strategy}）"
+                steps.append(
+                    replace(
+                        step,
+                        goal=goal,
+                        status=status,
+                        tool_hint=None,
+                        action_hint=None,
+                        inputs={},
+                        success_criteria=[],
+                        requires_authorization=False,
+                    )
+                )
+                continue
             steps.append(replace(step, goal=goal, status=status))
         return Plan(
             plan_id=f"plan_{task.task_id}_replan",
