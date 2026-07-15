@@ -4,15 +4,15 @@
 
 - 分支：`feat/uta-cleanup-refactor`
 - 审查起点：`ac6b2d7 release: v1.11.0`（tag `v1.11.0`）
-- 审查与修复已完成，修改尚未提交。
-- 本轮重新构建了 `dist/UTA Desktop.app` 和 `dist/UTA Desktop-macos.zip`，未发布新版本。
+- 审查与修复已完成，核心修复提交为 `d16c6d3`。
+- 本轮重新构建了 `dist/UTA Desktop.app` 和 `dist/UTA Desktop-macos.zip`，并作为 `v1.11.1` 正式发布。
 
 ## 审查基线
 
 - 修改前全量测试：`812 passed, 5 deselected`。
 - 从用户输入经 TaskParser、Planner、Router、Executor、Reflection、Checkpoint/Interaction 追踪到 Desktop Runner/API/Frontend 与打包入口。
 - 机械对照了前端 37 个静态 `callApi` 方法与 Python API，没有发现方法名断链；4 个动态 Skill 操作也逐一匹配。
-- CLI、FastAPI、PyInstaller Info.plist 和已安装包元数据的版本均为 `1.11.0`。
+- CLI、FastAPI、PyInstaller Info.plist 和已安装包元数据的发布版本均为 `1.11.1`。
 
 ## 已修复问题
 
@@ -43,11 +43,11 @@
 - Python `compileall`、Node 对 `app.js` / `shell.js` / `markdown.js` 的语法检查、`pip check`、Ruff `F`、`git diff --check` 全部通过。
 - `bash desktop/build/build_macos.sh` 通过，构建内部再次执行全量测试。PyInstaller 仅报告平台或可选模块（如 `msvcrt` / `user32`），未发现 UTA 源码导入断链。
 - 原始 `.app` 与全新目录解压出的 `.app` 均通过 `codesign --verify --deep --strict`。
-- ZIP 通过 `unzip -t`，不含 AppleDouble / `__MACOSX`，解压后不含 quarantine，`--version` 输出 `UTA Desktop 1.11.0`。
+- ZIP 通过 `unzip -t`，不含 AppleDouble / `__MACOSX`，解压后不含 quarantine，`--version` 输出 `UTA Desktop 1.11.1`。
 - 成品 GUI 进程实际启动后稳定存活超过 5 秒，随后主动正常结束。Orca 运行时未启动，因此未做自动化窗口内点击流程。
 - 5 个真实 BGE 模型 integration 用例已单独执行：`5 / 5 passed`。模型本地缓存存在，加载时仍需向 `hf-mirror.com` 查询元数据；禁网沙箱中的首轮失败已通过获准网络复测确认为环境限制，不是代码缺陷。
 
 ## 工作区边界
 
-- 本次修改主要位于 core/desktop/tools/llm 与对应测试，没有提交、推送或发布。
+- 本次修改主要位于 core/desktop/tools/llm 与对应测试，修复提交与 `v1.11.1` 发布提交均不包含 architecture visualizer 的未跟踪文件。
 - 审查开始前已存在的其他未跟踪内容保持原样：`.arch-viz-skill-update/`、`.arch-viz.yml`、architecture visualizer 相关 plans/specs/diff 以及 `docs/uta-agent-architecture-interactive.html`。

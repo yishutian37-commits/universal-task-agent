@@ -23,13 +23,13 @@ def test_desktop_window_allows_text_selection(monkeypatch):
 
 def test_desktop_cli_version_reports_installed_version_without_opening_window(monkeypatch, capsys):
     launches = []
-    monkeypatch.setattr(app, "distribution_version", lambda name: "1.11.0")
+    monkeypatch.setattr(app, "distribution_version", lambda name: "1.11.1")
     monkeypatch.setattr(app, "main", lambda debug=False: launches.append(debug))
 
     exit_code = app.cli_main(["--version"], debug=False)
 
     assert exit_code == 0
-    assert capsys.readouterr().out == "UTA Desktop 1.11.0\n"
+    assert capsys.readouterr().out == "UTA Desktop 1.11.1\n"
     assert launches == []
 
 

@@ -185,8 +185,8 @@ app = BUNDLE(
     info_plist={
         "CFBundleName": "UTA Desktop",
         "CFBundleDisplayName": "UTA Desktop",
-        "CFBundleShortVersionString": "1.11.0",
-        "CFBundleVersion": "1.11.0",
+        "CFBundleShortVersionString": "1.11.1",
+        "CFBundleVersion": "1.11.1",
         "LSMinimumSystemVersion": "11.0",
         "NSHighResolutionCapable": True,
     },

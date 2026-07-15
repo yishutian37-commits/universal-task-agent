@@ -7,7 +7,7 @@ from core.history_store import HistoryStore
 from main import run_task
 
 
-app = FastAPI(title="UTA API", version="1.11.0")
+app = FastAPI(title="UTA API", version="1.11.1")
 
 
 class RunTaskRequest(BaseModel):
